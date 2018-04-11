@@ -115,11 +115,56 @@ class sequence_twin(object):
                 raise StopIteration
         record[0][0] = record[0][0][1:]
         record[1][0] = record[1][0][1:]
-        return record
+        return record[0], record[1]
+
+
+class sequence_twin_trunk(object):
+    def __init__(self, file_r1, file_r2, fastx='a', gz=False, trunk_size=2):
+        self.fastx = fastx
+        self.gzip = gz
+        if self.gzip:
+            import gzip
+            self.r1 = gzip.open(file_r1, 'rt')
+            self.r2 = gzip.open(file_r2, 'rt')
+        else:
+            self.r1 = open(file_r1, 'r')
+            self.r2 = open(file_r2, 'r')
+        if fastx == 'a': self.n = 2
+        elif fastx == 'q': self.n = 4
+        else:
+            print('Please specify the right format, "a" for FASTA and "q" for FASTQ.')
+            self.n = 1
+        self.trunk_size = trunk_size
+
+    def __iter__(self):
+        return self
+    
+    def __next__(self):
+        r1_trunk = []
+        r2_trunk = []
+        for record in range(self.trunk_size):
+            r1 = []
+            r2 = []
+            for i in range(self.n):
+                line_r1 = self.r1.readline().strip('\n')
+                line_r2 = self.r2.readline().strip('\n')
+                if line_r1:
+                    r1.append(line_r1)
+                    r2.append(line_r2)
+                else:
+                    if len(r1_trunk) > 0:
+                        return r1_trunk, r2_trunk
+                    else:
+                        raise StopIteration
+            r1[0] = r1[0][1:]
+            r2[0] = r2[0][1:]
+            r1_trunk.append(r1)
+            r2_trunk.append(r2)
+        return r1_trunk, r2_trunk
 
 
 # Write the content to a fastq file
-def write_seqs(seq_content, filePath, fastx='a', gz=False):
+def write_seqs(seq_content, filePath, fastx='a', gz=False, mode='w'):
     count = 0
     if fastx == 'a':
         n = 2
@@ -132,10 +177,10 @@ def write_seqs(seq_content, filePath, fastx='a', gz=False):
         header = ''
     
     if not gz:
-        f = open(filePath, 'w')
+        f = open(filePath, mode)
     else:
         import gzip
-        f = gzip.open(filePath, 'w')
+        f = gzip.open(filePath, mode)
     for record in seq_content:
         label = header + record[0]                
         for line in [label] + record[1:]:
