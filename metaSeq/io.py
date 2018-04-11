@@ -116,3 +116,30 @@ class sequence_twin(object):
         record[0][0] = record[0][0][1:]
         record[1][0] = record[1][0][1:]
         return record
+
+
+# Write the content to a fastq file
+def write_seqs(seq_content, filePath, fastx='a', gz=False):
+    count = 0
+    if fastx == 'a':
+        n = 2
+        header = '>'
+    elif fastx == 'q':
+        n = 4
+        header = '@'
+    else:
+        n = 1
+        header = ''
+    
+    if not gz:
+        f = open(filePath, 'w')
+    else:
+        import gzip
+        f = gzip.open(filePath, 'w')
+    for record in seq_content:
+        label = header + record[0]                
+        for line in [label] + record[1:]:
+            f.write('%s\n' % line)
+            count += 1
+    f.close()
+    return count
