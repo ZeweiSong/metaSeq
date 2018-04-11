@@ -69,12 +69,14 @@ class sequence_trunk(object):
             for i in range(self.n):
                 line = self.file.readline().strip('\n')
                 if line:
+                    print(line)
                     record.append(line)
+                    print(record)
                 else:
                     if len(record_trunk) > 0:
                         return record_trunk
                     else:
                         raise StopIteration
-            record[0] = record[1:]
+            record[0] = record[0][1:]
             record_trunk.append(record)
         return record_trunk
