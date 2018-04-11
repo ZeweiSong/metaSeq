@@ -58,6 +58,7 @@ class sequence_trunk(object):
             self.n = 4
         else:
             print('Please specify the right format, "a" for FASTA and "q" for FASTQ.')
+            self.n = 1
     
     def __iter__(self):
         return self
@@ -69,9 +70,7 @@ class sequence_trunk(object):
             for i in range(self.n):
                 line = self.file.readline().strip('\n')
                 if line:
-                    print(line)
                     record.append(line)
-                    print(record)
                 else:
                     if len(record_trunk) > 0:
                         return record_trunk
@@ -80,3 +79,40 @@ class sequence_trunk(object):
             record[0] = record[0][1:]
             record_trunk.append(record)
         return record_trunk
+
+
+# Iterator for two files
+# It only work for files with ABSOLUTELY corresponding record.
+class sequence_twin(object):
+    def __init__(self, file_r1, file_r2, fastx='a', gz=False):
+        self.fastx = fastx
+        self.gzip = gz
+        if self.gzip:
+            import gzip
+            self.r1 = gzip.open(file_r1, 'rt')
+            self.r2 = gzip.open(file_r2, 'rt')
+        else:
+            self.r1 = open(file_r1, 'r')
+            self.r2 = open(file_r2, 'r')
+        if fastx == 'a': self.n = 2
+        elif fastx == 'q': self.n = 4
+        else:
+            print('Please specify the right format, "a" for FASTA and "q" for FASTQ.')
+            self.n = 1
+    
+    def __iter__(self):
+        return self
+    
+    def __next__(self):
+        record = [[],[]]
+        for i in range(self.n):
+            line_r1 = self.r1.readline().strip('\n')
+            line_r2 = self.r2.readline().strip('\n')
+            if line_r1:
+                record[0].append(line_r1)
+                record[1].append(line_r2)
+            else:
+                raise StopIteration
+        record[0][0] = record[0][0][1:]
+        record[1][0] = record[1][0][1:]
+        return record
