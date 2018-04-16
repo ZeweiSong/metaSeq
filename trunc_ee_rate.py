@@ -27,8 +27,8 @@ trunk = int(args.t)
 t1 = time.clock()
 print('Reading {0} by trunk ({1}) ...'.format(input_file, trunk))
 #%% Truncate filter at maxE rate 0.01
-#input_seq = io.sequence_trunk(input_file, fastx='q', trunk_size=trunk)
-input_seq = io.fastq_parser_bt(input_file, trunk)
+input_seq = io.sequence_trunk(input_file, fastx='q', trunk_size=trunk)
+#input_seq = io.fastq_parser_bt(input_file, trunk)
 p_dict = qc.qual_score()
 
 i = 0
