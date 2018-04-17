@@ -46,7 +46,7 @@ def trunc_ee_rate(seq, p_dict, rate=0.01):
             i += 1
         pos += step
         step = step // 2
-    while ee_rate(score[:pos]) > rate:
+    while ee_rate(score[:pos]) > rate and pos > 1:
         pos -= 1
         i += 1
     return [seq[0], seq[1][:pos], seq[2], seq[3][:pos]]
