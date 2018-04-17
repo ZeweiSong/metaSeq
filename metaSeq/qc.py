@@ -28,7 +28,31 @@ def qual_score():
 
 
 #%% Trim a FASTQ record from the end, until MaxError/base lower than the threshold
-def trunc_ee_rate(record, p_dict, rate = 0.01):
+# New algorithm with steps
+def ee_rate(score):
+    return sum(score)/len(score)
+
+def trunc_ee_rate(seq, p_dict, rate=0.01):
+    score = [p_dict[i] for i in seq[3]]
+    step = len(score)//3
+    pos = len(score)
+    i = 0
+    while step > 1:
+        while ee_rate(score[:pos]) > rate:
+            pos = pos - step
+            if pos <= 0:
+                pos = 1
+                break
+            i += 1
+        pos += step
+        step = step // 2
+    while ee_rate(score[:pos]) > rate:
+        pos -= 1
+        i += 1
+    return [seq[0], seq[1][:pos], seq[2], seq[3][:pos]]
+
+#%% The slower alernative of trunc_ee_rate
+def trunc_ee_rate2(record, p_dict, rate = 0.01):
     # Convert Q score to P
     p = []
     for qchar in record[3]:
