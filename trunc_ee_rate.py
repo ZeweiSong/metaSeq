@@ -17,7 +17,7 @@ parser.add_argument('-i', help='Input FASTQ file.')
 parser.add_argument('-o', help='Output FASTQ file.')
 parser.add_argument('-r', help='Expected Error rate, EE/bp')
 parser.add_argument('-l', help='Minimum length to keep, >=')
-parser.add_argument('-t', help='Trunk size.')
+parser.add_argument('-t', default=100000, help='Trunk size. By default is 100,000')
 args = parser.parse_args()
 input_file = args.i
 output_file = args.o
