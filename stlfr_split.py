@@ -1,30 +1,71 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Created on Mon Dec 11 16:59:32 2017
+Created on 2017-12-11
+Last update on 2018-05-30
+
+This script will split the raw stLFR data into individual bead. Short read with
+the same barcode will be group together.
+
+The script takes four inputw:
+    1) raw R1 read
+    2) raw R2 read with 54 bp barcode string
+    3) Barcode file contains the 1526 barcode sequences and corresponding number
+    4) Base string for output
+
+The script spits four outputw:
+    1) R1 read orderred by barcode
+    2) R2 read orderred by barcode (54 bp string trimmed)
+    3) R1 read without eligible barcode
+    4) R2 read without eligible barcode
+
+Each barcode can tolerant 1 mutation. The three barcodes are identify from the 
+54 bp string using the pattern 10 + 6 + 10 + 18 + 10.
+
+For a general BGISEQ PE100 lane with 600M reads, the split usually takes 8 hrs.
+
+The current output is in FASTA format. However, this is not an efficient format
+for stLFR data. A better alternative is to save as a Python dictionary using
+bead (barcode) as the key. This option will be added later or you can parse the
+data into Python dictionary yourself.
+
+You will need to request super memory at the super computer for this task. A low
+memory version is possible, but may take much longer time. We don't have plan
+for a low memory version in the short run unless there is a urgent need. Contact
+us if you need one.
 
 @author: Zewei Song
-@email: songzewei@genomics.cn
+@email: songzewei@genomics.cn or songzewei@outlook.com
 """
 #%%
 from __future__ import print_function
 from __future__ import division
-from metaSeq import io
+#from metaSeq import io
+import textwrap
 import argparse
 import time
-parser = argparse.ArgumentParser()
-parser.add_argument('-r1', help='Read1 file')
-parser.add_argument('-r2', help='Read2 file')
-parser.add_argument('-b', help='Forward barcode list')
-parser.add_argument('-o', help='Output base')
-parser.add_argument('-not_gz', action='store_false', help='Specify if the input is gz file')
+parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
+                                     epilog=textwrap.dedent('''\
+                                        Split raw stLFR data into beads. Open the script to see a detail document.
+                                        ------------------------
+                                        By Zewei Song
+                                        Environmental Ecology Lab
+                                        Institute of Metagenomics
+                                        BGI-Research
+                                        songzewei@genomics.cn
+                                        songzewei@outlook.com
+                                        ------------------------'''))
+parser.add_argument('-r1', help='Read1 file of the stLFR library.')
+parser.add_argument('-r2', help='Read2 file of the stLFR library.')
+parser.add_argument('-b', default='barcode.list', help='Forward barcode list, this is a text file.')
+parser.add_argument('-o', help='Output base, suffix will be added for four files.')
+parser.add_argument('-not_gz', action='store_false', help='Specify if the input is gz file, in most case you do not need it.')
 args = parser.parse_args()
 r1File = args.r1
 r2File = args.r2
 barcodeFile = args.b
 base = args.o
 not_gz = args.not_gz
-
 t1 = time.time()
 #%% Functions
 # Return the Reverse Compliment of a sequence
@@ -81,6 +122,41 @@ def number_set(barcodes, forwardDict, reverseDict):
     return '_'.join(number)
 
 
+# Iterator for two files
+# It only work for files with ABSOLUTELY corresponding record.
+class sequence_twin(object):
+    def __init__(self, file_r1, file_r2, fastx='a', gz=False):
+        self.fastx = fastx
+        self.gzip = gz
+        if self.gzip:
+            import gzip
+            self.r1 = gzip.open(file_r1, 'rt')
+            self.r2 = gzip.open(file_r2, 'rt')
+        else:
+            self.r1 = open(file_r1, 'r')
+            self.r2 = open(file_r2, 'r')
+        if fastx == 'a': self.n = 2
+        elif fastx == 'q': self.n = 4
+        else:
+            print('Please specify the right format, "a" for FASTA and "q" for FASTQ.')
+            self.n = 1
+    
+    def __iter__(self):
+        return self
+    
+    def __next__(self):
+        record = [[],[]]
+        for i in range(self.n):
+            line_r1 = self.r1.readline().strip('\n')
+            line_r2 = self.r2.readline().strip('\n')
+            if line_r1:
+                record[0].append(line_r1)
+                record[1].append(line_r2)
+            else:
+                raise StopIteration
+        record[0][0] = record[0][0][1:]
+        record[1][0] = record[1][0][1:]
+        return record[0], record[1]
 #%% Read in the barcode list
 # Forward and Reverse barcodes are saved in two Dictionaries.
 print('Reading in the barcode list from {0} ...'.format(barcodeFile))
@@ -125,7 +201,7 @@ beadError = {'0_0_0':[]}  # This is the dicionary that organizes seqs without ba
 
 logFile = base + '.log'
 
-seqs = io.sequence_twin(r1File, r2File, fastx='q', gz=not_gz)
+seqs = sequence_twin(r1File, r2File, fastx='q', gz=not_gz)
 count = 0
 error_count = 0
 for r1, r2 in seqs:
