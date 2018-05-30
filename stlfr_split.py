@@ -242,6 +242,7 @@ with open(logFile, 'w') as f1:
     with open(r1OutputFile, 'w') as f:
         for key, value in beadDict.items():
             for record in value:
+                record[0][0] = '@' + record[0][0]
                 for line in record[0]:
                     f.write('{0}\n'.format(line))
     
@@ -249,6 +250,7 @@ with open(logFile, 'w') as f1:
     with open(r2OutputFile, 'w') as f:
         for key, value in beadDict.items():
             for record in value:
+                record[1][0] = '@' + record[1][0]
                 for line in record[1]:
                     f.write('{0}\n'.format(line))
     
@@ -256,6 +258,7 @@ with open(logFile, 'w') as f1:
     with open(r1Error, 'w') as f:
         for key, value in beadError.items():
             for record in value:
+                record[0][0] = '@' + record[0][0]
                 for line in record[0]:
                     f.write('{0}\n'.format(line))
     
@@ -263,6 +266,7 @@ with open(logFile, 'w') as f1:
     with open(r2Error, 'w') as f:
         for key, value in beadError.items():
             for record in value:
+                record[1][0] = '@' + record[1][0]
                 for line in record[1]:
                     f.write('{0}\n'.format(line))
     
