@@ -13,11 +13,12 @@ The script takes four inputw:
     3) Barcode file contains the 1526 barcode sequences and corresponding number
     4) Base string for output
 
-The script spits four outputw:
+The script spits five outputw:
     1) R1 read orderred by barcode
     2) R2 read orderred by barcode (54 bp string trimmed)
     3) R1 read without eligible barcode
     4) R2 read without eligible barcode
+    5) A log file on the progress of splitting per 1M read, and a final report
 
 Each barcode can tolerant 1 mutation. The three barcodes are identify from the 
 54 bp string using the pattern 10 + 6 + 10 + 18 + 10.
