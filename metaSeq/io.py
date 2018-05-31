@@ -198,6 +198,7 @@ class sequence_fastq_bytes(object):
             else:
                 raise StopIteration
 
+
 # Write the content to a fastq file
 def write_seqs(seq_content, filePath, fastx='a', gz=False, mode='w'):
     count = 0
@@ -223,3 +224,45 @@ def write_seqs(seq_content, filePath, fastx='a', gz=False, mode='w'):
             count += 1
     f.close()
     return count
+
+
+# Parse a sorted stLFR FASTA data by bead (barcode)
+# Return a tuple containing all the short sequences in the bead
+# Currently only support FASTA since all QC should be at the upstream
+class stlfr_bead(object):
+    def __init__(self, filePath):
+        self.stop = False
+        with open(filePath, 'r') as f:
+            line1 = f.readline()
+            self.barcode = line1.split('-')[0]
+        self.file = open(filePath, 'r')
+        self.current_bead = []
+    
+    def __iter__(self):
+        return self
+    
+    def __next__(self):
+        close = False
+        while close == False:
+            current_bead = self.current_bead
+            record = []
+            for i in range(2): # Read in the next sequence
+                line = self.file.readline().strip('\n')
+                if line:
+                    record.append(line)
+                else:
+                    if self.stop:
+                        raise StopIteration
+                    else:
+                        self.stop = True
+                        current_bead = (self.barcode, tuple((tuple(i) for i in current_bead)))
+                        return current_bead
+            barcode = record[0].split('-')[0]
+            if barcode == self.barcode:
+                current_bead.append(record)
+            else:
+                current_bead = (self.barcode, tuple((tuple(i) for i in current_bead)))
+                self.barcode = barcode
+                self.current_bead = [record]
+                close = True
+                return current_bead
