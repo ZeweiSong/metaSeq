@@ -234,7 +234,7 @@ with open(logFile, 'w') as f1:
     f1.write('Found {0} beads.\n'.format(len(beadDict)))
     
     r1OutputFile = base + '.r1_split.fq'
-    r2OutputFile = base + '.r2.split.fq'
+    r2OutputFile = base + '.r2_split.fq'
     r1Error = base + '.r1_error.fq'
     r2Error = base + '.r2_error.fq'
     
