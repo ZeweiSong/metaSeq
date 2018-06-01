@@ -3,12 +3,15 @@
 """
 Created on Mon Dec 11 16:59:32 2017
 
-@author: songz
+This script contains functions that take a sequence file as input.
+
+@author: Zewei Song
+@email: songzewei@genomics.cn
 """
 from __future__ import print_function
 from __future__ import division
 
-# an iterator oobject for reading a single sequence file
+# an iterator oobject for reading a single sequence file. This is the most common Class.
 # It will NOT check the format of the file, either can it deal with multiple line FASTA file.
 # At my desktop computer, 1 M reads can be read in in about 2 seconds.
 class sequence(object):
@@ -166,7 +169,7 @@ class sequence_twin_trunk(object):
 
 
 # This function is still under test, it reads in file bytes, should be a bit faster than read in by line
-# Need to find a way to remove header
+# Need to find a way to remove header symbol
 # This is 40% faster than reading by line.
 class sequence_bytes(object):
     def __init__(self, filePath, size = 1000000,fastx='a'):
@@ -210,7 +213,7 @@ class sequence_bytes(object):
                 raise StopIteration
 
 
-# Write the content to a fastq file
+# Write the content to a fastx file
 def write_seqs(seq_content, filePath, fastx='a', gz=False, mode='w'):
     count = 0
     if fastx == 'a':
@@ -239,12 +242,13 @@ def write_seqs(seq_content, filePath, fastx='a', gz=False, mode='w'):
 
 # Parse a sorted stLFR FASTA data by bead (barcode)
 # Return a tuple containing all the short sequences in the bead
+# Barcode is saved after the last "-", for example /102_1324_573
 # Currently only support FASTA since all QC should be at the upstream
 class stlfr_bead(object):
     def __init__(self, filePath):
         self.stop = False
         with open(filePath, 'r') as f:
-            line1 = f.readline()
+            line1 = f.readline() # Read in the very first barcode
             self.barcode = line1.split('-')[0]
         self.file = open(filePath, 'r')
         self.current_bead = []
