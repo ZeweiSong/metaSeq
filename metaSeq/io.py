@@ -266,3 +266,12 @@ class stlfr_bead(object):
                 self.current_bead = [record]
                 close = True
                 return current_bead
+
+
+#%%
+# Return reverse compliment of a sequence
+# This part is got from Stakoverflow
+#(https://stackoverflow.com/questions/19570800/reverse-complement-dna) by corinna
+# Works for Python 3
+def revcomp(seq):
+    return seq.translate(str.maketrans('ACGTacgtRYMKrymkVBHDvbhdN', 'TGCAtgcaYRKMyrkmBVDHbvdhN'))[::-1]
