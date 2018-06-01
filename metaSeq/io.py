@@ -10,11 +10,11 @@ from __future__ import division
 
 # an iterator oobject for reading a single sequence file
 # It will NOT check the format of the file, either can it deal with multiple line FASTA file.
+# At my desktop computer, 1 M reads can be read in in about 2 seconds.
 class sequence(object):
-    def __init__(self, filePath, fastx='a', gz=False, trunk_size=1):
+    def __init__(self, filePath, fastx='a', gz=False):
         self.fastx = fastx
         self.gzip = gz
-        self.size = trunk_size
         if self.gzip:
             import gzip
             self.file = gzip.open(filePath, 'rt')
@@ -41,7 +41,9 @@ class sequence(object):
         record[0] = record[0][1:]
         return record
 
+
 # Same iterator but read in multiple record into memory at once
+# By testing, read in file in trunk does not boost the reading speed.
 class sequence_trunk(object):
     def __init__(self, filePath, fastx='a', gz=False, trunk_size=2):
         self.fastx = fastx
@@ -164,7 +166,7 @@ class sequence_twin_trunk(object):
 
 
 # This function is still under test, it reads in file bytes, should be a bit faster than read in by line
-# Need to fins a way to remove header
+# Need to find a way to remove header
 class sequence_fastq_bytes(object):
     def __init__(self, filePath, size, ):
         self.file = open(filePath, 'r')
