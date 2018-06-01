@@ -34,8 +34,8 @@ parser.add_argument('-o', help='The output sequence file.')
 parser.add_argument('-json', help='The JSON file to save the bead dictionary.')
 
 args = parser.parse_args()
-# Read in the assembled and unassembled sequences
 
+# Read in the assembled and unassembled sequences
 # Assembled file
 singleFile = args.single
 seqSingle = seqIO.sequence(singleFile, fastx='q')
@@ -47,7 +47,7 @@ for record in seqSingle:
     if record[1].find('N') == -1: # Keep sequence without N
         barcode = record[0].split('/')[-1]
         try:
-            bead[barcode]['s'][record[1]] = 1
+            bead[barcode]['s'][record[1]] += 1
         except KeyError:
             bead[barcode] = {'s':{}}
             bead[barcode]['s'][record[1]] = 1
@@ -68,7 +68,7 @@ for r1, r2 in seqTwin:
     seq = r1[1] + '_' + r2[1]
     if seq.find('N') == -1: # Keep sequence without N
         try:
-            bead[barcode]['t'][seq] = 1
+            bead[barcode]['t'][seq] += 1
         except KeyError:
             try:
                 bead[barcode]['t'] = {}
@@ -86,11 +86,12 @@ for r1, r2 in seqTwin:
 
 with open('bead_dereplicate.log', 'w') as f:
     f.write('Processed {0} sequences. Found {1} beads.'.format(seqCount, len(bead)))
-    if args.json:
-        with open(args.json, 'w') as f:
-            json.dump(bead, f)
-    else:
-        pass
+
+if args.json:
+    with open(args.json, 'w') as f:
+        json.dump(bead, f)
+else:
+    pass
 #%%            
 # Write into a FASTA file
 outputFile = args.o
