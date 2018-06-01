@@ -167,17 +167,26 @@ class sequence_twin_trunk(object):
 
 # This function is still under test, it reads in file bytes, should be a bit faster than read in by line
 # Need to find a way to remove header
-class sequence_fastq_bytes(object):
-    def __init__(self, filePath, size, ):
+# This is 40% faster than reading by line.
+class sequence_bytes(object):
+    def __init__(self, filePath, size = 1000000,fastx='a'):
         self.file = open(filePath, 'r')
-        self.size = int(size)
+        self.size = size
+        self.fastx = fastx
         self.tail = ''
+        
+        if fastx == 'a':
+            self.n = 2
+        elif fastx == 'q':
+            self.n = 4
+        else:
+            print('Please specify the right format, "a" for FASTA and "q" for FASTQ.')
     def __iter__(self):
         return self
     
     def __next__(self):
         content = self.file.read(self.size)
-        #print(self.tail)
+
         if content:
             content = self.tail + content
             self.tail = ''
@@ -190,12 +199,12 @@ class sequence_fastq_bytes(object):
                 self.tail = self.tail
             #print(self.tail)
             content = content[:(len(content) - tail_n - 1)]
-            content = [content[x:x+4] for x in range(0, len(content), 4)]
+            content = [content[x:x+self.n] for x in range(0, len(content), self.n)]
             return content
         else:
             if self.tail:
                 content = self.tail.split('\n')
-                content = [content[x:x+4] for x in range(0, len(content), 4)]
+                content = [content[x:x+self.n] for x in range(0, len(content), self.n)]
                 return content
             else:
                 raise StopIteration
