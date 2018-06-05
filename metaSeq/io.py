@@ -245,7 +245,15 @@ def write_seqs(seq_content, filePath, fastx='a', gz=False, mode='w'):
 # Barcode is saved after the last "-", for example /102_1324_573
 # Currently only support FASTA since all QC should be at the upstream
 class stlfr_bead(object):
-    def __init__(self, filePath):
+    def __init__(self, filePath, fastx='a'):
+        if fastx == 'a':
+            self.n = 2
+        else:
+            if fastx == 'q':
+                self.n = 4
+            else:
+                print('Please specify the right FASTX format, a or q.')
+                return None
         self.stop = False
         with open(filePath, 'r') as f:
             line1 = f.readline() # Read in the very first barcode
@@ -261,7 +269,7 @@ class stlfr_bead(object):
         while close == False:
             current_bead = self.current_bead
             record = []
-            for i in range(2): # Read in the next sequence
+            for i in range(self.n): # Read in the next sequence
                 line = self.file.readline().strip('\n')
                 if line:
                     record.append(line)
@@ -281,6 +289,8 @@ class stlfr_bead(object):
                 self.current_bead = [record]
                 close = True
                 return current_bead
+
+
 
 
 #%%
