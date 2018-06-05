@@ -27,6 +27,16 @@ def qual_score():
     return p
 
 
+#%%
+# Return a list of Probabilities based on the Phred Q score
+def prob(qual, p_dict):
+    return [p_dict[i] for i in qual]
+
+# Return the expecter error of a given quality string
+def ee(qual, p_dict):
+    return sum(prob(qual, p_dict))
+
+
 #%% Trim a FASTQ record from the end, until MaxError/base lower than the threshold
 # New algorithm with steps
 def ee_rate(score):
