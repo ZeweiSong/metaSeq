@@ -9,11 +9,41 @@ Created on Wed Jun  6 10:47:32 2018
 #%%
 from __future__ import print_function
 from __future__ import division
-from metaSeq import io as seqIO
+#from metaSeq import io as seqIO
+import textwrap
+import argparse
+import time
+import os
+parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
+                                     epilog=textwrap.dedent('''\
+                                        Split raw stLFR data into beads. Open the script to see a detail document.
+                                        ------------------------
+                                        By Zewei Song
+                                        Environmental Ecology Lab
+                                        Institute of Metagenomics
+                                        BGI-Research
+                                        songzewei@genomics.cn
+                                        songzewei@outlook.com
+                                        ------------------------'''))
+parser.add_argument('-r1', help='Read1 file of the stLFR library.')
+parser.add_argument('-r2', help='Read2 file of the stLFR library.')
+parser.add_argument('-b', default='barcode.list', help='Forward barcode list, this is a text file.')
+parser.add_argument('-o', help='Output file, suffix will be added for four files.')
+parser.add_argument('-s', default=1000000, help='Number of record read in every time, default is 1 million.')
+parser.add_argument('-not_gz', action='store_false', help='Specify if the input is gz file, in most case you do not need it.')
+args = parser.parse_args()
+r1File = args.r1
+r2File = args.r2
+barcodeFile = args.b
+outputFile = args.o
+not_gz = args.not_gz
+t1 = time.time()
 
-barcodeFile = 'barcode.list'
-r1File = 'r1.fq'
-r2File = 'r2.fq'
+size = int(args.s)
+
+#barcodeFile = 'barcode.list'
+#r1File = 'r1.fq'
+#r2File = 'r2.fq'
 #%% Functions
 # Return the Reverse Compliment of a sequence
 def rc(seq):
@@ -151,14 +181,15 @@ for key, value in barcodeDictReverse.items():
 #%% Read in R1 and R2 file
 # The two number Dictionary contains all possible sequences with 1 base Error
 # TO DO: Need to read in the raw read by trunk
-beadDict = {} # This is the dictionary that organizes seqs by bead (barcode set)
-for i in range(1536):
-    beadDict[i+1] = []
+
 beadError = {'0_0_0':[]}  # This is the dicionary that organizes seqs without barcode
-trunks = sequence_twin_trunk(r1File, r2File, fastx='q', trunk_size = 20)
+trunks = sequence_twin_trunk(r1File, r2File, fastx='q', trunk_size = size, gz=not_gz)
 
 # Assign read into bins using the first barcode as key
 for t1, t2 in trunks:
+    beadDict = {} # This is the dictionary that organizes seqs by bead (barcode set)
+    for i in range(1536):
+        beadDict[i+1] = []
     for r1, r2 in zip(t1, t2):
         bead = number_set(barcode_set(r2[1]), numberDictForward, numberDictReverse)
         if bead:
@@ -175,7 +206,7 @@ for t1, t2 in trunks:
                     f.write('{0}\n'.format('\t'.join(line)))
 
 #%% Order each temp file by bead, and write to a new file
-outputFile = 'orderred.fq'
+#outputFile = 'orderred.fq'
 for key, value in tempDict.items():
     temp = []
     try:
@@ -188,3 +219,8 @@ for key, value in tempDict.items():
                 f.write('{0}\n'.format('\t'.join(line)))
     except FileNotFoundError:
         pass
+
+#%% Remove temp files
+for key, value in tempDict.items():
+    if os.path.isfile(value):
+        os.remove(value)
