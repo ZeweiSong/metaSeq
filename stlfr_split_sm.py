@@ -180,7 +180,6 @@ for key, value in barcodeDictReverse.items():
 
 #%% Read in R1 and R2 file
 # The two number Dictionary contains all possible sequences with 1 base Error
-# TO DO: Need to read in the raw read by trunk
 
 beadError = {'0_0_0':[]}  # This is the dicionary that organizes seqs without barcode
 trunks = sequence_twin_trunk(r1File, r2File, fastx='q', trunk_size = size, gz=not_gz)
