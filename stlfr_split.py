@@ -41,10 +41,12 @@ us if you need one.
 #%%
 from __future__ import print_function
 from __future__ import division
-#from metaSeq import io
+from metaSeq import io as seqIO
+import sys
 import textwrap
 import argparse
 import time
+import json
 parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
                                      epilog=textwrap.dedent('''\
                                         Split raw stLFR data into beads. Open the script to see a detail document.
@@ -59,7 +61,9 @@ parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpForm
 parser.add_argument('-r1', help='Read1 file of the stLFR library.')
 parser.add_argument('-r2', help='Read2 file of the stLFR library.')
 parser.add_argument('-b', default='barcode.list', help='Forward barcode list, this is a text file.')
-parser.add_argument('-o', help='Output base, suffix will be added for four files.')
+parser.add_argument('-o', help='Output base for FASTQ or JSON.')
+parser.add_argument('-fastq', action='store_true', help='Turn on output to FASTQ, suffix will be added for four files.')
+parser.add_argument('-json', action='store_true', help='Turn on output to JSON format, will write to one file with .json extension.')
 parser.add_argument('-not_gz', action='store_false', help='Specify if the input is gz file, in most case you do not need it.')
 args = parser.parse_args()
 r1File = args.r1
@@ -68,6 +72,10 @@ barcodeFile = args.b
 base = args.o
 not_gz = args.not_gz
 t1 = time.time()
+
+if not args.fastq and not args.json:
+    print('Please specify at least one output format.\n')
+    sys.exit()
 #%% Functions
 # Return the Reverse Compliment of a sequence
 def rc(seq):
@@ -232,43 +240,51 @@ with open(logFile, 'w') as f1:
     f1.write('Processed {0:8.2f} M reads\n'.format(count/1000000))
     f1.write('Processed finished.\n')
     f1.write('Found {0} beads.\n'.format(len(beadDict)))
-    
-    r1OutputFile = base + '.r1_split.fq'
-    r2OutputFile = base + '.r2_split.fq'
-    r1Error = base + '.r1_error.fq'
-    r2Error = base + '.r2_error.fq'
-    
-    print('Writing to R1 file ...')
-    with open(r1OutputFile, 'w') as f:
-        for key, value in beadDict.items():
-            for record in value:
-                record[0][0] = '@' + record[0][0]
-                for line in record[0]:
-                    f.write('{0}\n'.format(line))
-    
-    print('Writing to R2 file ...')
-    with open(r2OutputFile, 'w') as f:
-        for key, value in beadDict.items():
-            for record in value:
-                record[1][0] = '@' + record[1][0]
-                for line in record[1]:
-                    f.write('{0}\n'.format(line))
-    
-    print('Writing to R1 Error file ...')
-    with open(r1Error, 'w') as f:
-        for key, value in beadError.items():
-            for record in value:
-                record[0][0] = '@' + record[0][0]
-                for line in record[0]:
-                    f.write('{0}\n'.format(line))
-    
-    print('Writing to R2 Error file ...')
-    with open(r2Error, 'w') as f:
-        for key, value in beadError.items():
-            for record in value:
-                record[1][0] = '@' + record[1][0]
-                for line in record[1]:
-                    f.write('{0}\n'.format(line))
+
+    if args.fastq:
+        r1OutputFile = base + '.r1_split.fq'
+        r2OutputFile = base + '.r2_split.fq'
+        r1Error = base + '.r1_error.fq'
+        r2Error = base + '.r2_error.fq'
+        
+        print('Writing to R1 file ...')
+        with open(r1OutputFile, 'w') as f:
+            for key, value in beadDict.items():
+                for record in value:
+                    record[0][0] = '@' + record[0][0]
+                    for line in record[0]:
+                        f.write('{0}\n'.format(line))
+        
+        print('Writing to R2 file ...')
+        with open(r2OutputFile, 'w') as f:
+            for key, value in beadDict.items():
+                for record in value:
+                    record[1][0] = '@' + record[1][0]
+                    for line in record[1]:
+                        f.write('{0}\n'.format(line))
+        
+        print('Writing to R1 Error file ...')
+        with open(r1Error, 'w') as f:
+            for key, value in beadError.items():
+                for record in value:
+                    record[0][0] = '@' + record[0][0]
+                    for line in record[0]:
+                        f.write('{0}\n'.format(line))
+        
+        print('Writing to R2 Error file ...')
+        with open(r2Error, 'w') as f:
+            for key, value in beadError.items():
+                for record in value:
+                    record[1][0] = '@' + record[1][0]
+                    for line in record[1]:
+                        f.write('{0}\n'.format(line))
+    if args.json:
+        jsonOutputFile = base + '.json'
+        with open(jsonOutputFile, 'w') as f:
+            for key, value in beadDict.items():
+                currentBead = {key:[]}
+                currentBead[key] = [seqIO.fastq2list(i[0], i[1]) for i in value]
+                f.write('%s\n' % json.dumps(currentBead))
     
     f1.write('{0} seqs have eligible barcode.\n'.format(count))
     f1.write('{0} seqs do not have eligible barcode.\n'.format(error_count))

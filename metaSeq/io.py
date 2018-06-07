@@ -291,8 +291,10 @@ class stlfr_bead(object):
                 return current_bead
 
 
-
-
+# Convert a pair of FASTQ record into list format as [seq1, q1, seq2, q2]
+# All labels are discarded
+def fastq2list(r1, r2):
+    return [r1[1], r1[3], r2[1], r2[3]]
 #%%
 # Return reverse compliment of a sequence
 # This part is got from Stakoverflow
