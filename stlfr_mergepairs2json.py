@@ -44,4 +44,4 @@ with open(logFile, 'a') as f:
     f.write('Writing to JSON file.\n')
 with open(outputFile, 'w') as f:
     for key, value in bead.items():
-        f.write('%s\n' % json.dumps({key:value}))
+        f.write('%s\n' % json.dumps({key:value})) 
