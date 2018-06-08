@@ -279,6 +279,7 @@ with open(logFile, 'w') as f1:
                     for line in record[1]:
                         f.write('{0}\n'.format(line))
     if args.json:
+        f.write('Output as JSON format.\n' )
         jsonOutputFile = base + '.json'
         with open(jsonOutputFile, 'w') as f:
             for key, value in beadDict.items():
