@@ -32,6 +32,7 @@ def qual_score():
 def prob(qual, p_dict):
     return [p_dict[i] for i in qual]
 
+
 # Return the expecter error of a given quality string
 def ee(qual, p_dict):
     return sum(prob(qual, p_dict))
