@@ -244,6 +244,7 @@ def write_seqs(seq_content, filePath, fastx='a', gz=False, mode='w'):
 # Return a tuple containing all the short sequences in the bead
 # Barcode is saved after the last "-", for example /102_1324_573
 # Currently only support FASTA since all QC should be at the upstream
+# TODO: rename this class to bead_fastx
 class stlfr_bead(object):
     def __init__(self, filePath, fastx='a'):
         if fastx == 'a':
@@ -291,10 +292,53 @@ class stlfr_bead(object):
                 return current_bead
 
 
+# Convert the pair end merged files into bead dictionary
+def mergepairs2bead(assemFile, fwdFile, revFile):
+    bead = {} # Dictionary for storing bead
+    for item in sequence_bytes(assemFile, fastx='q'):
+        for record in item:
+            barcode = record[0].split('/')[-1]
+            try:
+                bead[barcode].append([record[1], record[3]])
+            except KeyError:
+                bead[barcode] = [[record[1], record[3]]]
+    
+    for r1, r2 in sequence_twin(fwdFile, revFile, fastx='q'):
+        barcode = r1[0].split('/')[-1]
+        try:
+            bead[barcode].append([r1[1], r1[3], r2[1], r2[3]])
+        except KeyError:
+            bead[barcode] = [[r1[1], r1[3], r2[1], r2[3]]]
+    return bead
+
 # Convert a pair of FASTQ record into list format as [seq1, q1, seq2, q2]
 # All labels are discarded
 def fastq2list(r1, r2):
     return [r1[1], r1[3], r2[1], r2[3]]
+
+
+# Iterator for Bead from the JSON output
+class bead_json(object):    
+    def __init__(self, filePath):
+        import json
+        self.file = open(filePath, 'r')
+        self.head = []
+        with open(filePath, 'r') as f:
+            i = 1
+            for line in f:
+                if i <= 10:
+                    i += 1
+                    self.head.append(json.loads(line.strip('\n')))
+    def __iter__(self):
+        return self
+    
+    def __next__(self):
+        import json
+        line = self.file.readline().strip('\n')
+        if line:
+            return json.loads(line)
+        else:
+            raise StopIteration
 #%%
 # Return reverse compliment of a sequence
 # This part is got from Stakoverflow
@@ -302,3 +346,17 @@ def fastq2list(r1, r2):
 # Works for Python 3
 def revcomp(seq):
     return seq.translate(str.maketrans('ACGTacgtRYMKrymkVBHDvbhdN', 'TGCAtgcaYRKMyrkmBVDHbvdhN'))[::-1]
+
+
+# Count the line number of a file
+# Count the line breaker \n by reading a segment in bytes
+# The code is borrowed from Stackoverflow
+def blocks(inputFile, size=65536):
+    while True:
+        b = inputFile.read(size)
+        if not b: break
+        yield b
+
+def count_line(inputFile):
+    with open(inputFile, "r", encoding="utf-8", errors='ignore') as f:
+        return sum(bl.count("\n") for bl in blocks(f))
