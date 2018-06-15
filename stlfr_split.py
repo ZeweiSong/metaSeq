@@ -64,12 +64,14 @@ parser.add_argument('-b', default='barcode.list', help='Forward barcode list, th
 parser.add_argument('-o', help='Output base for FASTQ or JSON.')
 parser.add_argument('-fastq', action='store_true', help='Turn on output to FASTQ, suffix will be added for four files.')
 parser.add_argument('-json', action='store_true', help='Turn on output to JSON format, will write to one file with .json extension.')
+parser.add_argument('-bl', default='42', help='Specify the length of barcode string, 42 or 54 bp.')
 parser.add_argument('-not_gz', action='store_false', help='Specify if the input is gz file, in most case you do not need it.')
 args = parser.parse_args()
 r1File = args.r1
 r2File = args.r2
 barcodeFile = args.b
 base = args.o
+bl = args.bl
 not_gz = args.not_gz
 t1 = time.time()
 
@@ -109,9 +111,11 @@ def snp_list(seq):
     # BAsed on our latest test on 2018-6-15, they may accidentally sequence R2
     # as 154 bp while using the 42 bp system. If this is the case, use the first
     # 142 bp.
-def barcode_set(seq):
-    #return [seq[100:110], seq[116:126], seq[144:154]]
-    return [seq[100:110], seq[116:126], seq[132:142]]
+def barcode_set(seq, bl):
+    if bl == '54':
+        return [seq[100:110], seq[116:126], seq[144:154]]
+    elif bl == '42':
+        return [seq[100:110], seq[116:126], seq[132:142]]
 
 
 # Return the number barcode set if exist
@@ -224,7 +228,7 @@ for r1, r2 in seqs:
         with open(logFile, 'w') as f:
             f.write('Processed {0:8.2f} M reads\n'.format(count/1000000))
         #break
-    bead = number_set(barcode_set(r2[1]), numberDictForward, numberDictReverse)
+    bead = number_set(barcode_set(r2[1], bl), numberDictForward, numberDictReverse)
     if bead:
         r1[0] = r1[0] + '/' + bead
         r2[0] = r2[0] + '/' + bead
