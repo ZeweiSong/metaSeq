@@ -105,8 +105,13 @@ def snp_list(seq):
 
 # Detect the three 10 bp barcode in the last 54 bp of Read 2
     # Currently using: 10 + 6 + 10 + 18 + 10 (three sets of 10 base barcode)
+    # Lates barcode is 42bp 10 + 6 + 10 + 6 + 10 (Cuurently used by CNGB)
+    # BAsed on our latest test on 2018-6-15, they may accidentally sequence R2
+    # as 154 bp while using the 42 bp system. If this is the case, use the first
+    # 142 bp.
 def barcode_set(seq):
-    return [seq[100:110], seq[116:126], seq[144:154]]
+    #return [seq[100:110], seq[116:126], seq[144:154]]
+    return [seq[100:110], seq[116:126], seq[132:142]]
 
 
 # Return the number barcode set if exist
@@ -218,6 +223,7 @@ for r1, r2 in seqs:
     if count % 1000000 == 0: # Report per 1 million reads
         with open(logFile, 'w') as f:
             f.write('Processed {0:8.2f} M reads\n'.format(count/1000000))
+        #break
     bead = number_set(barcode_set(r2[1]), numberDictForward, numberDictReverse)
     if bead:
         r1[0] = r1[0] + '/' + bead
@@ -287,7 +293,7 @@ with open(logFile, 'w') as f1:
                 currentBead[key] = [seqIO.fastq2list(i[0], i[1]) for i in value]
                 f.write('%s\n' % json.dumps(currentBead))
     
-    f1.write('{0} seqs have eligible barcode.\n'.format(count))
+    f1.write('{0} total seqs.\n'.format(count))
     f1.write('{0} seqs do not have eligible barcode.\n'.format(error_count))
     t2 = time.time()
-    f1.write('Used {0:8.0f} seconds ({1:8.2f} hrs) for processing the reads..\n'.format((t2 - t1), (t2 - t1)/3600))
+    f1.write('Used {0:8.0f} seconds ({1:8.2f} hrs) for processing the reads.\n'.format((t2 - t1), (t2 - t1)/3600))
