@@ -233,9 +233,9 @@ def write_seqs(seq_content, filePath, fastx='a', gz=False, mode='w'):
         f = gzip.open(filePath, mode)
     for record in seq_content:
         label = header + record[0]                
-        for line in [label] + record[1:]:
+        for line in [label] + list(record[1:]):
             f.write('%s\n' % line)
-            count += 1
+        count += 1
     f.close()
     return count
 
@@ -292,7 +292,7 @@ class stlfr_bead(object):
                 return current_bead
 
 
-# Convert the pair end merged files into bead dictionary
+# Convert the pair end merged files (one assembled, two unassembled) into bead dictionary
 def mergepairs2bead(assemFile, fwdFile, revFile):
     bead = {} # Dictionary for storing bead
     for item in sequence_bytes(assemFile, fastx='q'):
