@@ -55,6 +55,29 @@ class beadSequence(object):
         count = seqIO.write_seqs(fasta, fileName)
         return count
 
+
+# A class for kmer group of a given bead
+class beadKmer(object):
+    def __init__(self, beadSequence):
+        self.sequence = []
+        pass
+    
+    # Reture the kmer set of this bead
+    def kmer(self, kmer_size=21):
+        pass
+
+
+class kmerDistance(object):
+    def __init__(self, kmer1, kmer2):
+        self.kmer1 = kmer1
+        self.kmer2 = kmer2
+    
+    def jaccard(self):
+        pass
+    
+    def distance(self):
+        pass
+
 #%% Create an iterator that iterate over alignment output of stLFR data
 # Iterate by grouping alignments with same barcode 
 #  I recommend to use this format based on Vsearch: query+target+ql+tl+id+qilo+qihi+tilo+tihi
@@ -168,7 +191,7 @@ class beadMinSet(object):
 #%%           
 # Remove duplicated reads from a single bead Class
 # The reverse complimentary sequence is considered
-# Return a new bead Class
+# Return a new dictionary (used as input of beadSequence())
 def derep(bead):
     seqs = list(bead.values())[0]
     derep_dict = {}
@@ -199,7 +222,7 @@ def derep(bead):
 
 # Remove low quality reads from a single bead Class
 # Return a new bead Class
-# Now always return without qualuty score (has a return_format value for the future) 
+# Now always return without quality score (has a return_format value for the future) 
 def maxEE(bead, maxee, return_format='a'):
     seqs = list(bead.values())[0]
     seqs_qc = []
