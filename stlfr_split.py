@@ -47,6 +47,7 @@ import textwrap
 import argparse
 import time
 import json
+import gzip
 parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
                                      epilog=textwrap.dedent('''\
                                         Split raw stLFR data into beads. Open the script to see a detail document.
