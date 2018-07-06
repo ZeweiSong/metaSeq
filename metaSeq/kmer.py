@@ -95,3 +95,8 @@ class kmerDistance(object):
         else:
             mashD = (-1/self.kmerLength) * np.log((2 * jac)/(1 + jac))
             return mashD
+    
+    # Return the kmer distance, accounted for kmer abundance, usng Euclidean distance
+    # May need to standardize before calculating
+    def kmer_euclidean(set1, set2, size):
+        pass
