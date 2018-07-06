@@ -223,7 +223,7 @@ def derep(bead):
 # Remove low quality reads from a single bead Class
 # Return a new bead Class
 # Now always return without quality score (has a return_format value for the future) 
-def maxEE(bead, maxee, return_format='a'):
+def maxEE(bead, maxee=1, return_format='a'):
     seqs = list(bead.values())[0]
     seqs_qc = []
     p_dict = seqQC.qual_score()
