@@ -59,13 +59,13 @@ class kmerTable(object):
 
 
 # Return distance of two kmer pool
-# Input is a pair of lists/tuples, containing two kmerTable class
+# Input is a pair of lists/tuples, containing two kmerTable class.self.set
     # This is usually the output of itertools.combinations
 class kmerDistance(object):
     def __init__(self, kmerPools):
         self.poolA = kmerPools[0]
         self.poolB = kmerPools[1]
-        self.kmerLength = list(self.poolA)[0]
+        self.kmerLength = len(list(self.poolA)[0])
     
     # Return overlap of two kmerSet
     def overlap(self, smallSet, largeSet):
