@@ -42,6 +42,7 @@ class kmerTable(object):
     def __init__(self, kmerTable):
         self.kmers = list(kmerTable.keys())
         self.kmerSize = len(self.kmers[0])
+        self.set = set(self.kmers)
     
     # Reture the minimizer of current kmer set (first kmer sorted)
     def minimizer(self):
