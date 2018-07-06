@@ -10,6 +10,7 @@ from __future__ import print_function
 from __future__ import division
 from metaSeq import io as seqIO
 import random
+import numpy as np
 #%%
 # Return the kmer list of a given sequences
 # It will return all kmer in both strand WITHOUT dereplication
@@ -58,18 +59,39 @@ class kmerTable(object):
 
 
 # Return distance of two kmer pool
-# Input is a pair of lists/tuples, each contains a kmer pool
+# Input is a pair of lists/tuples, containing two kmerTable class
     # This is usually the output of itertools.combinations
 class kmerDistance(object):
     def __init__(self, kmerPools):
         self.poolA = kmerPools[0]
         self.poolB = kmerPools[1]
+        self.kmerLength = list(self.poolA)[0]
+    
+    # Return overlap of two kmerSet
+    def overlap(self, smallSet, largeSet):
+        overlap = []
+        for item in largeSet:
+            if item in smallSet:
+                overlap.append(item)
+        return tuple(overlap)
     
     # return the jarccard index
-    def jaccard(object):
-        total_size = len(kmer_table)
-        shared_size = 0
-        for line in kmer_table:
-            if line[1] > 0 and line[2] > 0: # Current kmer is present in both sets
-                shared_size += 1
-        return shared_size / total_size
+    def jaccard(self):
+        lengthA = len(self.poolA)
+        lengthB = len(self.poolB)
+        if lengthA <= lengthB:
+            overlapKmer = self.overlap(self.poolA, self.poolB)
+        else:
+            overlapKmer = self.overlap(self.poolB, self.poolA)
+        lengthShared = len(overlapKmer)
+        jaccardIndex = lengthShared / (lengthA + lengthB - lengthShared)
+        return jaccardIndex
+    
+    # Return Mash distance of two kmer Sets
+    def mashDistance(self):
+        jac  = self.jaccard()
+        if jac == 0:
+            return 1
+        else:
+            mashD = (-1/self.kmerLength) * np.log((2 * jac)/(1 + jac))
+            return mashD
