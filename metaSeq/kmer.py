@@ -28,22 +28,24 @@ def kmer(seq, size):
 
 # Return a kmer table with abundance on the given kmer length for a set of sequences
 # The input sequences is all in a list or tuple (seq1, seq2, seq3)
-def kmerCount(seqs, size):
+def kmerCount(bead, size):
+    seqs = [i[1] for i in bead.fastaSequences()]
     kmer_list = [item for seq in seqs for item in kmer(seq, size)]
 #    for item in seqs:
 #        kmer_list += kmer(item, size)
     kmer_table = {}
     for item in kmer_list:
         kmer_table[item] = kmer_table.get(item, 1) + 1 # one line code for adding new keys
-    return kmerTable(kmer_table) # return a kmerTable class
+    return kmerTable(kmer_table, bead.barcode) # return a kmerTable class
 
 
 # A class for the kmer count of a given sequence set
 class kmerTable(object):
-    def __init__(self, kmerTable):
-        self.kmers = list(kmerTable.keys())
+    def __init__(self, kmer_table, barcode):
+        self.kmers = list(kmer_table.keys())
         self.kmerSize = len(self.kmers[0])
         self.set = set(self.kmers)
+        self.barcode = barcode
     
     # Reture the minimizer of current kmer set (first kmer sorted)
     def minimizer(self):

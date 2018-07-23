@@ -227,7 +227,7 @@ def write_seqs(seq_content, filePath, fastx='a', gz=False, mode='w'):
         header = ''
     
     if not gz:
-        f = open(filePath, mode)
+        f = open(filePath, mode, newline='')
     else:
         import gzip
         f = gzip.open(filePath, mode)
