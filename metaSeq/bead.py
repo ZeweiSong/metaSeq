@@ -9,6 +9,7 @@ from __future__ import print_function
 from __future__ import division
 from metaSeq import qc as seqQC
 from metaSeq import io as seqIO
+import json
 
 
 # Create an iterator Class that iterates on stLFR sequence file.
@@ -22,6 +23,7 @@ class beadSequenceIterator(object):
 # Convert a JSON loaded dictionary into a Bead Class
 class beadSequence(object):
     def __init__(self, jsonDict):
+        self.json = jsonDict
         self.barcode = list(jsonDict.keys())[0]
         self.fragments = list(jsonDict.values())[0]
         self.assembled = []
@@ -35,15 +37,17 @@ class beadSequence(object):
     # Generate a FASTA list
     # ((barcode/0, sequence), (barcode/1, sequence))
     # List can be wrote to FASTA file using metaseq.io.write_seqs()
+    # /9/ for assembled read
+    # /1/ and /2/ for unassembled paired reads
     def fastaSequences(self):
         fasta = []
         i = 0
         for record in self.assembled:
-            fasta.append((self.barcode + '/a/' + str(i), record[0]))
+            fasta.append((self.barcode + '/9/' + str(i), record[0]))
             i += 1
         for record in self.unassembled:
-            fasta.append((self.barcode + '/u/' + str(i), record[0]))
-            fasta.append((self.barcode + '/u/' + str(i), record[1]))
+            fasta.append((self.barcode + '/1/' + str(i), record[0]))
+            fasta.append((self.barcode + '/2/' + str(i), record[1]))
             i += 1
         return fasta
 
@@ -54,6 +58,13 @@ class beadSequence(object):
         fileName = self.barcode + '.fa'
         count = seqIO.write_seqs(fasta, fileName)
         return count
+    
+    
+    # Write the bead into a JSON file
+    def jsonWrite(self, outputFile, mode='a'):
+        with open(outputFile, mode) as f:
+            f.write('%s\n' % json.dumps({self.barcode: self.assembled + self.unassembled}))
+        
 
 
 # A class for kmer group of a given bead
