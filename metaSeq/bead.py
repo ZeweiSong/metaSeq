@@ -62,7 +62,7 @@ class beadSequence(object):
     
     # Write the bead into a JSON file
     def jsonWrite(self, outputFile, mode='a'):
-        with open(outputFile, mode) as f:
+        with open(outputFile, mode, newline='') as f:
             f.write('%s\n' % json.dumps({self.barcode: self.assembled + self.unassembled}))
         
 
