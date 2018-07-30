@@ -20,7 +20,7 @@ beadList = []
 with open(inputFile, 'r') as f:
     for line in f:
         beadList.append(bead.beadSequence(json.loads(line)))
-
+#%%
 # Write the first 10 bead into FASTA file
 i = 1
 threshold = 10
