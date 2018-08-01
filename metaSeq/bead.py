@@ -207,24 +207,35 @@ class beadAlignment(object):
 class beadMinSet(object):
     def __init__(self, minSet):
         self.minSet = minSet
-        self.refLength = {} # A dictionary for reference and its length in bp
-        self.refCount = {} # A dictionary for reference and number of alignments it contains
-        for key, value in minSet.items(): # Length of each reference, Count of fragment (need to fix) of each reference
-            queries = list(value.keys())
-            firstQuery = queries[0]
-            refL = int(value[firstQuery][1])
-            fragmentList = []
-            for item in queries:
-                item = item.split('/')[1]
-                if item in ['9','1']:
-                    fragmentList.append(item)
-            self.refLength[key] = refL
-            self.refCount[key] = len(fragmentList)      # Need to consider paired read (count as one) 
+
         
     
     def references(self):
         ref = list(self.minSet.keys())
         return ref
+    
+    # Count the number of fragment (NOT read) per reference
+    def fragmentCount(self):
+        refCount = {} # A dictionary for reference and number of alignments it contains
+        for key, value in self.minSet.items(): # Length of each reference, Count of fragment (need to fix) of each reference
+            queries = list(value.keys())
+            fragmentList = []
+            for item in queries:
+                item = item.split('/')[1]
+                if item in ['9','1']:
+                    fragmentList.append(item)
+            refCount[key] = len(fragmentList) # Need to consider paired read (count as one)         
+        return refCount
+    
+    # Length of each reference
+    def refLength(self):
+        refLength = {} # A dictionary for reference and its length in bp
+        for key, value in self.minSet.items(): # Length of each reference, Count of fragment (need to fix) of each reference
+            queries = list(value.keys())
+            firstQuery = queries[0]
+            refL = int(value[firstQuery][1])
+            refLength[key] = refL
+        return refLength
     
     def refStat(self):
         refStatistic = {}
