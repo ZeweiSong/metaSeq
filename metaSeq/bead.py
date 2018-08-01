@@ -100,8 +100,9 @@ class beadAlignmentIterator(object):
         self.stop = False
         self.current_bead = []
         self.aln = open(alnFile, 'r')
+    
     def __iter__(self):
-        pass
+        return self
 
     def __next__(self):
         close = False
