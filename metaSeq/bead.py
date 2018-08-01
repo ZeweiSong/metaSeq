@@ -209,8 +209,13 @@ class beadMinSet(object):
             queries = list(value.keys())
             firstQuery = queries[0]
             refL = int(value[firstQuery][1])
+            fragmentList = []
+            for item in queries:
+                item = item.split('/')[1]
+                if item in ['9','1']:
+                    fragmentList.append(item)
             self.refLength[key] = refL
-            self.refCount[key] = len(queries)      # Need to consider paired read (count as one) 
+            self.refCount[key] = len(fragmentList)      # Need to consider paired read (count as one) 
         
     
     def references(self):
