@@ -131,7 +131,6 @@ class beadAlignmentIterator(object):
 
 
 # An Object for basic bead based alignment information
-# TODO add a filter to remove unpaired pair read for eacg reference
 class beadAlignment(object):
     def __init__(self, beadAln):
         self.barcode = beadAln[0]
@@ -174,6 +173,7 @@ class beadAlignment(object):
                     self.fragmentCount[key] += 1
                 else:
                     pass
+                
         # Store all eligible read into a new list
         self.aln = []
         for key, value in keepDict.items():
