@@ -131,10 +131,50 @@ class beadAlignmentIterator(object):
 
 
 # An Object for basic bead based alignment information
+# TODO add a filter to remove unpaired pair read for eacg reference
 class beadAlignment(object):
     def __init__(self, beadAln):
         self.barcode = beadAln[0]
-        self.aln = beadAln[1]
+        self.alnRaw = beadAln[1]
+        
+        # For the input alignemnt, if only one read from a pair alignment to a reference, we need to remove it.
+        alnDict = {} # create a dict with ref and qyuery label as key
+        for line in self.alnRaw:
+            query = line[0]
+            ref = line[1]
+            try:
+                alnDict[ref][query] = line
+            except KeyError:
+                alnDict[ref] = {query: line}
+        
+        # Find the pair to be removed (paired read is label as /1/# and /2/#)
+        keepDict = {} # Store all sequence lables to keep
+        for key, value in alnDict.items(): # Find unpaired alignment reads per reference
+            fragmentDict = {} # Dict to coun the number of read in each pair
+            keepDict[key] = [] # Add current reference to the keep Dict
+            queryList = list(value.keys()) # All query names of current reference
+            for item in queryList: # Parse each sequence
+                fragmentSplit = item.split('/')
+                fragmentType = fragmentSplit[1]
+                fragmentNumber = fragmentSplit[2]
+                if fragmentType == '9': # This is an assembled read
+                    keepDict[key].append(item)
+                else: # This is a paired read
+                    try:
+                        fragmentDict[fragmentNumber] += 1
+                    except KeyError:
+                        fragmentDict[fragmentNumber] = 1
+            for number, count in fragmentDict.items():
+                if count == 2: # Both read in a pair have eligible alignment in current reference
+                    keepDict[key].append(self.barcode + '/1/' + number)
+                    keepDict[key].append(self.barcode + '/2/' + number)
+                else:
+                    pass
+        # Store all eligible read into a new list
+        self.aln = []
+        for key, value in keepDict.items():
+            for item in value:
+                self.aln.append(alnDict[key][item])
     
     def references(self):
         refDict = {}
@@ -156,18 +196,22 @@ class beadAlignment(object):
     
     def minSet(self):
         return winnerTakeAll(self.aln)
-
+#%%
 
 # An Class object for the minimum set alignment (output of beadAlignment.minSet())
 # Alignment is in the format of query+target+ql+tl+id+qilo+qihi+tilo+tihi (Vsearch userfields)
 class beadMinSet(object):
     def __init__(self, minSet):
         self.minSet = minSet
-        self.ref = {}
-        for key, value in minSet.items():
-            firstQuery = list(value.keys())[0]
-            refLength = int(value[firstQuery][3])
-            self.ref[key] = refLength
+        self.refLength = {} # A dictionary for reference and its length in bp
+        self.refCount = {} # A dictionary for reference and number of alignments it contains
+        for key, value in minSet.items(): # Length of each reference, Count of fragment (need to fix) of each reference
+            queries = list(value.keys())
+            firstQuery = queries[0]
+            refL = int(value[firstQuery][1])
+            self.refLength[key] = refL
+            self.refCount[key] = len(queries)      # Need to consider paired read (count as one) 
+        
     
     def references(self):
         ref = list(self.minSet.keys())
