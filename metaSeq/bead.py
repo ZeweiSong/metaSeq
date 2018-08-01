@@ -278,7 +278,7 @@ def createDict(aln):
         try:
             alnDict[ref][query] = tuple(line[2:])
         except KeyError:
-            alnDict[ref] = {}
+            alnDict[ref] = {query: tuple(line[2:])}
     return alnDict
 
 # From the current alignment pick a winner (ref with the most query)
