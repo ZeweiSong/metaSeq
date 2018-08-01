@@ -136,6 +136,7 @@ class beadAlignment(object):
     def __init__(self, beadAln):
         self.barcode = beadAln[0]
         self.alnRaw = beadAln[1]
+        self.fragmentCount = {}
         
         # For the input alignemnt, if only one read from a pair alignment to a reference, we need to remove it.
         alnDict = {} # create a dict with ref and qyuery label as key
@@ -153,12 +154,14 @@ class beadAlignment(object):
             fragmentDict = {} # Dict to coun the number of read in each pair
             keepDict[key] = [] # Add current reference to the keep Dict
             queryList = list(value.keys()) # All query names of current reference
+            self.fragmentCount[key] = 0 # Count the fragment for current reference
             for item in queryList: # Parse each sequence
                 fragmentSplit = item.split('/')
                 fragmentType = fragmentSplit[1]
                 fragmentNumber = fragmentSplit[2]
                 if fragmentType == '9': # This is an assembled read
                     keepDict[key].append(item)
+                    self.fragmentCount[key] += 1
                 else: # This is a paired read
                     try:
                         fragmentDict[fragmentNumber] += 1
@@ -168,6 +171,7 @@ class beadAlignment(object):
                 if count == 2: # Both read in a pair have eligible alignment in current reference
                     keepDict[key].append(self.barcode + '/1/' + number)
                     keepDict[key].append(self.barcode + '/2/' + number)
+                    self.fragmentCount[key] += 1
                 else:
                     pass
         # Store all eligible read into a new list
@@ -193,7 +197,7 @@ class beadAlignment(object):
             except KeyError:
                 queryDict[line[0]] = 1  
         return queryDict
-    
+
     def minSet(self):
         return winnerTakeAll(self.aln)
 #%%
@@ -301,6 +305,7 @@ def maxEE(bead, maxee=1, return_format='a'):
 
 #%% Winner take all (wta) methods for finding the minimum set of alignments (all possible hits)
 # Input is alignment results saved in tuple as (query, target, ... , tilo, tihi)
+# Return a dict use reference as key, and all associated alignment as value
 def winnerTakeAll(aln):
     minSet = {}
     alnDict = createDict(aln)
