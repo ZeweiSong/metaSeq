@@ -207,8 +207,7 @@ class beadAlignment(object):
 class beadMinSet(object):
     def __init__(self, minSet):
         self.minSet = minSet
-
-        
+        self.barcode = list(list(self.minSet.values())[0].keys())[0].split('/')[0]       
     
     def references(self):
         ref = list(self.minSet.keys())
