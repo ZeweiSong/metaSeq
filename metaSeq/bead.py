@@ -207,12 +207,15 @@ class beadAlignment(object):
 class beadMinSet(object):
     def __init__(self, minSet):
         self.minSet = minSet
-        self.barcode = list(list(self.minSet.values())[0].keys())[0].split('/')[0]       
-    
-    def references(self):
-        ref = list(self.minSet.keys())
-        return ref
-    
+        self.barcode = list(list(self.minSet.values())[0].keys())[0].split('/')[0]      
+        self.references = list(self.minSet.keys()) # List of all reference associated with this bead
+        self.refLength = {} # dictionary for reference and its length in bp
+        for key, value in self.minSet.items(): # Length of each reference, Count of fragment (need to fix) of each reference
+            queries = list(value.keys())
+            firstQuery = queries[0]
+            refL = int(value[firstQuery][1])
+            self.refLength[key] = refL
+            
     # Count the number of fragment (NOT read) per reference
     def fragmentCount(self):
         refCount = {} # A dictionary for reference and number of alignments it contains
@@ -226,15 +229,7 @@ class beadMinSet(object):
             refCount[key] = len(fragmentList) # Need to consider paired read (count as one)         
         return refCount
     
-    # Length of each reference
-    def refLength(self):
-        refLength = {} # A dictionary for reference and its length in bp
-        for key, value in self.minSet.items(): # Length of each reference, Count of fragment (need to fix) of each reference
-            queries = list(value.keys())
-            firstQuery = queries[0]
-            refL = int(value[firstQuery][1])
-            refLength[key] = refL
-        return refLength
+
     
     def refStat(self):
         refStatistic = {}
