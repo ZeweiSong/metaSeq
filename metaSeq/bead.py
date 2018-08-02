@@ -229,35 +229,32 @@ class beadMinSet(object):
             refCount[key] = len(fragmentList) # Need to consider paired read (count as one)         
         return refCount
     
-
-    
-    def refStat(self):
-        refStatistic = {}
-        for key, value in self.minSet.items():
-            aln = tuple(value.values())
-            covString = self.coverageString(aln)
-            cov = covString.count('0') / len(covString)
-            refStatistic[key] = (cov, covString, len(aln))
-        return refStatistic
-    
-    def coverageString(self, aln):
-        refLength = int(aln[0][3]) # This value should be exact the same for all alignments
-        cover = {}
-        # Create a blank string
-        for i in range(refLength): 
-            cover[i+1] = 0
-        # For each aligned query, add to the blank string
-        for line in aln:
-            start = int(line[-2])
-            stop = int(line[-1]) + 1
-            for i in range(start, stop):
-                cover[i] += 1
-        string = ''
-        for i in range(refLength):
-            string += str(cover[i+1])
-        return string
+    # Return all position number using an alignment string
+    def positionString(self, aln):
+        start = int(aln[5])
+        end = int(aln[6])
+        posList = []
+        for i in range(end - start + 1):
+            posList.append(start + i)
+        return posList    
         
- 
+    # Return the covered position of a given reference
+    def refCoveredBases(self, refName):
+        alnList = list(self.minSet[refName].values())
+        basePosition = []
+        for aln in alnList:
+            basePosition += self.positionString(aln)
+        return list(set(basePosition))
+
+    # A report on the coverage of eacch reference
+    def refCoverageReport(self):
+        report = {}
+        for ref in self.references:
+            coveredBase = len(self.refCoveredBases(ref))
+            refL = self.refLength[ref]
+            report[ref] = [coveredBase, refL, coveredBase / refL]
+        return report
+            
 #%%           
 # Remove duplicated reads from a single bead Class
 # The reverse complimentary sequence is considered
