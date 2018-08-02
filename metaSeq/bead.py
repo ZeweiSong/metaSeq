@@ -173,7 +173,7 @@ class beadAlignment(object):
                     self.fragmentCount[key] += 1
                 else:
                     pass
-                
+        
         # Store all eligible read into a new list
         self.aln = []
         for key, value in keepDict.items():
