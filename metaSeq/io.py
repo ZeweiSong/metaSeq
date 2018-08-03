@@ -248,12 +248,22 @@ class alignment(object):
         return self
     
     def __next__(self):
-        line = self.aln.readline().strip('\n').split('\t')
+        line = self.aln.readline()
         if line:
+            line = self.aln.readline().strip('\n').split('\t')
             return line
         else:
             raise StopIteration
 
+def readAln(alnFile, sort=True):
+    aln = alignment(alnFile)
+    alnList = []
+    for line in aln:
+        alnList.append(line)
+    if sort: # Sort using the first column, query by default.
+        alnList.sort(key=lambda x:x[0])
+    return alnList
+#%%
 # Parse a sorted stLFR FASTA data by bead (barcode)
 # Return a tuple containing all the short sequences in the bead
 # Barcode is saved after the last "-", for example /102_1324_573
