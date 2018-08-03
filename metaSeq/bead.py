@@ -92,6 +92,7 @@ class kmerDistance(object):
 #%% Create an iterator that iterate over alignment output of stLFR data
 # Iterate by grouping alignments with same barcode 
 #  I recommend to use this format based on Vsearch: query+target+ql+tl+id+qilo+qihi+tilo+tihi
+# WARNING output of Vsearch changed the order of alignment! You need to re-order the alignment before iterate
 class beadAlignmentIterator(object):
     def __init__(self, alnFile):        
         with open(alnFile, 'r') as f:
