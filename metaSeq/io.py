@@ -255,7 +255,7 @@ class alignment(object):
         else:
             raise StopIteration
 
-def readAln(alnFile, sort=True):
+def readAlignment(alnFile, sort=True):
     aln = alignment(alnFile)
     alnList = []
     for line in aln:
@@ -264,7 +264,7 @@ def readAln(alnFile, sort=True):
         alnList.sort(key=lambda x:x[0])
     return alnList
 
-def writeAln(alnList, outFile):
+def writeAlignment(alnList, outFile):
     i = 0
     with open(outFile, 'w') as f:
         for line in alnList:
