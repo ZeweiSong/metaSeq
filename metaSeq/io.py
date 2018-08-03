@@ -250,7 +250,7 @@ class alignment(object):
     def __next__(self):
         line = self.aln.readline()
         if line:
-            line = self.aln.readline().strip('\n').split('\t')
+            line = line.strip('\n').split('\t')
             return line
         else:
             raise StopIteration
