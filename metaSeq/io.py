@@ -263,8 +263,15 @@ def readAln(alnFile, sort=True):
     if sort: # Sort using the first column, query by default.
         alnList.sort(key=lambda x:x[0])
     return alnList
-#%%
-# Parse a sorted stLFR FASTA data by bead (barcode)
+
+def writeAln(alnList, outFile):
+    i = 0
+    with open(outFile, 'w') as f:
+        for line in alnList:
+            f.write('{0}\n'.format('\t'.join([str(i) for i in line])))
+            i += 1
+    return i
+#%%# Parse a sorted stLFR FASTA data by bead (barcode)
 # Return a tuple containing all the short sequences in the bead
 # Barcode is saved after the last "-", for example /102_1324_573
 # Currently only support FASTA since all QC should be at the upstream
