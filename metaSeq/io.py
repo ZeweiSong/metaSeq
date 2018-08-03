@@ -238,7 +238,21 @@ def write_seqs(seq_content, filePath, fastx='a', gz=False, mode='w'):
         count += 1
     f.close()
     return count
-
+#%% Functions for alignment
+class alignment(object):
+    def __init__(self, alnFile):
+        self.fileName = alnFile
+        self.aln = open(alnFile, 'r')
+    
+    def __iter__(self):
+        return self
+    
+    def __next__(self):
+        line = self.aln.readline().strip('\n').split('\t')
+        if line:
+            return line
+        else:
+            raise StopIteration
 
 # Parse a sorted stLFR FASTA data by bead (barcode)
 # Return a tuple containing all the short sequences in the bead
