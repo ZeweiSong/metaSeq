@@ -231,8 +231,8 @@ for r1, r2 in seqs:
         #break
     bead = number_set(barcode_set(r2[1], bl), numberDictForward, numberDictReverse)
     if bead:
-        r1[0] = r1[0] + '/' + bead
-        r2[0] = r2[0] + '/' + bead
+        r1[0] = r1[0][:-2] + '/' + bead + '/1'
+        r2[0] = r2[0][:-2] + '/' + bead + '/2'
         r2[1] = r2[1][:100]
         r2[3] = r2[3][:100]
         try:
@@ -240,8 +240,8 @@ for r1, r2 in seqs:
         except KeyError:
             beadDict[bead] = [[r1, r2]]
     else:
-        r1[0] = r1[0] + '/' + '0_0_0'
-        r2[0] = r2[0] + '/' + '0_0_0'
+        r1[0] = r1[0][:-2] + '/' + '0_0_0' + '/1'
+        r2[0] = r2[0][:-2] + '/' + '0_0_0' + '/1'
         r2[1] = r2[1][:100]
         r2[3] = r2[3][:100]
         beadError['0_0_0'].append([r1, r2])
