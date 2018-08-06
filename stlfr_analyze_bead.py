@@ -23,7 +23,7 @@ with open(inputFile, 'r') as f:
 #%%
 # Write the first 10 bead into FASTA file
 i = 1
-threshold = 10
+threshold = 100
 for line in beadList:
     #outputFile = line.barcode + '.fa'
     line.fastaWrite()
