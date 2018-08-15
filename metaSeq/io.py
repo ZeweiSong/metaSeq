@@ -276,6 +276,7 @@ def writeAlignment(alnList, outFile):
 # Barcode is saved after the last "-", for example /102_1324_573
 # Currently only support FASTA since all QC should be at the upstream
 # TODO: rename this class to bead_fastx
+# TODO: Parsing this way is too slow, need to think of alternatives
 class stlfr_bead(object):
     def __init__(self, filePath, fastx='a'):
         if fastx == 'a':
