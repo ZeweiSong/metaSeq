@@ -325,7 +325,8 @@ class stlfr_bead(object):
 
 
 # Convert a stLFR sequence data (FASTQ) into JSON format per bead,
-# Work for splited file with R1 and R2 files:
+# Work for splited file with R1 and R2 files
+# A dictionary is returned with barcode as key:
 def fastq2json(fwdFile, revFile, barcodePosition=-1):
     beadJson = {}
     for r1, r2 in sequence_twin(fwdFile, revFile, fastx='q'):
@@ -334,7 +335,7 @@ def fastq2json(fwdFile, revFile, barcodePosition=-1):
             beadJson[barcode].append(r1 + r2)
         except KeyError:
             beadJson[barcode] = [r1+r2]
-    return beadJson    
+    return beadJson
     
 
 
