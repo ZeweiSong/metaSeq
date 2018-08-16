@@ -344,14 +344,14 @@ def mergepairs2bead(assemFile, fwdFile, revFile):
     bead = {} # Dictionary for storing bead
     for item in sequence_bytes(assemFile, fastx='q'):
         for record in item:
-            barcode = record[0].split('/')[-1]
+            barcode = record[0].split('/')[-2]
             try:
                 bead[barcode].append([record[1], record[3]])
             except KeyError:
                 bead[barcode] = [[record[1], record[3]]]
     
     for r1, r2 in sequence_twin(fwdFile, revFile, fastx='q'):
-        barcode = r1[0].split('/')[-1]
+        barcode = r1[0].split('/')[-2]
         try:
             bead[barcode].append([r1[1], r1[3], r2[1], r2[3]])
         except KeyError:
