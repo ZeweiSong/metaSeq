@@ -21,6 +21,7 @@ class beadSequenceIterator(object):
 
 # Create a bead Class
 # Convert a JSON loaded dictionary into a Bead Class
+# TODO need to add option for FASTA and FASTQ file
 class beadSequence(object):
     def __init__(self, jsonDict):
         self.json = jsonDict
