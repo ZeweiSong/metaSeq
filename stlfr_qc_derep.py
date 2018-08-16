@@ -29,15 +29,18 @@ mockRaw = []
 with open(inputFile, 'r') as f:
     for line in f:
         mockRaw.append(json.loads(line))
-
+print('Find {0} bead in the file'.format(len(mockRaw)))
 #%% For each bead, remove low quality read and duplicated reads
 # Then write to a new JSON file
+i = 0
 for item in mockRaw:
     beadQC = bead.maxEE(item, maxee=maxee)
     beadDerep = bead.derep(beadQC)
     beadProcessed = bead.beadSequence(beadDerep)
-    if len(beadProcessed.fragments) > 0:
+    if len(beadProcessed.fragments) > 0: # Only save bead with fragments left.
+        i += 1
         beadProcessed.jsonWrite(outputFile, mode='a')
+print('{0} beads pass the QC and derep'.format(i))
 #%% The JSON file can be read in by line
 # A single line can be converted to a bead Class
 '''
