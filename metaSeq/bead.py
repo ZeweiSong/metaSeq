@@ -54,9 +54,9 @@ class beadSequence(object):
 
     
     # Write the sequecnes into fasta file with barcode as file name
-    def fastaWrite(self):
+    def fastaWrite(self, folder=''):
         fasta = self.fastaSequences()
-        fileName = self.barcode + '.fa'
+        fileName = folder + self.barcode + '.fa'
         count = seqIO.write_seqs(fasta, fileName)
         return count
     
