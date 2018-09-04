@@ -29,10 +29,10 @@ class sequence(object):
             self.n = 4
         else:
             print('Please specify the right format, "a" for FASTA and "q" for FASTQ.')
-    
+
     def __iter__(self):
         return self
-    
+
     def __next__(self):
         record = []
         for i in range(self.n):
@@ -64,10 +64,10 @@ class sequence_trunk(object):
         else:
             print('Please specify the right format, "a" for FASTA and "q" for FASTQ.')
             self.n = 1
-    
+
     def __iter__(self):
         return self
-    
+
     def __next__(self):
         record_trunk = []
         for record in range(self.trunk_size):
@@ -104,10 +104,10 @@ class sequence_twin(object):
         else:
             print('Please specify the right format, "a" for FASTA and "q" for FASTQ.')
             self.n = 1
-    
+
     def __iter__(self):
         return self
-    
+
     def __next__(self):
         record = [[],[]]
         for i in range(self.n):
@@ -143,7 +143,7 @@ class sequence_twin_trunk(object):
 
     def __iter__(self):
         return self
-    
+
     def __next__(self):
         r1_trunk = []
         r2_trunk = []
@@ -177,7 +177,7 @@ class sequence_bytes(object):
         self.size = size
         self.fastx = fastx
         self.tail = ''
-        
+
         if fastx == 'a':
             self.n = 2
         elif fastx == 'q':
@@ -186,7 +186,7 @@ class sequence_bytes(object):
             print('Please specify the right format, "a" for FASTA and "q" for FASTQ.')
     def __iter__(self):
         return self
-    
+
     def __next__(self):
         content = self.file.read(self.size)
 
@@ -225,14 +225,14 @@ def write_seqs(seq_content, filePath, fastx='a', gz=False, mode='w'):
     else:
         n = 1
         header = ''
-    
+
     if not gz:
         f = open(filePath, mode, newline='')
     else:
         import gzip
         f = gzip.open(filePath, mode)
     for record in seq_content:
-        label = header + record[0]                
+        label = header + record[0]
         for line in [label] + list(record[1:]):
             f.write('%s\n' % line)
         count += 1
@@ -243,10 +243,10 @@ class alignment(object):
     def __init__(self, alnFile):
         self.fileName = alnFile
         self.aln = open(alnFile, 'r')
-    
+
     def __iter__(self):
         return self
-    
+
     def __next__(self):
         line = self.aln.readline()
         if line:
@@ -293,10 +293,10 @@ class stlfr_bead(object):
             self.barcode = line1.split('-')[0]
         self.file = open(filePath, 'r')
         self.current_bead = []
-    
+
     def __iter__(self):
         return self
-    
+
     def __next__(self):
         close = False
         while close == False:
@@ -327,7 +327,7 @@ class stlfr_bead(object):
 # Convert a stLFR sequence data (FASTQ) into JSON format per bead,
 # Work for splited file with R1 and R2 files
 # A dictionary is returned with barcode as key:
-def fastq2json(fwdFile, revFile, barcodePosition=-1, gz=True):
+def fastq2json(fwdFile, revFile, barcodePosition=-2, gz=True):
     beadJson = {}
     for r1, r2 in sequence_twin(fwdFile, revFile, fastx='q', gz=gz):
         barcode = r1[0].split('/')[barcodePosition]
@@ -336,7 +336,7 @@ def fastq2json(fwdFile, revFile, barcodePosition=-1, gz=True):
         except KeyError:
             beadJson[barcode] = [r1+r2]
     return beadJson
-    
+
 
 
 # Convert the pair end merged files (one assembled, two unassembled) into bead dictionary
@@ -349,7 +349,7 @@ def mergepairs2bead(assemFile, fwdFile, revFile):
                 bead[barcode].append([record[1], record[3]])
             except KeyError:
                 bead[barcode] = [[record[1], record[3]]]
-    
+
     for r1, r2 in sequence_twin(fwdFile, revFile, fastx='q'):
         barcode = r1[0].split('/')[-2]
         try:
@@ -366,7 +366,7 @@ def fastq2list(r1, r2):
 
 
 # Iterator for Bead from the JSON output
-class bead_json(object):    
+class bead_json(object):
     def __init__(self, filePath):
         import json
         self.file = open(filePath, 'r')
@@ -379,7 +379,7 @@ class bead_json(object):
                     self.head.append(json.loads(line.strip('\n')))
     def __iter__(self):
         return self
-    
+
     def __next__(self):
         import json
         line = self.file.readline().strip('\n')
