@@ -66,7 +66,7 @@ parser.add_argument('-o', help='Output base for FASTQ or JSON.')
 parser.add_argument('-fastq', action='store_true', help='Turn on output to FASTQ, suffix will be added for four files.')
 parser.add_argument('-json', action='store_true', help='Turn on output to JSON format, will write to one file with .json extension.')
 parser.add_argument('-bl', default='42', help='Specify the length of barcode string, 42 or 54 bp.')
-parser.add_argument('-not_gz', action='store_false', help='Specify if the input is gz file, in most case you do not need it.')
+parser.add_argument('-not_gz', action='store_false', help='Specify if the input is not a gz file, in most case you do not need it.')
 args = parser.parse_args()
 r1File = args.r1
 r2File = args.r2
