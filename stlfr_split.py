@@ -20,7 +20,7 @@ The script spits five outputw:
     4) R2 read without eligible barcode
     5) A log file on the progress of splitting per 1M read, and a final report
 
-Each barcode can tolerant 1 mutation. The three barcodes are identify from the 
+Each barcode can tolerant 1 mutation. The three barcodes are identify from the
 54 bp string using the pattern 10 + 6 + 10 + 18 + 10.
 
 For a general BGISEQ PE100 lane with 600M reads, the split usually takes 8 hrs.
@@ -88,7 +88,7 @@ def rc(seq):
     for base in reverse:
         rc += replace_dict[base]
     return rc
-    
+
 
 # Generate all possible 1 SNP mutation of a given sequence
     # Original sequence is NOT included in the output
@@ -159,10 +159,10 @@ class sequence_twin(object):
         else:
             print('Please specify the right format, "a" for FASTA and "q" for FASTQ.')
             self.n = 1
-    
+
     def __iter__(self):
         return self
-    
+
     def __next__(self):
         record = [[],[]]
         for i in range(self.n):
@@ -257,7 +257,7 @@ with open(logFile, 'w') as f1:
         r2OutputFile = base + '.r2_split.fq'
         r1Error = base + '.r1_error.fq'
         r2Error = base + '.r2_error.fq'
-        
+
         print('Writing to R1 file ...')
         with open(r1OutputFile, 'w') as f:
             for key, value in beadDict.items():
@@ -265,7 +265,7 @@ with open(logFile, 'w') as f1:
                     record[0][0] = '@' + record[0][0]
                     for line in record[0]:
                         f.write('{0}\n'.format(line))
-        
+
         print('Writing to R2 file ...')
         with open(r2OutputFile, 'w') as f:
             for key, value in beadDict.items():
@@ -273,7 +273,7 @@ with open(logFile, 'w') as f1:
                     record[1][0] = '@' + record[1][0]
                     for line in record[1]:
                         f.write('{0}\n'.format(line))
-        
+
         print('Writing to R1 Error file ...')
         with open(r1Error, 'w') as f:
             for key, value in beadError.items():
@@ -281,7 +281,7 @@ with open(logFile, 'w') as f1:
                     record[0][0] = '@' + record[0][0]
                     for line in record[0]:
                         f.write('{0}\n'.format(line))
-        
+
         print('Writing to R2 Error file ...')
         with open(r2Error, 'w') as f:
             for key, value in beadError.items():
@@ -297,7 +297,7 @@ with open(logFile, 'w') as f1:
                 currentBead = {key:[]}
                 currentBead[key] = [seqIO.fastq2list(i[0], i[1]) for i in value]
                 f.write('%s\n' % json.dumps(currentBead))
-    
+
     f1.write('{0} total seqs.\n'.format(count))
     f1.write('{0} seqs do not have eligible barcode.\n'.format(error_count))
     t2 = time.time()
