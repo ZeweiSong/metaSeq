@@ -25,16 +25,16 @@ class beadSequenceIterator(object):
 class beadSequence(object):
     def __init__(self, jsonDict):
         self.json = jsonDict
-        self.barcode = list(jsonDict.keys())[0]
-        self.fragments = list(jsonDict.values())[0]
-        self.assembled = []
-        self.unassembled = []
+        self.barcode = list(jsonDict.keys())[0] # barcode associated with this bead
+        self.fragments = list(jsonDict.values())[0] # fragments associated with this bead
+        self.assembled = [] # assembled sequences (1 in each list)
+        self.unassembled = []  # unassembled pair sequences (2 in each list)
         for record in self.fragments:
             if len(record) == 1:
                 self.assembled.append(record)
             elif len(record) == 2:
                 self.unassembled.append(record)
-    
+
     # Generate a FASTA list
     # ((barcode/0, sequence), (barcode/1, sequence))
     # List can be wrote to FASTA file using metaseq.io.write_seqs()
@@ -52,20 +52,20 @@ class beadSequence(object):
             i += 1
         return fasta
 
-    
+
     # Write the sequecnes into fasta file with barcode as file name
     def fastaWrite(self, folder=''):
         fasta = self.fastaSequences()
         fileName = folder + self.barcode + '.fa'
         count = seqIO.write_seqs(fasta, fileName)
         return count
-    
-    
+
+
     # Write the bead into a JSON file
     def jsonWrite(self, outputFile, mode='a'):
         with open(outputFile, mode, newline='') as f:
             f.write('%s\n' % json.dumps({self.barcode: self.assembled + self.unassembled}))
-        
+
 
 
 # A class for kmer group of a given bead
@@ -73,7 +73,7 @@ class beadKmer(object):
     def __init__(self, beadSequence):
         self.sequence = []
         pass
-    
+
     # Reture the kmer set of this bead
     def kmer(self, kmer_size=21):
         pass
@@ -83,26 +83,26 @@ class kmerDistance(object):
     def __init__(self, kmer1, kmer2):
         self.kmer1 = kmer1
         self.kmer2 = kmer2
-    
+
     def jaccard(self):
         pass
-    
+
     def distance(self):
         pass
 
 #%% Create an iterator that iterate over alignment output of stLFR data
-# Iterate by grouping alignments with same barcode 
+# Iterate by grouping alignments with same barcode
 #  I recommend to use this format based on Vsearch: query+target+ql+tl+id+qilo+qihi+tilo+tihi
 # WARNING output of Vsearch changed the order of alignment! You need to re-order the alignment before iterate
 class beadAlignmentIterator(object):
-    def __init__(self, alnFile):        
+    def __init__(self, alnFile):
         with open(alnFile, 'r') as f:
             line1 = f.readline() # Read in the very first barcode
             self.barcode = line1.strip('\n').split('\t')[0].split('/')[0]
         self.stop = False
         self.current_bead = []
         self.aln = open(alnFile, 'r')
-    
+
     def __iter__(self):
         return self
 
@@ -138,7 +138,7 @@ class beadAlignment(object):
         self.barcode = beadAln[0]
         self.alnRaw = beadAln[1]
         self.fragmentCount = {}
-        
+
         # For the input alignemnt, if only one read from a pair alignment to a reference, we need to remove it.
         alnDict = {} # create a dict with ref and qyuery label as key
         for line in self.alnRaw:
@@ -148,7 +148,7 @@ class beadAlignment(object):
                 alnDict[ref][query] = line
             except KeyError:
                 alnDict[ref] = {query: line}
-        
+
         # Find the pair to be removed (paired read is label as /1/# and /2/#)
         keepDict = {} # Store all sequence lables to keep
         for key, value in alnDict.items(): # Find unpaired alignment reads per reference
@@ -175,13 +175,13 @@ class beadAlignment(object):
                     self.fragmentCount[key] += 1
                 else:
                     pass
-        
+
         # Store all eligible read into a new list
         self.aln = []
         for key, value in keepDict.items():
             for item in value:
                 self.aln.append(alnDict[key][item])
-    
+
     def references(self):
         refDict = {}
         for line in self.aln:
@@ -190,14 +190,14 @@ class beadAlignment(object):
             except KeyError:
                 refDict[line[1]] = 1
         return refDict
-    
+
     def queries(self):
         queryDict = {}
         for line in self.aln:
             try:
                 queryDict[line[0]] += 1
             except KeyError:
-                queryDict[line[0]] = 1  
+                queryDict[line[0]] = 1
         return queryDict
 
     def minSet(self):
@@ -209,7 +209,7 @@ class beadAlignment(object):
 class beadMinSet(object):
     def __init__(self, minSet):
         self.minSet = minSet
-        self.barcode = list(list(self.minSet.values())[0].keys())[0].split('/')[0]      
+        self.barcode = list(list(self.minSet.values())[0].keys())[0].split('/')[0]
         self.references = list(self.minSet.keys()) # List of all reference associated with this bead
         self.refLength = {} # dictionary for reference and its length in bp
         for key, value in self.minSet.items(): # Length of each reference, Count of fragment (need to fix) of each reference
@@ -217,7 +217,7 @@ class beadMinSet(object):
             firstQuery = queries[0]
             refL = int(value[firstQuery][1])
             self.refLength[key] = refL
-            
+
     # Count the number of fragment (NOT read) per reference
     def fragmentCount(self):
         refCount = {} # A dictionary for reference and number of alignments it contains
@@ -228,9 +228,9 @@ class beadMinSet(object):
                 item = item.split('/')[1]
                 if item in ['9','1']:
                     fragmentList.append(item)
-            refCount[key] = len(fragmentList) # Need to consider paired read (count as one)         
+            refCount[key] = len(fragmentList) # Need to consider paired read (count as one)
         return refCount
-    
+
     # Return all position number using an alignment string
     def positionString(self, aln):
         start = int(aln[5])
@@ -238,8 +238,8 @@ class beadMinSet(object):
         posList = []
         for i in range(end - start + 1):
             posList.append(start + i)
-        return posList    
-        
+        return posList
+
     # Return the covered position of a given reference
     def refCoveredBases(self, refName):
         alnList = list(self.minSet[refName].values())
@@ -256,8 +256,8 @@ class beadMinSet(object):
             refL = self.refLength[ref]
             report[ref] = [coveredBase, refL, coveredBase / refL]
         return report
-            
-#%%           
+
+#%%
 # Remove duplicated reads from a single bead Class
 # The reverse complimentary sequence is considered
 # Return a new dictionary (used as input of beadSequence())
@@ -281,7 +281,7 @@ def derep(bead):
             try:
                 derep_dict[key] += 1
             except KeyError:
-                derep_dict[key] = 1            
+                derep_dict[key] = 1
     barcode = list(bead.keys())[0]
     bead_dict = {}
     for key, value in derep_dict.items():
@@ -291,7 +291,7 @@ def derep(bead):
 
 # Remove low quality reads from a single bead Class
 # Return a new bead Class
-# Now always return without quality score (has a return_format value for the future) 
+# Now always return without quality score (has a return_format value for the future)
 def maxEE(bead, maxee=1, return_format='a'):
     seqs = list(bead.values())[0]
     seqs_qc = []
