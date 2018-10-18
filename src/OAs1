@@ -17,6 +17,7 @@ e.g	perl OAs1 sample.1.fq,sample.2.fq clean 33 30 20 10 # PhedQ(by whole read)
 		-Scut	[0:50]	Threshold for seed quality
 		-Qcut	[0:50]	Threshold for fragment quality
 		-stLFR	[0|1|2]	off|on|only. whether turn on stLFR detection mode. If true, a barcode list file should be provided.
+		-pos3	[int]	Optionally defined the last position of barcode(sometime it's 132). Default is 144(start from 0);
 		-bfile		barcode list
 		-debug	[0|1]	debug off or on
 USAGE
@@ -25,7 +26,7 @@ USAGE
 
 
 ## load arguments
-our ($fq,$pfx,$Qsys,$minLen,$Scut,$Qcut,$stlfr,$bfile,$debug,$help);
+our ($fq,$pfx,$Qsys,$minLen,$Scut,$Qcut,$stlfr,$pos3,$bfile,$debug,$help);
 
 die &usage if !defined $ARGV[0];
 
@@ -39,13 +40,14 @@ if($ARGV[0] =~ /^-/){
 	"Scut:s" => \$Scut,
 	"Qcut:i" => \$Qcut,
 	"stlfr:s"=> \$stlfr,
+	"pos3:s" => \$pos3,
 	"bfile:s"=> \$bfile,
 	"debug:s"=> \$debug,
 	"help:s" => \$help,
 	);
 }else{
 	#Keep old argument behavior for a while
-	($fq,$pfx,$Qsys,$minLen,$Scut,$Qcut,$stlfr,$bfile,$debug) = @ARGV;
+	($fq,$pfx,$Qsys,$minLen,$Scut,$Qcut,$stlfr,$pos3,$bfile,$debug) = @ARGV;
 }
 if($help || !defined($fq || $fq || $pfx) ){
 	die &usage;
@@ -61,10 +63,14 @@ for (my $p=1;$p<=50;$p++){
 	$P2A{$p} = log(1-10**(-$p/10))/log(10);
 }
 
+$minLen ||= 30;
+$Scut ||= 30;
+$Qcut ||= 20;
 $Qsys ||= 33;
 my @fqs = split /,/,$fq;
 my $mode= (@fqs==2)?"PE":"SE";
 $stlfr ||= 0;
+$pos3  ||= 144;
 ### Trasnform cutoff ###
 $Scut = ($Scut <= 1)?(log($Scut)/log(10)):($P2A{$Scut});
 $Qcut = ($Qcut <= 1)?(log($Qcut)/log(10)):($P2A{$Qcut});
@@ -312,7 +318,9 @@ sub stlfr_barcode_dict{
 		for(my $i=0;$i<10;$i++){
 			foreach my $snp (@base){
 				my $mutate = substr($read[0],0,$i).$snp.substr($read[0],$i+1,9-$i);
+				my $revMut = reverse($mutate);
 				$BEAD_BARCODE{'oneSnp'}{$mutate} = $read[1];
+				$BEAD_BARCODE{'RevSnp'}{$mutate} = $read[1];
 			}
 		}
 	}
@@ -329,16 +337,21 @@ sub stlfr_get_barcode_label{
 	while($try<5 && $min==0){
 		my $offset = $offsets[$try];
 		$HitScore = 0;
-		@bcodes = (substr($seq,100+$offset,10), substr($seq,116+$offset,10), substr($seq,132+$offset,10));
+		@bcodes = (substr($seq,100+$offset,10), substr($seq,116+$offset,10), substr($seq,$pos3+$offset,10));
 		for(my $i=0;$i<3;$i++){
 			if(defined $BEAD_BARCODE{'origin'}{$bcodes[$i]}){
 				$blabels[$i] = $BEAD_BARCODE{'origin'}{$bcodes[$i]};
-				$HitScore += 2*10**$i;
+				$HitScore += 3*10**(2-$i);
 			}elsif(defined $BEAD_BARCODE{'oneSnp'}{$bcodes[$i]}){
 				$blabels[$i] = $BEAD_BARCODE{'oneSnp'}{$bcodes[$i]};
-				$HitScore += 1*10**$i;
+				$HitScore += 2*10**(2-$i);
 			}else{
-				$blabels[$i] = 0;
+				if(defined $BEAD_BARCODE{'RevSnp'}{$bcodes[$i]}){
+					$blabels[$i] = $BEAD_BARCODE{'RevSnp'}{$bcodes[$i]};
+					$HitScore += 1*10**(2-$i);
+				}else{
+					$blabels[$i] = 0;
+				}
 			}
 		}
 		$min = min @blabels;
@@ -349,10 +362,10 @@ sub stlfr_get_barcode_label{
 	}
 	if($min>0){
 		$try --;
-		$SLOG{'hit'}{$offsets[$try]}{$HitScore} ++;
+		$SLOG{'hit'}{$offsets[$try]}{sprintf("%03d",$HitScore)} ++;
 	}else{
 		foreach my $offset (sort keys %missScore){
-			$SLOG{'miss'}{$offset}{$missScore{$offset}} ++;
+			$SLOG{'miss'}{$offset}{sprintf("%03d",$missScore{$offset})} ++;
 		}
 	}
 

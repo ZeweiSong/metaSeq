@@ -112,22 +112,25 @@ def snp_list(seq):
     # BAsed on our latest test on 2018-6-15, they may accidentally sequence R2
     # as 154 bp while using the 42 bp system. If this is the case, use the first
     # 142 bp.
-def barcode_set(seq, bl):
+def barcode_set(seq, bl, offset):
     if bl == '54':
-        return [seq[100:110], seq[116:126], seq[144:154]]
+        return [seq[100+offset:110+offset], seq[116+offset:126+offset], seq[144+offset:154+offset]]
     elif bl == '42':
-        return [seq[100:110], seq[116:126], seq[132:142]]
+        return [seq[100+offset:110+offset], seq[116+offset:126+offset], seq[132+offset:142+offset]]
 
 
 # Return the number barcode set if exist
-def number_set(barcodes, forwardDict, reverseDict):
+def number_set(barcodes, forwardDict, forwardSnpDict, reverseDict):
     number = []
     for item in barcodes:
         try:
             number.append(forwardDict[item])
-        except KeyError:
-            #print('forward: {0}'.format(item))
-            break
+        except:
+            try:
+                number.append(forwardSnpDict[item])
+            except KeyError:
+                #print('forward: {0}'.format(item))
+                break
     if len(number) == 3: # barcode set (all three barcodes) found in the forward direction)
         return '_'.join(number)
     else: # Does not found barcode in the forward direction
@@ -187,8 +190,9 @@ with open(barcodeFile, 'r') as f:
         barcodeDictForward[line[1]] = [line[0]]
 
 # Add all possible 1 SNP mutations for all barcode
+barcodeSnpDictForward = {}
 for key, value in barcodeDictForward.items():
-    barcodeDictForward[key] += snp_list(value[0])
+    barcodeSnpDictForward[key] = snp_list(value[0])
 
 # Create the RC Dict
 barcodeDictReverse = {}
@@ -198,11 +202,15 @@ for key, value in barcodeDictForward.items():
 
 # Convert number:barcode to barcode:number
 numberDictForward = {}
+numberSnpDictForward = {}
 numberDictReverse = {}
 
 for key, value in barcodeDictForward.items():
     for barcode in value:
         numberDictForward[barcode] = key
+for key, value in numberSnpDictForward.items():
+    for barcode in value:
+        numberSnpDictForward[barcode] = key
 for key, value in barcodeDictReverse.items():
     for barcode in value:
         numberDictReverse[barcode] = key
@@ -223,13 +231,18 @@ logFile = base + '.log'
 seqs = sequence_twin(r1File, r2File, fastx='q', gz=not_gz)
 count = 0
 error_count = 0
+offsets = [0,-1,1,-2,2]
 for r1, r2 in seqs:
     count += 1
     if count % 1000000 == 0: # Report per 1 million reads
         with open(logFile, 'w') as f:
             f.write('Processed {0:8.2f} M reads\n'.format(count/1000000))
         #break
-    bead = number_set(barcode_set(r2[1], bl), numberDictForward, numberDictReverse)
+    for offset in offsets:
+        bead = number_set(barcode_set(r2[1], bl,offset), numberDictForward, numberSnpDictForward, numberDictReverse)
+        if bead:
+            break
+
     if bead:
         r1[0] = r1[0][:-2] + '/' + bead + '/1'
         r2[0] = r2[0][:-2] + '/' + bead + '/2'
