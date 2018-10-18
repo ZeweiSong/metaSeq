@@ -4,31 +4,63 @@ use strict;
 use File::Basename;
 use List::Util qw/min/;
 
-die &usage if @ARGV < 6;
 sub usage {
 	print <<USAGE;
 usage:
-se pattern:
 	perl OAs1 fq1 <prefix> <Qual system(33|64)> <min length> <seed OA> <fragment OA> <*stLFR> <*barcode list> <*debug>
-e.g	perl OAs1 sample.fq clean 33 30 0.99 0.90
-	perl OAs1 sample.1.fq,sample.2.fq clean 33 30 0.99 0.90
-	perl OAs1 sample.1.fq,sample.2.fq clean 33 30 20 10 # PhedQ(by whole read)
-		<stLFR> 0|1|2	off|on|only. whether turn on stLFR detection mode. If true, a barcode list file should be provided.
-		<debug> 0|1		debug off or on
+	perl OAs1 fq1,fq2 <prefix> <Qual system(33|64)> <min length> <seed OA> <fragment OA> <*stLFR> <*barcode list> <*debug>
+e.g	perl OAs1 sample.1.fq,sample.2.fq clean 33 30 20 10 # PhedQ(by whole read)
+		-i		input file. Use comma to specifiy paired input files
+		-pfx		output prefix
+		-Qsys	[33|64]	Quality system
+		-minLen	[0:]	Minimal allowed read length
+		-Scut	[0:50]	Threshold for seed quality
+		-Qcut	[0:50]	Threshold for fragment quality
+		-stLFR	[0|1|2]	off|on|only. whether turn on stLFR detection mode. If true, a barcode list file should be provided.
+		-bfile		barcode list
+		-debug	[0|1]	debug off or on
 USAGE
 	exit;
 }
-my $start_run = time();
-sub openMethod {$_ = shift; return(($_ =~ /\.gz$/)?"pigz -dc $_|":"$_")}
-### Load accuracy table ###
-my (%P2A, %BEAD_BARCODE);
-$P2A{0}= -10;
-for (my $p=1;$p<=50;$p++){
-    $P2A{$p} = log(1-10**(-$p/10))/log(10);
+
+
+## load arguments
+our ($fq,$pfx,$Qsys,$minLen,$Scut,$Qcut,$stlfr,$bfile,$debug,$help);
+
+die &usage if !defined $ARGV[0];
+
+if($ARGV[0] =~ /^-/){
+	use Getopt::Long;
+	GetOptions(
+	"i:s"=> \$fq,
+	"pfx:s"=> \$pfx,
+	"Qsys:s"=> \$Qsys,
+	"minLen:s" => \$minLen,
+	"Scut:s" => \$Scut,
+	"Qcut:i" => \$Qcut,
+	"stlfr:s"=> \$stlfr,
+	"bfile:s"=> \$bfile,
+	"debug:s"=> \$debug,
+	"help:s" => \$help,
+	);
+}else{
+	#Keep old argument behavior for a while
+	($fq,$pfx,$Qsys,$minLen,$Scut,$Qcut,$stlfr,$bfile,$debug) = @ARGV;
+}
+if($help || !defined($fq || $fq || $pfx) ){
+	die &usage;
 }
 
 ### Init ###
-my ($fq,$pfx,$Qsys,$minLen,$Scut,$Qcut,$stlfr,$bfile,$debug) = @ARGV;
+my $start_run = time();
+sub openMethod {$_ = shift; return(($_ =~ /\.gz$/)?"pigz -dc $_|":"$_")}
+### Create accuracy table ###
+my (%P2A, %BEAD_BARCODE);
+$P2A{0}= -10;
+for (my $p=1;$p<=50;$p++){
+	$P2A{$p} = log(1-10**(-$p/10))/log(10);
+}
+
 $Qsys ||= 33;
 my @fqs = split /,/,$fq;
 my $mode= (@fqs==2)?"PE":"SE";
@@ -76,7 +108,7 @@ while(<F1>){
 	}
 	$total ++;
 
-	# trim & filter
+	# seek barcodes, trim & filter
 	if($mode eq "PE"){
 		if($stlfr==0){
 			($Aqual[0],$PQ[0],$start[0],$len[0],$seq[0],$qual[0]) = &ca1_cut($Scut,$Qcut,$Qsys,$seq[0],$qual[0]);
