@@ -1,7 +1,3 @@
-samples:
-    r1: instance/test_1.fq.gz
-    r2: instance/test_2.fq.gz
-
 prefix: "clean"
 
 bfile: "barcode.list"
