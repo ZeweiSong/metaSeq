@@ -15,6 +15,7 @@ import json
 from itertools import combinations
 import textwrap
 import argparse
+import re
 
 parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
                                      epilog=textwrap.dedent('''\
@@ -29,6 +30,8 @@ parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpForm
                                         ------------------------'''))
 parser.add_argument('-i', help='merged fasta file.')
 parser.add_argument('-d', help='Output directory.')
+parser.add_argument('-z', help='save fa with missing tag(0000) into a seperated directory.')
+
 args = parser.parse_args()
 #%% Try to sample bead with more than 1 fragments
 inputBeadJson = args.i
@@ -48,6 +51,10 @@ print('Find {0} bead with more than 1 fragments.'.format(len(beadPool_1)))
 
 #%% Write these bead to FASTA files
 outputFolder = args.d
+code0Folder = args.z
 
 for item in beadPool_1:
-    item.fastaWrite(folder=outputFolder)
+    if re.match("0000",item.barcode,0) :
+        item.fastaWrite(folder=code0Folder)
+    else:
+        item.fastaWrite(folder=outputFolder)

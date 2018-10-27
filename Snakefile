@@ -1,10 +1,15 @@
 configfile: "config.yaml"
 
+thead4fastp = 1
+if config["threads"] > 6:
+    thead4fastp = 6
+
 rule all:
     input:
         "benchmarks/stLFR_summary.rst",
         expand("beadPool/{sample}.filter.dist",sample=config["samples"])
 
+#Skip
 rule s1_stLFR_cOMG:
     input:
         r1 = "rawSeq/{sample}_1.fq.gz",
@@ -42,13 +47,18 @@ rule s1_stLFR_fastp:
         "clean/{sample}.fp.log"
     benchmark:
         "benchmarks/{sample}.fp.benchmark.txt"
-    threads: config["threads"]
+    threads: thead4fastp
     shell:
         "fastp --stLFR_barcode_file {input.bfile} "
-        "--in1 {input.r1} --in2 {input.r2} --disable_adapter_trimming "
-        "--out1 {output.r1} --out2 {output.r2} --disable_quality_filtering "
+        "--in1 {input.r1} --in2 {input.r2} "#"--disable_adapter_trimming "
+        "--adapter_sequence CTGTCTCTTATACACATCTTAGGAAGACAAGCACTGACGACATGATCACCAAGGATCGCCATAGTCCATGCTAAAGGACGTCAGGAAGGGCGATCTCAGG "
+        "--adapter_sequence_r2 TCTGCTGAGTCGAGAACGTCTCTGTGAGCCAAGGAGTTGCTCTGGCGACGGCCACGAAGCTAACAGCCAATCTGCGTAACAGCCAAACCTGAGATCGCCC "
+        "--out1 {output.r1} --out2 {output.r2} "
+        "--disable_trim_poly_g "
+        #"--disable_quality_filtering "
         "-w {threads} &> {log}"
 
+#Skip
 rule s1_stLFR_py:
     input:
         r1 = "rawSeq/{sample}_1.fq.gz",
@@ -93,7 +103,7 @@ echo -e "==========  ========  ========  ========  ========  ========  ======== 
 cat {output.txt} | column -t > {output.rst}
         '''
 
-
+#Skip
 rule s2_cutadapt:
     input:
         r1 = "clean/{sample}.fp.1.fq.gz",
@@ -114,10 +124,11 @@ rule s2_cutadapt:
         "-A {params.A} -o {output.r1} -p {output.r2} "
         "-m {params.m} -e {params.e} -j {threads}"
 
+#Skip
 rule s3_pear:
     input:
-        r1 = "clean/{sample}.cutadapt.1.fq.gz",
-        r2 = "clean/{sample}.cutadapt.2.fq.gz"
+        r1 = "clean/{sample}.fp.1.fq.gz",
+        r2 = "clean/{sample}.fp.2.fq.gz"
     threads: config["threads"]
     output:
         assembledFQ = "clean/{sample}.pear.assembled.fastq",
@@ -129,7 +140,7 @@ rule s3_pear:
     shell:
         "pear -f {input.r1} -r {input.r2} -o clean/{wildcards.sample}.pear -k -j {threads}"
 
-
+#Skip
 rule s4_makeJSON:
     input:
         assembledFQ = "clean/{sample}.pear.assembled.fastq",
@@ -142,6 +153,7 @@ rule s4_makeJSON:
         "python src/stlfr_mergepairs2json.py -a {input.assembledFQ} "
         "-f {input.unassForFQ} -r {input.unassRevFQ} -o {output}"
 
+#Skip
 rule s5_QC:
     input: "clean/{sample}.merge.json"
     output: "clean/{sample}.clean.json"
@@ -150,6 +162,7 @@ rule s5_QC:
     shell:
         "python src/stlfr_qc_derep.py -i {input} -maxee 1 -o {output}"
 
+#Skip
 rule s6_countBeads:
     input: "clean/{sample}.clean.json"
     output:
@@ -160,34 +173,78 @@ rule s6_countBeads:
     shell:
         "python src/stlfr_count.py -i {input} -o {output.count} -d {output.dist}"
 
-rule s7_saveBeads:
-    input: "clean/{sample}.clean.json"
+rule s7_saveBeads1:
+    input: "clean/{sample}.fp.1.fq.gz"
     params:
-        dir = "beadPool/{sample}"
-    output: "beadPool/{sample}.msh"
+        dir = "beadPool/{sample}",
+        cut = "5",
+        log = "beadPool/{sample}.info",
+        slog = "beadPool/{sample}.1.info"
+    output: "beadPool/{sample}.1.log"
     benchmark:
-        "benchmarks/{sample}.saveBeads.benchmark.txt"
+        "benchmarks/{sample}.saveBeads1.benchmark.txt"
     shell:
-        "python src/stlfr_json2individualFASTA.py -i {input} -d {params.dir};"
-        "mash sketch {params.dir}/*.fa -o {output}"
+        #"python src/stlfr_json2individualFASTA.py -i {input} -d {params.dir} -z {params.b0d};"
+        "perl src/beadsWrite.pl {input} {params.cut} 1 {params.dir} > {output};"
+        "sort -nrk2 {params.log} > {params.slog}"
 
-rule s8_compareMash:
-    input: "beadPool/{sample}.msh"
+rule s7_saveBeads2:
+    input: "clean/{sample}.fp.2.fq.gz"
     params:
-        dir = "beadPool/{sample}"
-    output: "beadPool/{sample}.dist"
+        dir = "beadPool/{sample}",
+        cut = "5",
+        log = "beadPool/{sample}.info",
+        slog = "beadPool/{sample}.2.info"
+    output: "beadPool/{sample}.2.log"
     benchmark:
-        "benchmarks/{sample}.compareMash.benchmark.txt"
+        "benchmarks/{sample}.saveBeads2.benchmark.txt"
     shell:
-        "echo {params.dir}/*.fa | xargs -n 1 mash dist {input} > {output}"
+        #"python src/stlfr_json2individualFASTA.py -i {input} -d {params.dir} -z {params.b0d};"
+        "perl src/beadsWrite.pl {input} {params.cut} 2 {params.dir} | tee {output};"
+        "sort -nrk2 {params.log} > {params.slog}"
 
-rule s9_filterMash:
-    input: "beadPool/{sample}.dist"
+rule s8_makeMash1:
+    input: "beadPool/{sample}.1.log"
+    params:
+        dir = "beadPool/{sample}/",
+    output: "beadPool/{sample}.1.msh"
+    benchmark:
+        "benchmarks/{sample}.1.mash.benchmark.txt"
+    shell:
+        "mash sketch {params.dir}*/*.1.fa -o {output}"
+
+rule s8_makeMash2:
+    input: "beadPool/{sample}.2.log"
+    params:
+        dir = "beadPool/{sample}/",
+    output: "beadPool/{sample}.2.msh"
+    benchmark:
+        "benchmarks/{sample}.2.mash.benchmark.txt"
+    shell:
+        "mash sketch {params.dir}*/*.2.fa -o {output}"
+
+rule s9_filterMash1:
+    input: "beadPool/{sample}.1.msh"
     params:
         threshold = "0.04"
-    output: "beadPool/{sample}.filter.dist"
-    log: "beadPool/{sample}.filter.dist"
+    output: "beadPool/{sample}.1.filter.dist"
     benchmark:
-        "benchmarks/{sample}.filterMash.benchmark.txt"
+        "benchmarks/{sample}.1.compareMash.benchmark.txt"
     shell:
-        "python src/filterMASHoutput.py -i {input} -c {params.threshold}  -o {output}"
+        #"ls {params.dir}/*.fa|grep -v 0000|xargs -n 1 mash dist {input} > {output}"
+        #"ls {params.dir}/*.fa|xargs -n 1 mash dist {input} > {output}"
+        "mash dist {input} {input} | perl src/filterMASHoutput.pl - {params.threshold} {output};"
+        "sed 's/\t/,/g' {output} > {output}.csv"
+
+rule s9_filterMash2:
+    input: "beadPool/{sample}.2.msh"
+    params:
+        threshold = "0.04"
+    output: "beadPool/{sample}.2.filter.dist"
+    benchmark:
+        "benchmarks/{sample}.2.compareMash.benchmark.txt"
+    shell:
+        #"ls {params.dir}/*.fa|grep -v 0000|xargs -n 1 mash dist {input} > {output}"
+        #"ls {params.dir}/*.fa|xargs -n 1 mash dist {input} > {output}"
+        "mash dist {input} {input} | perl src/filterMASHoutput.pl - {params.threshold} {output};"
+        "sed 's/\t/,/g' {output} > {output}.csv"

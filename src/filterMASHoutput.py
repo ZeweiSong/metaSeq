@@ -28,14 +28,14 @@ parser.add_argument('-c', default=0.01, help='the threshold.')
 args = parser.parse_args()
 
 inputFile = args.i
-threshold = args.c
+threshold = float(args.c)
 outputFile= args.o
 pair = []
-with open(inputFile, 'rb') as f:
+with open(inputFile, 'r') as f:
     for line in f:
         line = line.strip('\n').split('\t')
-        source = line[0].split('/')[1]
-        target = line[1].split('/')[1]
+        source = line[0].split('/')[2]
+        target = line[1].split('/')[2]
         distance = float(line[2])
 
         if source != target and 0.02 <= distance <= threshold:
