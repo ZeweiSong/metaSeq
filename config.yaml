@@ -1,3 +1,11 @@
-prefix: "clean"
+prefix: "test"
+threads: 1
+tmp: "./tmp"
 
-bfile: "barcode.list"
+samples:
+  test_H: rawSeq/test_H
+  test_T: rawSeq/test_T
+
+# int cutoff of freq number for select beads; 0 means output all beads
+beadSelect: 10
+distCutoff: 0.04

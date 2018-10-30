@@ -15,7 +15,7 @@ while(<LST>){
 	my @str = split;
 	if($str[1]>=$cut){
 		$LIST{$str[0]} = $str[1];
-		$nfs++;
+		$fns++;
 	}else{
 		last;
 	}
@@ -24,9 +24,11 @@ my $f10 = (int $fns/1000) *100;
 close LST;
 
 open IN, "pigz -dc $in|" or die $!;
-open INF, ">$out.info" or die $!;
+#open INF, ">$out.info" or die $!;
 open F0, "> $out/0000.$sfx.fa" or die $!;
-#open FX, "> $out/xxxx.$sfx.fa" or die $!;
+open FX, "> $out/xxxx.$sfx.fa" or die $!;
+
+my(@p);
 while(<IN>){
   # Read one sequence info
   chomp(my $id = $_);
@@ -40,61 +42,38 @@ while(<IN>){
   if($bcode[0] eq "0000"||$bcode[1] eq "0000"||$bcode[2] eq "0000"){
      print F0 "$id\n$seq\n";
   }elsif(not defined $LIST{$bc[1]}){
-  	 print STDOUT "$id\n$seq\n"; 
+  	 print FX "$id\n$seq\n";
   }elsif(not defined $FILES{$bc[0]}{$bc[1]}{'count'}){
-    my $ct = 1;
-    $FILES{$bc[0]}{$bc[1]}{'count'} = $ct;
-    $FILES{$bc[0]}{$bc[1]}{$ct} = "$id\n$seq\n";
-
-    $STAT{'barcodes'} ++;
+		close FS if defined $FILES{$p[0]}{$p[1]}{'count'};
+		my $ct = 1;
+		$FILES{$bc[0]}{$bc[1]}{'count'} = 1;
+		`mkdir -p $out/$bc[0]`;
+		open FS, "> $out/$bc[0]/$bc[1].$sfx.fa" or die $!;
+		print FS "$id\n$seq\n";
+		$STAT{'barcodes'} ++;
+		@p = @bc;
+		$FHcount ++;
   }else{
     $FILES{$bc[0]}{$bc[1]}{'count'} ++;
-    if($FILES{$bc[0]}{$bc[1]}{'count'} < $cut){
-      my $ct = $FILES{$bc[0]}{$bc[1]}{'count'};
-      $FILES{$bc[0]}{$bc[1]}{$ct} = "$id\n$seq\n";
-    }elsif($FILES{$bc[0]}{$bc[1]}{'count'} == $cut){
-      `mkdir -p $out/$bc[0]`;
-      open $FILES{$bc[0]}{$bc[1]}{'FILEHANDLE'}, "> $out/$bc[0]/$bc[1].$sfx.fa" or die $!;
-      $FHcount ++;
-
-      # Write the pre-member(s)
-      for(my $ct==1;$ct<$cut;$ct++){
-        $FILES{$bc[0]}{$bc[1]}{'FILEHANDLE'}->print($FILES{$bc[0]}{$bc[1]}{$ct});
-        delete $FILES{$bc[0]}{$bc[1]}{$ct};
-      }
-      $FILES{$bc[0]}{$bc[1]}{'FILEHANDLE'}->print("$id\n$seq\n");
-
-      #Report
-      if($FHcount==1 ||$FHcount%$f10==0){
-        @timeS =  &getTime(time,$startTimeStamp);
-        print STDERR sprintf("[%02d:%02d:%02d] Filehandle opened: %5d\n",$timeS[3]*24 + $timeS[2],$timeS[1],$timeS[0],$FHcount);
-      }
-
-      $STAT{'multiHits'} ++;
-    }else{
-      $FILES{$bc[0]}{$bc[1]}{'FILEHANDLE'}->print("$id\n$seq\n");
-    }
+		print FS "$id\n$seq\n";
   }
 }
 close IN;
+close F0;
+close FX;
+close FS;
 
 @timeS =  &getTime(time,$startTimeStamp);
-print STDERR sprintf("[%02d:%02d:%02d] %d of %d barcodes found multiple (>=%d) reads. Writing rest reads into single file...\n",
-  $timeS[3]*24 + $timeS[2],$timeS[1],$timeS[0],$STAT{'multiHits'},$STAT{'barcodes'},$cut);
+print STDERR sprintf("[%02d:%02d:%02d] %d beads fa written. Reporting...\n",
+  $timeS[3]*24 + $timeS[2],$timeS[1],$timeS[0],$STAT{'barcodes'});
 
 foreach my $b1 (sort keys %FILES){
   foreach my $b123 (sort keys %{$FILES{$b1}}){
-    if($FILES{$b1}{$b123}{'count'}>=$cut){
-      print INF "$b123\t$FILES{$b1}{$b123}{'count'}\n";
-      close $FILES{$b1}{$b123}{'FILEHANDLE'};
-    }else{
-      print F0 $FILES{$b1}{$b123}{'the1st'};
-    }
+      print STDOUT "$b123\t$FILES{$b1}{$b123}{'count'}\n";
   }
 }
-close INF;
-close F0;
-close FX;
+#close INF;
+
 
 @timeS =  &getTime(time,$startTimeStamp);
 print STDERR sprintf("[%02d:%02d:%02d] All done.\n",
