@@ -33,3 +33,5 @@ with open(tabFile, 'w') as f:
     for item in profile:
         if item[1] >= 1:
             f.write('{0}\t{1}\n'.format(item[0], int(item[1])))
+
+# TODO need to add output report
