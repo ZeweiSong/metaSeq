@@ -6,8 +6,8 @@ if config["threads"] > 6:
 
 rule all:
     input:
-        expand("beadPool/{sample}.{sfx}.filter.dist",
-        sample=config["samples"],sfx=["1","2"])
+        expand("beadPool/{sample}.B.filter.dist",
+        sample=config["samples"])
 
 rule s1_stLFR:
     input:
