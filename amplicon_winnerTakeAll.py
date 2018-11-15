@@ -28,10 +28,16 @@ sampleName = args.sn
 tabFile = args.tab_out
 biomFile = args.biom_out
 
+print('Found {0} targets from your input.'.format(len(alnString)))
+print('Normalizing alignments ...')
 alnNormalized = amplicon.initAlignment(alnString)
+print('Only one winner survives each round ...')
 wtaProfile = amplicon.winnerTakeAll(alnNormalized)
+print('Winner take all profile found! {0} references survived.'.format(len(wtaProfile)))
 profile = list(wtaProfile.items())
 profile.sort(key=lambda x:x[1], reverse=True)
+
+print('Tab-delimited profile wrote to {0}.'.format(tabFile))
 with open(tabFile, 'w') as f:
     f.write('{0}\t{1}\n'.format('Reference', sampleName))
     for item in profile:
@@ -40,8 +46,6 @@ with open(tabFile, 'w') as f:
 
 # Output as biom format
 biomTable = Table(np.array([[i[1]] for i in profile]), [i[0] for i in profile], [sampleName], table_id='single_sample_biom')
+print('Biom JSON format profile wrote to {0}.'.format(biomFile))
 with open(biomFile, 'w') as f:
     biomTable.to_json('Generated_by_metaSeq', f)
-
-# TODO need to add output report
-# Add some output
