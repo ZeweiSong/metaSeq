@@ -114,6 +114,6 @@ def winnerTakeAll(aln):
         G = addAbundance(G, targetNumber)
     profile = {}
     for ref in G.graph['profile'].keys():
-        if G.graph['profile'][ref]: # This the ref is not empty (broke)
+        if G.graph['profile'][ref]: # This ref is not empty (broke)
             profile[ref] = G.graph['profile'][ref]
     return profile
