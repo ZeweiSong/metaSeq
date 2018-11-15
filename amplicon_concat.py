@@ -14,6 +14,7 @@ from __future__ import division
 import argparse
 from biom.table import Table
 import os
+import json
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-if', '--inputFolder', help='path/to/the/profile/folder')
@@ -27,3 +28,10 @@ biomFile = args.biom_out
 
 fileList = os.listdir(inputFolder)
 biomList = [i for i in fileList if i[-5:] == 'biom']
+print('Found {0} biom profiles under {1}.'.format(len(biomList), inputFolder))
+with open(inputFolder + '/' + biomList[0], 'r') as f:
+    biomProfile = Table.from_json(json.load(f))
+
+for item in biomList[1:]:
+    with open(item, 'r') as f:
+        biomProfile = biomProfile.concat([Table.from_json(f)])
