@@ -1,5 +1,6 @@
 prefix: "test"
 threads: 1
+max_threads_per_script: 4
 tmp: "./tmp"
 
 samples:

@@ -14,24 +14,23 @@ from itertools import combinations
 import random
 import matplotlib.pyplot as plt
 import community # Louvain Community Detection (https://github.com/taynaud/python-louvain/)
+import argparse
 
-G = nx.Graph()
-nodePool = list(range(100))
-edgePool = list(range(10))
+parser = argparse.ArgumentParser()
+parser.add_argument('-i', help='Input distance file')
+args = parser.parse_args()
 
-# Add node to graph
-for item in nodePool:
-    G.add_node(item)
+distFile = args.i
 
-# Randomly add edges
-for pair in combinations(nodePool, 2):
-    edgeValue = random.sample(edgePool, 1)[0]
-    if edgeValue == 0:
-        G.add_edge(pair[0], pair[1])
+# Read distance data as edges
+G=nx.Graph()
+with open(distFile, 'r') as f:
+    for line in f:
+        line = line.strip('\n').split('\t')
+        G.add_weighted_edges_from([(line[0],line[1],line[2])])
 
-#%%
 print('Graph contains {0} nodes and {1} edges.'.format(G.number_of_nodes(), G.number_of_edges()))
-nx.draw(G)
+#nx.draw(G) # Can not draw in linux OS
 
 # Find the modules in the graph
 #%%Finds communities in a graph using the Girvan–Newman method

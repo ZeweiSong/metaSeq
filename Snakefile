@@ -1,8 +1,14 @@
 configfile: "config.yaml"
 
-thead4fastp = 1
-if config["threads"] > 6:
-    thead4fastp = 6
+
+if config["threads"] > 4:
+    thead4fastp = 4
+    thread4pigz = 4
+    thread4SPAdes = 4
+else:
+    thead4fastp = config["threads"]
+    thread4pigz = config["threads"]
+    thread4SPAdes  = config["threads"]
 
 rule all:
     input:
@@ -44,9 +50,10 @@ rule s2_sortR1:
         s1 = "clean/{sample}.fps.1.fq.gz"
     params:
         tmp = config["tmp"]
+    threads: thread4pigz
     shell:
-        "gunzip -c {input.r1} | paste - - - - | sort -T {params.tmp} -k2,2 -t \"/\" | "
-        "tr \"\\t\" \"\\n\" |gzip > {output.s1}"
+        "pigz -p {threads} -dc {input.r1} | paste - - - - | sort -T {params.tmp} -k2,2 -t \"/\" | "
+        "tr \"\\t\" \"\\n\" |pigz -p {threads} > {output.s1}"
 
 rule s2_sortR2:
     input:
@@ -55,9 +62,10 @@ rule s2_sortR2:
         s2 = "clean/{sample}.fps.2.fq.gz"
     params:
         tmp = config["tmp"]
+    threads: thread4pigz
     shell:
-        "gunzip -c {input.r2} | paste - - - - | sort -T {params.tmp} -k2,2 -t \"/\" | "
-        "tr \"\\t\" \"\\n\" |gzip > {output.s2}"
+        "pigz -p {threads} -dc {input.r2} | paste - - - - | sort -T {params.tmp} -k2,2 -t \"/\" | "
+        "tr \"\\t\" \"\\n\" |pigz -p {threads} > {output.s2}"
 
 rule s3_saveBeadR1:
     input:
@@ -67,12 +75,12 @@ rule s3_saveBeadR1:
         dir = "beadPool/{sample}",
         cut = config["beadSelect"],
         log = "beadPool/{sample}.info"
+    threads: thread4pigz
     output: "beadPool/{sample}.1.info"
     benchmark:
         "benchmarks/{sample}.saveBeads1.benchmark.txt"
     shell:
-        #"python src/stlfr_json2individualFASTA.py -i {input} -d {params.dir} -z {params.b0d};"
-        "perl src/beadsWrite.pl {input.fq} {input.freq} {params.cut} 1 {params.dir} > {output}"
+        "perl src/beadsWrite2.pl --r1 {input.fq} -L {input.freq} -c {params.cut} -p {threads} -s 1 -f fafq -o {params.dir} > {output}"
 
 rule s3_saveBeadR2:
     input:
@@ -82,12 +90,12 @@ rule s3_saveBeadR2:
         dir = "beadPool/{sample}",
         cut = config["beadSelect"],
         log = "beadPool/{sample}.info"
+    threads: thread4pigz
     output: "beadPool/{sample}.2.info"
     benchmark:
         "benchmarks/{sample}.saveBeads2.benchmark.txt"
     shell:
-        #"python src/stlfr_json2individualFASTA.py -i {input} -d {params.dir} -z {params.b0d};"
-        "perl src/beadsWrite.pl {input.fq} {input.freq} {params.cut} 2 {params.dir} > {output}"
+        "perl src/beadsWrite2.pl --r1 {input.fq} -L {input.freq} -c {params.cut} -p {threads} -s 2 -f fafq -o {params.dir} > {output}"
 
 rule s4_makeMashR1:
     input: "beadPool/{sample}.1.info"
@@ -135,3 +143,36 @@ rule s4_makeMashDistRB:
     shell:
         "mash dist {input.R1} {input.R2} > {output.dist}\n"
         "perl src/filterMASHoutput.pl {output.dist} {params.threshold} {output.filter}\n"
+
+rule s5_SPAdes_shell:
+    input:
+        inf1 = "beadPool/{sample}.1.info",
+        inf2 = "beadPool/{sample}.2.info",
+    output:
+        sh = "Assemble/{sample}.sh"
+    params:
+        dir = "beadPool/{sample}",
+        threads = thread4SPAdes
+    shell:
+        "for i1 in {params.dir}/*/*1.fq.gz;do i2=${{i1/1.fq/2.fq}};"
+        "odir=${{i1/beadPool/Assemble}};odir=${{odir/.1.fq.gz/}};"
+        "echo spades.py -t {params.threads} -o $odir -1 $i1 -2 $i2;done > {output.sh}"
+
+rule s5_SPAdes_each_bead:
+    input: "Assemble/{sample}.sh"
+    output: "Assemble/{sample}.log"
+    params:
+        threads = thread4SPAdes
+    shell:
+        "sh {input} > {output}"
+
+rule s6_SPAdes_binning:
+    input:
+        sh = "Assemble/{sample}.sh",
+        log= "Assemble/{sample}.log"
+    output: "BIN0/{sample}.beads.fasta"
+    params:
+        threads = thread4SPAdes
+    shell:
+        "for i in `cut -d ' ' -f5 {input.sh}`; do "
+        "cat $i/scaffolds.fasta;done > {output}"
