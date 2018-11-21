@@ -151,28 +151,33 @@ rule s5_SPAdes_shell:
     output:
         sh = "Assemble/{sample}.sh"
     params:
-        dir = "beadPool/{sample}",
+        iDir = "beadPool/{sample}",
+        oDir = "Assemble/{sample}",
+        threshold = config["beadSelect"],
         threads = thread4SPAdes
     shell:
-        "for i1 in {params.dir}/*/*1.fq.gz;do i2=${{i1/1.fq/2.fq}};"
-        "odir=${{i1/beadPool/Assemble}};odir=${{odir/.1.fq.gz/}};"
-        "echo spades.py -t {params.threads} -o $odir -1 $i1 -2 $i2;done > {output.sh}"
+        "awk '($2>={params.threshold}){{b1=substr($1,1,4);print \""
+        "spades.py -t {params.threads} -o {params.oDir}/\"b1\"/\"$1\" "
+        "-1 {params.iDir}/\"b1\"/\"$1\".1.fq.gz -2 {params.iDir}/\"b1\"/\"$1\".2.fq.gz\"}}' "
+        "{input.inf1} > {output.sh}"
 
-rule s5_SPAdes_each_bead:
+rule s5_bwa_each_bead:
     input: "Assemble/{sample}.sh"
-    output: "Assemble/{sample}.log"
+    output: "Assemble/bwa.{sample}.sh"
     params:
-        threads = thread4SPAdes
+        threads = thread4SPAdes,
+        REF = config["REF_GEN"]
     shell:
-        "sh {input} > {output}"
+        "awk '{{print \"bwa mem -t {params.threads} {params.REF} \"$7,$9\" -o \"$5\"/bwa.reads.sam\";"
+        "print \"bwa bwasw -t {params.threads} {params.REF} \"$5\"/scaffolds.fasta > \"$5\"/bwa.scaffolds.sam\"}}' "
+        " {input} > {output} "
 
-rule s6_SPAdes_binning:
-    input:
-        sh = "Assemble/{sample}.sh",
-        log= "Assemble/{sample}.log"
-    output: "BIN0/{sample}.beads.fasta"
+rule s6_vsearch_EE_each_bead:
+    input: "Assemble/{sample}.sh"
+    output: "VSEARCH/{sample}.sh"
     params:
-        threads = thread4SPAdes
+        threads = thread4SPAdes,
+        REF = config["REF_ITS"]
     shell:
-        "for i in `cut -d ' ' -f5 {input.sh}`; do "
-        "cat $i/scaffolds.fasta;done > {output}"
+        "awk '{{split($5,tag,\"/\");print \"sh src/template.vsearch.sh {params.threads} "
+        "{params.REF} \"tag[2],tag[4]\" EEITS\"}}' {input} > {output} "
