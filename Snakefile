@@ -74,13 +74,14 @@ rule s3_saveBeadR1:
     params:
         dir = "beadPool/{sample}",
         cut = config["beadSelect"],
-        log = "beadPool/{sample}.info"
+        log = "beadPool/{sample}.s.info"
     threads: thread4pigz
     output: "beadPool/{sample}.1.info"
     benchmark:
         "benchmarks/{sample}.saveBeads1.benchmark.txt"
     shell:
         "perl src/beadsWrite2.pl --r1 {input.fq} -L {input.freq} -c {params.cut} -p {threads} -s 1 -f fafq -o {params.dir} > {output}"
+        "sort -nrk2,2 {output} > {params.log}"
 
 rule s3_saveBeadR2:
     input:
@@ -103,9 +104,9 @@ rule s4_makeMashR1:
         dir = "beadPool/{sample}/",
         threshold = config["distCutoff"]
     output:
-        msh = "beadPool/{sample}.1.msh",
-        dist = "beadPool/{sample}.1.dist",
-        filter = "beadPool/{sample}.1.filter.dist"
+        msh = "dist/{sample}.1.msh",
+        dist = "dist/{sample}.1.dist",
+        filter = "dist/{sample}.1.filter.dist"
     benchmark:
         "benchmarks/{sample}.1.mash.benchmark.txt"
     shell:
@@ -120,9 +121,9 @@ rule s4_makeMashDistR2:
         dir = "beadPool/{sample}/",
         threshold = config["distCutoff"]
     output:
-        msh = "beadPool/{sample}.2.msh",
-        dist = "beadPool/{sample}.2.dist",
-        filter = "beadPool/{sample}.2.filter.dist"
+        msh = "dist/{sample}.2.msh",
+        dist = "dist/{sample}.2.dist",
+        filter = "dist/{sample}.2.filter.dist"
     benchmark:
         "benchmarks/{sample}.2.mash.benchmark.txt"
     shell:
@@ -133,11 +134,11 @@ rule s4_makeMashDistR2:
 
 rule s4_makeMashDistRB:
     input:
-        R1 = "beadPool/{sample}.1.msh",
-        R2 = "beadPool/{sample}.2.msh"
+        R1 = "dist/{sample}.1.msh",
+        R2 = "dist/{sample}.2.msh"
     output:
-        dist = "beadPool/{sample}.B.dist",
-        filter = "beadPool/{sample}.B.filter.dist"
+        dist = "dist/{sample}.B.dist",
+        filter = "dist/{sample}.B.filter.dist"
     params:
         threshold = config["distCutoff"]
     shell:
