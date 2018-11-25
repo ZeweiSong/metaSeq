@@ -85,12 +85,13 @@ sub specifcBarcode{
           close O1;
           close O2;
         }
-        if($fmt eq "fq"){
-          open O1,"|pigz -p $proc > $out/$bc[0]/$bc[1].1.fq.gz" or die $!;
-          open O2,"|pigz -p $proc > $out/$bc[0]/$bc[1].2.fq.gz" or die $!;
-        }else{
-          open O1,"|pigz -p $proc > $out/$bc[0]/$bc[1].1.fa.gz" or die $!;
-          open O2,"|pigz -p $proc > $out/$bc[0]/$bc[1].2.fa.gz" or die $!;
+        if($fmt =~ /fq/){
+          open Q1,"|pigz -p $proc > $out/$bc[0]/$bc[1].1.fq.gz" or die $!;
+          open Q2,"|pigz -p $proc > $out/$bc[0]/$bc[1].2.fq.gz" or die $!;
+        }
+        if($fmt =~ /fa/){
+          open A1,"> $out/$bc[0]/$bc[1].1.fa" or die $!;
+          open A2,"> $out/$bc[0]/$bc[1].2.fa" or die $!;
         }
         $FHcount ++ ;
         @timeS =  &getTime(time,$startTimeStamp);
@@ -98,14 +99,17 @@ sub specifcBarcode{
           $timeS[3]*24 + $timeS[2],$timeS[1],$timeS[0],$FHcount,$bc[1]);
         @p = @bc;
       }
+      my $seqR1=<R1>;
+      my $restR1=<R1>.<R1>;
+      my $seqR2=<R2>.<R2>;
+      my $restR2=<R2>.<R2>;
       if($fmt eq "fq"){
-        print O1 $id.<R1>.<R1>.<R1>;
-        print O2 <R2>.<R2>.<R2>.<R2>;
-      }else{
-        print O1 $id.<R1>;
-        print O2 <R2>.<R2>;
-        <R1>;<R1>;
-        <R2>;<R2>;
+        print Q1 $id.$seqR1.$restR1;
+        print Q2 $seqR2.$restR2;
+      }
+      if($fmt eq "fa"){
+        print A1 $id.$seqR1;
+        print A2 $seqR2;
       }
       $STAT{'barcodes'} ++;
     }else{
@@ -116,8 +120,14 @@ sub specifcBarcode{
   }
   close R1;
   close R2;
-  close O1;
-  close O2;
+  if($fmt eq "fq"){
+    close Q1;
+    close Q2;
+  }
+  if($fmt eq "fa"){
+    close A1;
+    close A2;
+  }
   @timeS =  &getTime(time,$startTimeStamp);
   print STDERR sprintf("[%02d:%02d:%02d] %d beads with %d reads in total written. Done.\n",
     $timeS[3]*24 + $timeS[2],$timeS[1],$timeS[0],$FHcount,$STAT{'barcodes'});
