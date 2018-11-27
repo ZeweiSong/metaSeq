@@ -182,3 +182,12 @@ rule s6_vsearch_EE_each_bead:
     shell:
         "awk '{{split($5,tag,\"/\");print \"sh src/template.vsearch.sh {params.threads} "
         "{params.REF} \"tag[2],tag[4]\" EEITS\"}}' {input} > {output} "
+
+rule s7_vsearch_annotation:
+    input: "VSEARCH/{sample}.sh"
+    output: "VSEARCH/{sample}.anno.sh"
+    params:
+        pos = config["REF_ITS"]
+    shell:
+        "awk '{{split($5,tag,\"/\");print \"sh src/template.vsearch.sh {params.threads} "
+        "{params.REF} \"tag[2],tag[4]\" EEITS\"}}' {input} > {output} "
