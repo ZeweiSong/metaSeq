@@ -23,6 +23,7 @@ queryDict = {}
 with open(inputAln[0], 'r') as f:
     for line in f:
         line = line.strip('\n').split('\t')
+        line[0] = line[0].split('/')[0]
         try:
             queryDict[line[0]]['r1'].append(line[1])
         except KeyError:
@@ -33,6 +34,7 @@ with open(inputAln[0], 'r') as f:
 with open(inputAln[1], 'r') as f:
     for line in f:
         line = line.strip('\n').split('\t')
+        line[0] = line[0].split('/')[0]
         try:
             queryDict[line[0]]['r2'].append(line[1])
         except KeyError:
@@ -42,9 +44,12 @@ with open(inputAln[1], 'r') as f:
                 queryDict[line[0]] = {}
 aln = {}
 for query, alignments in queryDict.items():
-    overlap = tuple(set(alignments[0]).intersection(set(alignments[1])))
-    if len(overlap) > 0:
-        aln[query] = overlap
+    try:
+        overlap = tuple(set(alignments['r1']).intersection(set(alignments['r2'])))
+        if len(overlap) > 0:
+            aln[query] = overlap
+    except KeyError:
+        pass
 
 with open(outputAln, 'w') as f:
     for query, alignments in aln.items():

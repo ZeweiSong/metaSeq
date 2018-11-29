@@ -58,7 +58,7 @@ def initGraph(alnNormalized):
             G.add_node(query, attribute = index)
             G.add_edge(ref, query)
     G.graph['ref'] = refDict
-    G.graph['profile'] = refDict.copy()
+    G.graph['profile'] = {}
     return G
 
 # Add abundance value to the graph
@@ -72,6 +72,7 @@ def addAbundance(graph, n):
 
 #%%
 # Pick the winner from the graph (with abundance tuple)
+# TODO after the sorting, remove the zero abundance tail to speed up
 def pickWinner(graph):
     # Iterate over all reference nodes:
     abundanceDict = {}
@@ -108,10 +109,13 @@ def winnerTakeAll(aln):
     G = addAbundance(G, targetNumber)
     while not nx.is_empty(G):
         winner = pickWinner(G)
-        G.graph['profile'][winner[0]] = winner[1]
-        #print(G.graph['profile'])
-        G = removeWinner(G, winner[0])
-        G = addAbundance(G, targetNumber)
+        if winner[1] <= 0: # Stop if the winner is ZERO (or maybe 1?)
+            break
+        else:
+            G.graph['profile'][winner[0]] = winner[1]
+            print(winner)
+            G = removeWinner(G, winner[0])
+            G = addAbundance(G, targetNumber)
     profile = {}
     for ref in G.graph['profile'].keys():
         if G.graph['profile'][ref]: # This ref is not empty (broke)
