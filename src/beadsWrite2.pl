@@ -1,30 +1,43 @@
 #!/usr/bin/env perl
+# Writing sequence into file per bead.
+#-----------------------------------------------------------------------------
+# Author : Chao Fang
+# Email  : fangchao@genomics.cn
+# Create : Nov 2018
+#-----------------------------------------------------------------------------
+# see usage below
 use strict;
 use Getopt::Long;
 
 sub usage {
-    print <<USAGE;
+  my $msg = shift;
+print <<USAGE;
+$msg
 usage: perl beadsWrite.pl  --r1 <single fastq> -L <list> -c <cutoff> -s <sufix> -o <output>
        perl beadsWrite.pl  --r1 <read 1 fastq> --r2 <read 2 fastq> -b <barcode> -f <format> -o <output>
 
 default options:
-    --r1        single fq file
+    --r1      single fq file
     -L        barcode frequency file list
     -c        [int] cutoff
     -s        [1|2] sufix
-    -p        process
+    -f        format [fq|fa|fq+fa|fq.gz]
+    -t        threads to use for compressing
+    -k        skip if file exists
+    -e        exchange barcode and seq ID (put barcode in front of seqID)
+    -p        prefix. When specificed, output all seq into a single file with this prefix.
     -o        output dir
 extract specific barcodes:
     --r2        read2 fq file
     -b        barcode id
-    -f        format [fq|fa|fq+fa]
+
 
 USAGE
   exit;
 };
 
-&usage unless @ARGV >= 10;
-my ($in1,$in2,$list,$cut,$sfx,$bcode,$proc,$fmt,$out);
+&usage && exit unless @ARGV >= 10;
+my ($in1,$in2,$list,$cut,$sfx,$bcode,$proc,$skip,$exchange,$pfx,$fmt,$out);
 GetOptions(
     "r1:s"        => \$in1,
     "r2:s"        => \$in2,
@@ -32,14 +45,17 @@ GetOptions(
     "c|cutoff:s"  => \$cut,
     "s|sufix:s"   => \$sfx,
     "b|barcode:s" => \$bcode,
-    "p|proc:s"    => \$proc,
+    "t|thread=i"  => \$proc,
+    "k|skip"      => \$skip,
+    "e|exchange"  => \$exchange,
+    "p|pfx=s"    => \$pfx,
     "F|format:s"  => \$fmt,
     "o|outdir:s"  => \$out,
 );
 $fmt ||= "fq";
 $proc||= 1;
 
-my (%FILES,%LIST,%STAT);
+my (%FILES,%LIST,%REST,%STAT);
 my $FHcount=0;
 my $startTimeStamp = time();
 my @timeS;
@@ -147,6 +163,7 @@ sub writeAll {
   		$LIST{$str[0]} = $str[1];
   		$fns++;
   	}else{
+      $REST{$str[0]} = $str[1];
   		last;
   	}
   }
@@ -154,19 +171,17 @@ sub writeAll {
   $f10 = ($f10==0)?1:$f10;
   close LST;
   open IN, "pigz -p $proc -dc $in1|" or die $!;
-  if($fmt =~ /fq/){
-    open Q0, "|pigz -p $proc > $out/0000.$sfx.fq.gz" or die $!;
-    open QX, "|pigz -p $proc > $out/xxxx.$sfx.fq.gz" or die $!;
-  }
-  if($fmt =~ /fa/){
-    open A0, "> $out/0000.$sfx.fa" or die $!;
-    open AX, "> $out/xxxx.$sfx.fa" or die $!;
+
+  if(defined $pfx){
+    &filesOpen(0,"$out/$pfx");
+  }else{
+    &filesOpen(3);
   }
 
   my(@p);
   while(<IN>){
     # Read one sequence info
-    my $id = $_;
+    my $id = &exchange($_);
     my $seq = <IN>;
     my $qua = <IN>.<IN>;
     # Detect barcode
@@ -174,13 +189,14 @@ sub writeAll {
 
     if (defined $LIST{$bc[1]}){
       if($bc[1] ne $p[1]){
-        if($FHcount > 0 ){
-          if($fmt =~ /fq/){close QT};
-          if($fmt =~ /fa/){close AT};
+        unless(defined $pfx){
+          if($FHcount > 0 ){
+            if($fmt =~ /fq/){close QT};
+            if($fmt =~ /fa/){close AT};
+          }
+          `mkdir -p $out/$bc[0]`;
+          &filesOpen(1,"$bc[0]/$bc[1]");
         }
-        `mkdir -p $out/$bc[0]`;
-        if($fmt =~ /fq/){open QT,"|pigz -p $proc > $out/$bc[0]/$bc[1].$sfx.fq.gz" or die $!;}
-        if($fmt =~ /fa/){open AT,"> $out/$bc[0]/$bc[1].$sfx.fa" or die $!;}
         $FHcount ++ ;
         if($FHcount % $f10 == 0){
           @timeS =  &getTime(time,$startTimeStamp);
@@ -189,15 +205,18 @@ sub writeAll {
         }
         @p = @bc;
       }
-      if($fmt =~ /fq/){print QT $id.$seq.$qua};
-      if($fmt =~ /fq/){print AT $id.$seq};
+      if($fmt =~ /fq/){print QT $id.$seq.$qua if fileno(QT)};
+      if($fmt =~ /fa/){print AT $id.$seq if fileno(AT)};
       $STAT{$bc[1]} ++;
+    }elsif (defined $REST{$bc[1]}){
+      if($fmt =~ /fq/){print QX $id.$seq.$qua if fileno(QX);}
+      if($fmt =~ /fa/){print AX $id.$seq if fileno(AX);}
     }elsif($bc[1] =~ /0000/){
-      if($fmt =~ /fq/){print Q0 $id.$seq.$qua;}
-      if($fmt =~ /fa/){print A0 $id.$seq;}
+      if($fmt =~ /fq/){print Q0 $id.$seq.$qua if fileno(Q0);}
+      if($fmt =~ /fa/){print A0 $id.$seq if fileno(A0);}
     }else{
-      if($fmt =~ /fq/){print QX $id.$seq.$qua;}
-      if($fmt =~ /fa/){print AX $id.$seq;}
+      if($fmt =~ /fq/){print Q1 $id.$seq.$qua if fileno(Q1);}
+      if($fmt =~ /fa/){print A1 $id.$seq if fileno(A1);}
     }
   }
 
@@ -205,11 +224,13 @@ sub writeAll {
   if($fmt =~ /fq/){
     close QT;
     close Q0;
+    close Q1;
     close QX;
   }
   if($fmt =~ /fa/){
     close AT;
     close A0;
+    close A1;
     close AX;
   }
 
@@ -245,8 +266,68 @@ sub getTime {
 
 sub getIdBcode {
   my $id = shift;
-  $id =~ /\/(\d+)_(\d+)_(\d+)\//;
+  $id =~ /[@\/](\d+)_(\d+)_(\d+)\//;
   my @bcode= ($1,$2,$3);
   my @bc = ($bcode[0],"$bcode[0]_$bcode[1]_$bcode[2]");
   return(@bc);
+}
+
+sub exchange {
+  my $id = shift;
+  chomp($id);
+  unless($exchange){
+    return($id)
+  }else{
+    $id =~ s/^([@>])(\S+)\/(\d+_\d+_\d+)\//\1\3\/\2/;
+    my $eID = "$1$3/$2/$4\n";
+    return($eID);
+  }
+}
+
+sub filesOpen{
+  my $num = shift;
+  if($num == 3){
+    if($fmt =~ /fq.gz/){
+      unless($skip && -e "$out/0000.$sfx.fq.gz"){ open Q0, "|pigz -p $proc > $out/0000.$sfx.fq.gz" or die $! };
+      unless($skip && -e "$out/once.$sfx.fq.gz"){ open Q1, "|pigz -p $proc > $out/once.$sfx.fq.gz" or die $! };
+      unless($skip && -e "$out/xxxx.$sfx.fq.gz"){ open QX, "|pigz -p $proc > $out/xxxx.$sfx.fq.gz" or die $! };
+    }elsif($fmt =~ /fq/){
+      unless($skip && -e "$out/0000.$sfx.fq"){ open Q0, "> $out/0000.$sfx.fq" or die $! };
+      unless($skip && -e "$out/once.$sfx.fq"){ open Q1, "> $out/once.$sfx.fq" or die $! };
+      unless($skip && -e "$out/xxxx.$sfx.fq"){ open QX, "> $out/xxxx.$sfx.fq" or die $! };
+    }
+    if($fmt =~ /fa.gz/){
+      unless($skip && -e "$out/0000.$sfx.fa.gz"){ open A0, "|pigz -p $proc > $out/0000.$sfx.fa.gz" or die $! };
+      unless($skip && -e "$out/once.$sfx.fa.gz"){ open A1, "|pigz -p $proc > $out/once.$sfx.fa.gz" or die $! };
+      unless($skip && -e "$out/xxxx.$sfx.fa.gz"){ open AX, "|pigz -p $proc > $out/xxxx.$sfx.fa.gz" or die $! };
+    }elsif($fmt =~ /fa/){
+      unless($skip && -e "$out/0000.$sfx.fa"){ open A0, "> $out/0000.$sfx.fa" or die $! };
+      unless($skip && -e "$out/once.$sfx.fa"){ open A1, "> $out/once.$sfx.fa" or die $! };
+      unless($skip && -e "$out/xxxx.$sfx.fa"){ open AX, "> $out/xxxx.$sfx.fa" or die $! };
+    }
+  }elsif($num == 1){
+    my $subDir = shift;
+    if($fmt =~ /fq.gz/){
+      unless($skip && -e "$out/$subDir.$sfx.fq.gz"){ open QT,"|pigz -p $proc > $out/$subDir.$sfx.fq.gz" or die $! };
+    }elsif($fmt =~ /fq/){
+      unless($skip && -e "$out/$subDir.$sfx.fq"){ open QT,"> $out/$subDir.$sfx.fq" or die $! };
+    }
+    if($fmt =~ /fa.gz/){
+      unless($skip && -e "$out/$subDir.$sfx.fa.gz"){ open AT,"|pigz -p $proc > $out/$subDir.$sfx.fa.gz" or die $! };
+    }elsif($fmt =~ /fa/){
+      unless($skip && -e "$out/$subDir.$sfx.fa"){ open AT,"> $out/$subDir.$sfx.fa" or die $! };
+    }
+  }elsif($num==0){
+    my $sPFX = shift;
+    if($fmt =~ /fq.gz/){
+      unless($skip && -e "$sPFX.fq.gz"){ open QT,"|pigz -p $proc > $sPFX.fq.gz" or die $! };
+    }elsif($fmt =~ /fq/){
+      unless($skip && -e "$sPFX.fq"){ open QT,"> $sPFX.fq" or die $! };
+    }
+    if($fmt =~ /fa.gz/){
+      unless($skip && -e "$sPFX.fa.gz"){ open AT,"|pigz -p $proc > $sPFX.fa.gz" or die $! };
+    }elsif($fmt =~ /fa/){
+      unless($skip && -e "$sPFX.fa"){ open AT,"> $sPFX.fa" or die $! };
+    }
+  }
 }
