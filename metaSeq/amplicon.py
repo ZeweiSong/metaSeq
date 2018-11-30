@@ -78,9 +78,9 @@ def pickWinner(graph):
     abundanceDict = {}
     for ref in graph.graph['ref'].keys():
         abundanceDict[ref] = effectiveCount(graph.nodes[ref]['abundance'])
-    candidates = [i for i in abundanceDict.items()]
+    candidates = [i for i in abundanceDict.items() if i[1] >= 1] # Keep references with EF >= 1
     candidates.sort(key=lambda x:x[1], reverse = True)
-    return candidates[0]
+    return candidates
 
 #
 # Calculate the Effective Count value for current count string [m, n, ...]
