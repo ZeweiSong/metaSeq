@@ -95,26 +95,37 @@ def effectiveCount(countString):
 #%%
 # Remove winner from the graph, remove all its neighbors
 # Winner is the name of the reference
-def removeWinner(graph, winner):
-    removeQueries = list(graph.neighbors(winner))
+# TODO Also need to remove all references with EF < 1
+def removeWinner(graph, candidates):
+    # STEP1. Remove the winner
+    removeQueries = list(graph.neighbors(candidates[0][0]))
     graph.remove_nodes_from(removeQueries)
-    graph.remove_node(winner)
-    del graph.graph['ref'][winner]
+    graph.remove_node(candidates[0][0])
+    del graph.graph['ref'][candidates[0][0]]
+
+    # STEP2. Remove the losers (references not in cadidates list)
+    losers = [i for i in graph.graph['ref'].items() if i[0] not in candidates]
+    for item in losers:
+        removeQueries = list(graph.neighbors(item))
+        graph.remove_nodes_from(removeQueries)
+        graph.remove_node(item)
+        del graph.graph['ref'][item]
     return graph
 
 # Return the winner take all profile
+# TODO need to change according to pickWinner()
 def winnerTakeAll(aln):
     G = initGraph(aln)
     targetNumber = len(aln)
     G = addAbundance(G, targetNumber)
     while not nx.is_empty(G):
-        winner = pickWinner(G)
-        if winner[1] <= 0: # Stop if the winner is ZERO (or maybe 1?)
+        candidates = pickWinner(G)
+        if candidates[0][1] <= 0: # Stop if the winner is ZERO (or maybe 1?)
             break
         else:
-            G.graph['profile'][winner[0]] = winner[1]
-            print(winner)
-            G = removeWinner(G, winner[0])
+            G.graph['profile'][candidates[0][0]] = candidates[0][1]
+            #print(winner)
+            G = removeWinner(G, candidates)
             G = addAbundance(G, targetNumber)
     profile = {}
     for ref in G.graph['profile'].keys():
