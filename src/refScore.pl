@@ -1,10 +1,40 @@
 #!/usr/bin/env perl
+# Stat identity of annotation in blast6 format.
+#-----------------------------------------------------------------------------
+# Author : Chao Fang
+# Email  : fangchao@genomics.cn
+# Create : Nov 2018
+#-----------------------------------------------------------------------------
+# see usage below
 use strict;
+use Getopt::Long;
 
-my ($ref,$anno,$out) = @ARGV;
+sub usage {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  $0 -r reference -a blast6 -o output
+    -r  reference
+    -a  alignment in blast6 format
+    -o  output filename
+    -v  verbose mode
+    -h  show help info
+USAGE
+}
+
+my ($ref,$anno,$out,$verbose,$help);
+GetOptions(
+  "r=s" => \$ref,
+  "a=s" => \$anno,
+  "o=s" => \$out,
+  "v" => \$verbose,
+  "h|help|?" => \$help,
+);
+&usage && exit if $help;
 
 open REF,"<$ref" or die "Can not open $ref. $!\n";
-open ANN,"<$anno" or die "Can not open $anno. $!\n";
+open ANN,($anno)?"<$anno":"-" or die "Can not open $anno. $!\n";
 open OUT,">$out" or die "Can not open $out. $!\n";
 
 my (%ANN);
