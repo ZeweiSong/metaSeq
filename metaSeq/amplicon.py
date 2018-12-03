@@ -124,10 +124,14 @@ def competition(graph):
 
 #%%
 # Define the winner take all function
-def winnerTakeAll(aln):
+def winnerTakeAll(aln, progress=False):
     G = initGraph(aln)
+    if progress:
+        print('Initial graph contains {0} references,'.format(len(G.graph['ref'])))
     while not nx.is_empty(G):
         G = competition(G)
+        if progress:
+            print('\t{0} references left, {1} are in the profile,'.format(len(G.graph['ref']), len(G.graph['profile'])))
     return G.graph['profile']
 
 #%%
