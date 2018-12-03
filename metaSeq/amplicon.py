@@ -59,6 +59,8 @@ def initGraph(alnNormalized):
             G.add_edge(ref, query)
     G.graph['ref'] = refDict
     G.graph['profile'] = {}
+    G.graph['targetNumber'] = len(alnNormalized)
+    G = addAbundance(G, len(alnNormalized))
     return G
 
 # Add abundance value to the graph
@@ -69,18 +71,6 @@ def addAbundance(graph, n):
             queryCount[graph.nodes[query]['attribute']] += 1
         graph.nodes[ref]['abundance'] = tuple(queryCount)
     return graph
-
-#%%
-# Pick the winner from the graph (with abundance tuple)
-# TODO after the sorting, remove the zero abundance tail to speed up
-def pickWinner(graph):
-    # Iterate over all reference nodes:
-    abundanceDict = {}
-    for ref in graph.graph['ref'].keys():
-        abundanceDict[ref] = effectiveCount(graph.nodes[ref]['abundance'])
-    candidates = [i for i in abundanceDict.items() if i[1] >= 1] # Keep references with EF >= 1
-    candidates.sort(key=lambda x:x[1], reverse = True)
-    return candidates
 
 #
 # Calculate the Effective Count value for current count string [m, n, ...]
@@ -93,6 +83,67 @@ def effectiveCount(countString):
     return ec
 
 #%%
+# Return the new Graph after market competition
+def competition(graph):
+    references = graph.graph['ref'] # Dictionary for all available references
+
+    # Get all references with ES >= 1
+    refSurvivors = {}
+    losers = []
+    for ref in references.keys():
+        effScore = effectiveCount(graph.nodes[ref]['abundance'])
+        if effScore >= 1:
+            refSurvivors[ref] = effScore
+        else:
+            losers.append(ref)
+
+    # Remove all losers from the graph
+    for ref in losers:
+        queries = graph.neighbors(ref)
+        graph.remove_nodes_from(list(queries))
+        graph.remove_node(ref)
+        del graph.graph['ref'][ref]
+
+    # Get the winner (ref with largest EF)
+    winner = sorted([i for i in refSurvivors.items()], key=lambda x:x[1], reverse=True)[0]
+
+    # Remove winner from the graph
+    ref = winner[0]
+    queries = graph.neighbors(ref)
+    graph.remove_nodes_from(list(queries))
+    graph.remove_node(ref)
+    del graph.graph['ref'][ref]
+
+    # Update the profile with the latest winner
+    graph.graph['profile'][winner[0]] = winner[1]
+
+    # Update the abundance string for the rest of references
+    graph = addAbundance(graph, graph.graph['targetNumber'])
+
+    return graph
+
+#%%
+# Define the winner take all function
+def winnerTakeAll(aln):
+    G = initGraph(aln)
+    while not nx.is_empty(G):
+        G = competition(G)
+    return G.graph['profile']
+
+#%%
+'''
+# Pick the winner from the graph (with abundance tuple)
+# TODO after the sorting, remove the zero abundance tail to speed up
+def pickWinner(graph):
+    # Iterate over all reference nodes:
+    abundanceDict = {}
+    for ref in graph.graph['ref'].keys():
+        abundanceDict[ref] = effectiveCount(graph.nodes[ref]['abundance'])
+    candidates = [i for i in abundanceDict.items() if i[1] >= 1] # Keep references with EF >= 1
+    candidates.sort(key=lambda x:x[1], reverse = True)
+    #print(candidates)
+    return candidates
+#%%
 # Remove winner from the graph, remove all its neighbors
 # Winner is the name of the reference
 # TODO Also need to remove all references with EF < 1
@@ -104,12 +155,13 @@ def removeWinner(graph, candidates):
     del graph.graph['ref'][candidates[0][0]]
 
     # STEP2. Remove the losers (references not in cadidates list)
-    losers = [i for i in graph.graph['ref'].items() if i[0] not in candidates]
+    losers = [i for i in graph.graph['ref'].items() if i[0] not in [j[0] for j in candidates]] #TODO need to fix this one
+    print(losers)
     for item in losers:
-        removeQueries = list(graph.neighbors(item))
+        removeQueries = list(graph.neighbors(item[0]))
         graph.remove_nodes_from(removeQueries)
-        graph.remove_node(item)
-        del graph.graph['ref'][item]
+        graph.remove_node(item[0])
+        del graph.graph['ref'][item[0]]
     return graph
 
 # Return the winner take all profile
@@ -124,7 +176,7 @@ def winnerTakeAll(aln):
             break
         else:
             G.graph['profile'][candidates[0][0]] = candidates[0][1]
-            #print(winner)
+            print(candidates[0])
             G = removeWinner(G, candidates)
             G = addAbundance(G, targetNumber)
     profile = {}
@@ -132,3 +184,4 @@ def winnerTakeAll(aln):
         if G.graph['profile'][ref]: # This ref is not empty (broke)
             profile[ref] = G.graph['profile'][ref]
     return profile
+'''
