@@ -14,8 +14,8 @@ import random
 import statistics
 
 # Put all alignment into lists
-# Read in multiple alignments (usually two) from the alignment files,
-# and save normalized based on the minimum depth
+# Read in multiple alignments (usually two, but more than two is allowed) from the alignment files,
+# and save normalized data based on the minimum depth
 def initAlignment(alnString):
     aln = []
     for alnFile in alnString:
@@ -39,13 +39,12 @@ def initAlignment(alnString):
     return alnNormalized
 
 #%% Build the alignment graph
-    # Node: reference, forward reads, reverse reads
-    # Node
+    # Node types: 1.reference, 2.forward query, 3.reverse query
+    # Node atributes:
     #   attribute: 'r' (reference), 0 (forward), 1 (reverse)
-    #   abundance: a tuple for query abundance
-
-# Build the initial graph from the edge list
-# Add ref node list as attribute of the graph as a list
+    #   abundance: a tuple for query abundance (length = number of targets, usually = 2)
+# Build the initial graph from the edge list (which is the alignment result)
+# Add ref node list as attribute of the graph as a dictionary
 def initGraph(alnNormalized):
     G = nx.Graph()
     refDict = {}
