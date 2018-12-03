@@ -53,16 +53,17 @@ def initGraph(alnNormalized):
             ref = alignment[1]
             query = alignment[0]
             refDict[ref] = {}
-            G.add_node(ref, attribute = 'r')
-            G.add_node(query, attribute = index)
-            G.add_edge(ref, query)
-    G.graph['ref'] = refDict
-    G.graph['profile'] = {}
-    G.graph['targetNumber'] = len(alnNormalized)
-    G = addAbundance(G, len(alnNormalized))
+            G.add_node(ref, attribute = 'r') # Assign attribute to a reference node
+            G.add_node(query, attribute = index) # Assign attribute to a query node
+            G.add_edge(ref, query) # Add the edge
+    G.graph['ref'] = refDict # Graph attribute for the reference names
+    G.graph['profile'] = {} # Graph attribute for the minimum profile
+    G.graph['targetNumber'] = len(alnNormalized) # Graph attribute for the target number
+    G = addAbundance(G, len(alnNormalized)) # Calculate the abundance for all reference node
     return G
 
 # Add abundance value to the graph
+    # Abundance value need to be updated after removal of the winner
 def addAbundance(graph, n):
     for ref in graph.graph['ref'].keys():
         queryCount = [0] * n
@@ -71,8 +72,8 @@ def addAbundance(graph, n):
         graph.nodes[ref]['abundance'] = tuple(queryCount)
     return graph
 
-#
 # Calculate the Effective Count value for current count string [m, n, ...]
+    # This value can be considered as a weight for each reference.
 def effectiveCount(countString):
     ave = sum(countString) / len(countString)
     stdev = statistics.stdev(countString)
@@ -81,17 +82,15 @@ def effectiveCount(countString):
         ec = 0.0
     return ec
 
-#%%
 # Return the new Graph after market competition
 def competition(graph):
-    references = graph.graph['ref'] # Dictionary for all available references
-
     # Get all references with ES >= 1
-    refSurvivors = {}
-    losers = []
+    references = graph.graph['ref'] # Dictionary for all available references
+    refSurvivors = {} # Dictionary for saving survivors
+    losers = [] # List for losers (ref with abundance < 1)
     for ref in references.keys():
         effScore = effectiveCount(graph.nodes[ref]['abundance'])
-        if effScore >= 1:
+        if effScore >= 1.0:
             refSurvivors[ref] = effScore
         else:
             losers.append(ref)
@@ -133,7 +132,7 @@ def winnerTakeAll(aln, progress=False):
             print('\t{0} references left, {1} are in the profile,'.format(len(G.graph['ref']), len(G.graph['profile'])))
     return G.graph['profile']
 
-#%%
+#%% Old logic for winner take all, save just for case
 '''
 # Pick the winner from the graph (with abundance tuple)
 # TODO after the sorting, remove the zero abundance tail to speed up
