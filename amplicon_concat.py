@@ -35,5 +35,6 @@ else:
         biomProfile = biomProfile.concat([Table.from_json(json.load(f))])
 
     with open(biomFile, 'w') as f:
-        biomProfile.to_json('Generated_almighty_metaSeq', f)
+        biomProfile = biomProfile.sort()
+        biomProfile.to_json('Generated_by_almighty_metaSeq', f)
     print('Concatenated {0} profiles into {1}.'.format(len(biomList), biomFile))
