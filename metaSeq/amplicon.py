@@ -102,23 +102,27 @@ def competition(graph):
         graph.remove_node(ref)
         del graph.graph['ref'][ref]
 
-    # Get the winner (ref with largest EF)
-    winner = sorted([i for i in refSurvivors.items()], key=lambda x:x[1], reverse=True)[0]
+    # Check if the graph is empty
+    if nx.is_empty(graph):
+        return graph
+    else:
+        # Get the winner (ref with largest EF)
+        winner = sorted([i for i in refSurvivors.items()], key=lambda x:x[1], reverse=True)[0]
 
-    # Remove winner from the graph
-    ref = winner[0]
-    queries = graph.neighbors(ref)
-    graph.remove_nodes_from(list(queries))
-    graph.remove_node(ref)
-    del graph.graph['ref'][ref]
+        # Remove winner from the graph
+        ref = winner[0]
+        queries = graph.neighbors(ref)
+        graph.remove_nodes_from(list(queries))
+        graph.remove_node(ref)
+        del graph.graph['ref'][ref]
 
-    # Update the profile with the latest winner
-    graph.graph['profile'][winner[0]] = winner[1]
+        # Update the profile with the latest winner
+        graph.graph['profile'][winner[0]] = winner[1]
 
-    # Update the abundance string for the rest of references
-    graph = addAbundance(graph, graph.graph['targetNumber'])
+        # Update the abundance string for the rest of references
+        graph = addAbundance(graph, graph.graph['targetNumber'])
 
-    return graph
+        return graph
 
 #%%
 # Define the winner take all function
