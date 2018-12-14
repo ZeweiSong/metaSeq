@@ -78,9 +78,9 @@ echo stat occurrence
 awk 'FNR>1{a=0;for(i=2;i<=NF;i++){if($i>0){a=a+1}};print $1"\t"a/(NF-1)}' $pfx.merge.derep.nonchimeras.otutab.txt|\
 sort -nrk2,2 > $pfx.merge.derep.nonchimeras.otutab.rank
 
-perl -e 'while(<>){if($_=~/"id":"(OTU_\d+)"/){$r++;$HASH{$r}{OTU}=$1;$HASH{$r}{val}=0};
-if($_=~/\[(\d+),(\d+),(\d+)\]/){$HASH{$1}{val}++}};
-foreach my $i (keys %HASH){print "$HASH{$i}{OTU}\t$HASH{$i}{val}\t".$HASH{$i}{val}/$r."\n"}'\
+perl -e 'while(<>){if($_=~/"id":"(OTU_\d+)"/){$r++;$HASH{$r}{OTU}=$1;$HASH{$r}{val}=0;$HASH{$r}{abun}=0};
+if($_=~/\[(\d+),(\d+),(\d+)\]/){$HASH{$1}{val}++;$HASH{$1}{abun}+=$3}};
+foreach my $i (keys %HASH){print "$HASH{$i}{OTU}\t$HASH{$i}{val}\t".$HASH{$i}{val}/$r."\t".$HASH{$1}{abun}/$HASH{$i}{val}."\n"}'\
 < $pfx.merge.derep.nonchimeras.otutab.biom |\
 sort -nrk2,2 > $pfx.merge.derep.nonchimeras.otutab.rank
 
