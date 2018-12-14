@@ -126,33 +126,28 @@ rule s3_saveBeadR2:
     shell:
         "perl src/beadsWrite2.pl --r1 {input.fq} -L {input.freq} -c {params.cut} -p {threads} -s 2 -f fafq -o {params.dir} > {output}"
 
-rule s4_makeMashDistR1:
-    input: "beadPool/{sample}.1.info"
+rule s4_MashSketch:
+    input:
+            s1 = "clean/{sample}.fps.1.fq.gz",
+            s2 = "clean/{sample}.fps.2.fq.gz",
     params:
-        dir = "beadPool/{sample}/",
-        threshold = config["distCutoff"]
+        pfx = "dist/{sample}/all"
+    threads: config["threads"]
     output:
-        msh = "dist/{sample}/1.msh",
-        dist = "dist/{sample}/1.dist"
+        msh = "dist/{sample}/all.msh"
     benchmark:
         "benchmarks/{sample}.1.mash.benchmark.txt"
     shell:
-        "mash sketch {params.dir}*/*.1.fa -o {output.msh}\n"
-        "mash dist {output.msh} {output.msh} > {output.dist}\n"
+        "mash sketch -p {threads} -B -r -o {params.pfx} {input.s1} {input.s2}\n"
 
-rule s4_makeMashDistR2:
-    input: "beadPool/{sample}.2.info"
-    params:
-        dir = "beadPool/{sample}/",
-        threshold = config["distCutoff"]
-    output:
-        msh = "dist/{sample}/2.msh",
-        dist = "dist/{sample}/2.dist"
+rule s4_MashDist:
+    input: "dist/{sample}/all.msh"
+    output: "dist/{sample}/all.dist"
+    threads: config["threads"]
     benchmark:
         "benchmarks/{sample}.2.mash.benchmark.txt"
     shell:
-        "mash sketch {params.dir}*/*.2.fa -o {output.msh}\n"
-        "mash dist {output.msh} {output.msh} > {output.dist}\n"
+        "mash dist -p {threads} {input} {input} > {output}\n"
 
 rule s4_makeMashDistRB:
     input:
@@ -234,7 +229,17 @@ rule annoCommunity:
         "perl src/refScore.pl -r {input.ANN} -o {params.aDIR}/Comm_$i/ITSx.ITSb.tax.stat &\n"
         "done && wait && echo done > {output}"
 
-
+rule t_SPAdes_all_in_one:
+    input:
+        fq1 = "clean/{sample}.fps.1.fq.gz",
+        fq2 = "clean/{sample}.fps.2.fq.gz"
+    output: "Assemble/{sample}/all/scaffolds.fasta"
+    params:
+        oDir = "Assemble/{sample}/all",
+        threshold = config["beadSelect"],
+        threads = config["threads"]
+    shell:
+        "mkdir -p {params.oDir} && spades.py --meta -t {params.threads} -o {params.oDir} -1 {input.fq1} -2 {input.fq2}"
 
 rule s5_SPAdes_shell:
     input:
