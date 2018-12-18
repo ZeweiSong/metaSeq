@@ -75,12 +75,15 @@ def addAbundance(graph, n):
 # Calculate the Effective Count value for current count string [m, n, ...]
     # This value can be considered as a weight for each reference.
 def effectiveCount(countString):
-    ave = sum(countString) / len(countString)
-    stdev = statistics.stdev(countString)
-    ec = ave - stdev
-    if ec < 0:
-        ec = 0.0
-    return ec
+    if len(countString) > 1:
+        ave = sum(countString) / len(countString)
+        stdev = statistics.stdev(countString)
+        ec = ave - stdev
+        if ec < 0:
+            ec = 0.0
+        return ec
+    else:
+        return countString[0]
 
 # Return the new Graph after market competition
 def competition(graph):
