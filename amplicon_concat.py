@@ -26,7 +26,10 @@ biomList = []
 for f in args.input:
     biomList.append(f)
 if len(biomList) <= 1:
-    print('One or less profile found, are you sure?')
+    print('Found only one biom profile, will still give you a (brand) new one.')
+    biomProfile = Table.from_json(json.load(biomList[0]))
+    with open(biomFile, 'w') as f:
+        biomProfile.to_json('Generated_by_almighty_metaSeq', f)
 else:
     print('Found {0} biom profiles under.'.format(len(biomList)))
     biomProfile = Table.from_json(json.load(biomList[0]))
