@@ -108,7 +108,7 @@ def competition(graph, greedy=True):
         del graph.graph['ref'][ref]
 
     # Check if the graph is empty
-    if nx.is_empty(graph):
+    if graph.number_of_edges() == 0:
         return graph
     else:
         # Get the winner (ref with largest EF)
@@ -135,7 +135,7 @@ def winnerTakeAll(aln, progress=False):
     G = initGraph(aln)
     if progress:
         print('Initial graph contains {0} references,'.format(len(G.graph['ref'])))
-    while not nx.is_empty(G): # Need to change the condition to number of edge == 0
+    while G.number_of_edges() > 0: # Need to change the condition to number of edge == 0
         G = competition(G)
         if progress:
             print('\t{0} references left, {1} are in the profile,'.format(len(G.graph['ref']), len(G.graph['profile'])))
