@@ -17,6 +17,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-i', nargs='+', help='File names of the two alignment output.')
 parser.add_argument('-t', '--tab_out', help='File name of tab-delimited format output.')
 parser.add_argument('-b', '--biom_out', help='File name of biom format output.')
+method = parser.add_mutually_exclusive_group(required=True)
+method.add_argument('-g', '--greedy', action='store_true', default=True, help='Option to enable greedy method')
+method.add_argument('-l', '--less_greedy', action='store_true', default=False, help='Option to enable less greedy method')
 parser.add_argument('-sn', default='SampleX', help="Sample name if specified.")
 parser.add_argument('-suppress_progress', action='store_true', help='Indicators for suppressing progress.')
 args = parser.parse_args()
@@ -31,12 +34,16 @@ biomFile = args.biom_out
 progress = True
 if args.suppress_progress:
     progress = False
+greedy = args.greedy
+less_greedy = args.less_greedy
+if less_greedy:
+    greedy = False
 
 print('Found {0} targets from your input.'.format(targetNumber))
 print('Normalizing alignments ...')
 alnNormalized = amplicon.initAlignment(alnString)
 print('Only one winner survives each round ...')
-wtaProfile = amplicon.winnerTakeAll(alnNormalized, progress=progress)
+wtaProfile = amplicon.winnerTakeAll(alnNormalized, progress=progress, greedy=greedy)
 print('Winner take all profile found! {0} references survived.'.format(len(wtaProfile)))
 profile = list(wtaProfile.items())
 profile.sort(key=lambda x:x[1], reverse=True)
