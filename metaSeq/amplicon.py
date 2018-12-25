@@ -99,49 +99,62 @@ def competition(graph, greedy=True):
         else:
             losers.append(ref)
 
-    # Remove all losers from the graph
-    for ref in losers:
-        queries = graph.neighbors(ref)
-        if not greedy:
-            pool = [[]] * graph.graph['targetNumber']
-            for q in list(queries):
-                pool[graph.nodes[q]['attribute']].append(q) # allocate queries to corresponding target by their number
-            minLength = min([len(i) for i in pool]) # Get the min size of the target
-            querySurvived = []
-            for target in pool:
-                if len(target) > minLength:
-                    random.shuffle(target) # shuffle the query list
-                    target.sort(key=lambda x:graph.degree(x)[0]) # Sort query by their degree
-                    querySurvived += target[minLength:]
-            queries = [x for x in list(queries) if x not in querySurvived]
-        else:
-            pass
-        graph.remove_nodes_from(list(queries))
-        graph.remove_node(ref)
-        del graph.graph['ref'][ref]
+    # Get the winner (ref with largest EF)
+    winner = sorted([i for i in refSurvivors.items()], key=lambda x:x[1], reverse=True)[0]
+    winner = list(winner)
 
-    # Check if the graph is empty
-    if graph.number_of_edges() == 0:
-        return graph
-    else:
-        # Get the winner (ref with largest EF)
-        winner = sorted([i for i in refSurvivors.items()], key=lambda x:x[1], reverse=True)[0]
-
+    # Remove winner queires
+        # Has two methods: Greedy and Less greedy
+        # In the Less greedy mehtod, queries in winner are balanced, and extra queries are recycled back to the graph
+    if greedy: # The greedy method, by default
         # Remove winner from the graph
         ref = winner[0]
         queries = graph.neighbors(ref)
         graph.remove_nodes_from(list(queries)) # Remove all winner's query nodes
         graph.remove_node(ref) # Remove the winner node
         del graph.graph['ref'][ref]
-
-        # Update the profile with the latest winner
-        graph.graph['profile'][winner[0]] = winner[1]
-
+    else: # The less greedy method, queries are recycled the maximize the balance of winner
+        ref = winner[0]
+        # allocate queries to corresponding target by their number
+        queries = graph.neighbors(ref)
+        pool = [[]] * graph.graph['targetNumber']
+        for q in list(queries):
+            pool[graph.nodes[q]['attribute']].append(q)
+        minLength = min([len(i) for i in pool]) # Get the min size of the target
+        querySurvived = []
+        for target in pool:
+            if len(target) > minLength:
+                random.shuffle(target) # shuffle the query list
+                target.sort(key=lambda x:graph.degree(x)[0]) # Sort query by their degree
+                querySurvived += target[minLength:]
+        queries = [x for x in list(queries) if x not in querySurvived]
+        graph.remove_nodes_from(list(queries)) # Remove all winner's query nodes
+        graph.remove_node(ref) # Remove the winner node
+        del graph.graph['ref'][ref]
+        winner[1] = minLength
         # Update the abundance string for the rest of references
         graph = addAbundance(graph, graph.graph['targetNumber'])
 
-        return graph
+    # Remove all losers from the graph
+    for ref in losers:
 
+        if greedy:
+            queries = graph.neighbors(ref)
+            graph.remove_nodes_from(list(queries))
+            graph.remove_node(ref)
+            del graph.graph['ref'][ref]
+        else: # Recheck the EC value of these losers, since some queries got recycled in the Less greedy method
+            if effectiveCount(graph.nodes[ref]['abundance']) < 1:
+                queries = graph.neighbors(ref)
+                graph.remove_nodes_from(list(queries))
+                graph.remove_node(ref)
+                del graph.graph['ref'][ref]
+            else:
+                pass
+
+    # Update the profile with the latest winner
+    graph.graph['profile'][winner[0]] = winner[1]
+    return graph
 #%%
 # Define the winner take all function
 def winnerTakeAll(aln, progress=False, greedy=False):
