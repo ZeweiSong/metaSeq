@@ -27,7 +27,11 @@ def initAlignment(alnString):
 
     # Find the minimum depth (number of alignments)
     alnDepth = [len(i) for i in aln]
+    alnDepth.sort()
     minDepth = min(alnDepth)
+
+    print('Loaded {0} alignments/targets, containing {1} - {2} hits, ave = {3}'\
+          .format(len(alnDepth), minDepth, alnDepth[-1], sum(alnDepth)/len(alnDepth)))
 
     # Randomly sample all alignments into the minimum depth
     alnNormalized = []
@@ -159,7 +163,7 @@ def competition(graph, greedy=True):
     return graph
 #%%
 # Define the winner take all function
-def winnerTakeAll(aln, progress=False, greedy=False):
+def winnerTakeAll(aln, progress=True, greedy=False):
     G = initGraph(aln)
     if progress:
         print('Initial graph contains {0} references,'.format(len(G.graph['ref'])))
