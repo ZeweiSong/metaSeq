@@ -86,7 +86,7 @@ def effectiveCount(countString):
         return countString[0]
 
 # Return the new Graph after market competition
-def competition(graph):
+def competition(graph, greedy=True):
     # Get all references with ES >= 1
     references = graph.graph['ref'] # Dictionary for all available references
     refSurvivors = {} # Dictionary for saving survivors
@@ -101,6 +101,8 @@ def competition(graph):
     # Remove all losers from the graph
     for ref in losers:
         queries = graph.neighbors(ref)
+        if not greedy:
+            queries = queries
         graph.remove_nodes_from(list(queries))
         graph.remove_node(ref)
         del graph.graph['ref'][ref]
@@ -115,8 +117,8 @@ def competition(graph):
         # Remove winner from the graph
         ref = winner[0]
         queries = graph.neighbors(ref)
-        graph.remove_nodes_from(list(queries))
-        graph.remove_node(ref)
+        graph.remove_nodes_from(list(queries)) # Remove all winner's query nodes
+        graph.remove_node(ref) # Remove the winner node
         del graph.graph['ref'][ref]
 
         # Update the profile with the latest winner
@@ -133,7 +135,7 @@ def winnerTakeAll(aln, progress=False):
     G = initGraph(aln)
     if progress:
         print('Initial graph contains {0} references,'.format(len(G.graph['ref'])))
-    while not nx.is_empty(G):
+    while not nx.is_empty(G): # Need to change the condition to number of edge == 0
         G = competition(G)
         if progress:
             print('\t{0} references left, {1} are in the profile,'.format(len(G.graph['ref']), len(G.graph['profile'])))
