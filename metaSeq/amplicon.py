@@ -110,8 +110,8 @@ def competition(graph, greedy=True):
             querySurvived = []
             for target in pool:
                 if len(target) > minLength:
-                    random.shuffle(target)
-                    target.sort(key=lambda x:graph.degree(x)[0])
+                    random.shuffle(target) # shuffle the query list
+                    target.sort(key=lambda x:graph.degree(x)[0]) # Sort query by their degree
                     querySurvived += target[minLength:]
             queries = [x for x in list(queries) if x not in querySurvived]
         else:
