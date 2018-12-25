@@ -103,6 +103,8 @@ def competition(graph, greedy=True):
         queries = graph.neighbors(ref)
         if not greedy:
             pool = [[]] * graph.graph['targetNumber']
+            for q in queries:
+                pool[graph.nodes[q]['attribute']].append(q) # allocate queries to corresponding target by their number
 
         graph.remove_nodes_from(list(queries))
         graph.remove_node(ref)
