@@ -39,10 +39,13 @@ less_greedy = args.less_greedy
 if less_greedy:
     greedy = False
 
-print('Found {0} targets from your input.'.format(targetNumber))
-print('Normalizing alignments ...')
+
+print('Ah the bloody capitalism!')
+mode = 'greedy'
+if not greedy:
+    mode = 'less greedy'
+print('Released are the {0} capitalists.\n'.format(mode))
 alnNormalized = amplicon.initAlignment(alnString)
-print('Only one winner survives each round ...')
 wtaProfile = amplicon.winnerTakeAll(alnNormalized, progress=True, greedy=greedy)
 print('Winner take all profile found! {0} references survived.'.format(len(wtaProfile)))
 profile = list(wtaProfile.items())

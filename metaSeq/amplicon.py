@@ -40,6 +40,7 @@ def initAlignment(alnString):
             alnNormalized.append(random.sample(item, minDepth))
         else:
             alnNormalized.append(item)
+    print('All targets normalized to the minimum depth: {0}.'.format(minDepth))
     return alnNormalized
 
 #%% Build the alignment graph
