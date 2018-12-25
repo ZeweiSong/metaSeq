@@ -102,7 +102,8 @@ def competition(graph, greedy=True):
     for ref in losers:
         queries = graph.neighbors(ref)
         if not greedy:
-            queries = queries
+            pool = [[]] * graph.graph['targetNumber']
+
         graph.remove_nodes_from(list(queries))
         graph.remove_node(ref)
         del graph.graph['ref'][ref]
