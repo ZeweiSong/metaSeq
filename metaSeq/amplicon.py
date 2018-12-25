@@ -105,6 +105,7 @@ def competition(graph, greedy=True):
             pool = [[]] * graph.graph['targetNumber']
             for q in queries:
                 pool[graph.nodes[q]['attribute']].append(q) # allocate queries to corresponding target by their number
+            minLength = min([len(i) for i in pool]) # Get the min size of the target
 
         graph.remove_nodes_from(list(queries))
         graph.remove_node(ref)
