@@ -87,6 +87,7 @@ def effectiveCount(countString):
 
 # Return the new Graph after market competition
 def competition(graph, greedy=True):
+    import random
     # Get all references with ES >= 1
     references = graph.graph['ref'] # Dictionary for all available references
     refSurvivors = {} # Dictionary for saving survivors
@@ -103,10 +104,18 @@ def competition(graph, greedy=True):
         queries = graph.neighbors(ref)
         if not greedy:
             pool = [[]] * graph.graph['targetNumber']
-            for q in queries:
+            for q in list(queries):
                 pool[graph.nodes[q]['attribute']].append(q) # allocate queries to corresponding target by their number
             minLength = min([len(i) for i in pool]) # Get the min size of the target
-
+            querySurvived = []
+            for target in pool:
+                if len(target) > minLength:
+                    random.shuffle(target)
+                    target.sort(key=lambda x:graph.degree(x)[0])
+                    querySurvived += target[minLength:]
+            queries = [x for x in list(queries) if x not in querySurvived]
+        else:
+            pass
         graph.remove_nodes_from(list(queries))
         graph.remove_node(ref)
         del graph.graph['ref'][ref]
