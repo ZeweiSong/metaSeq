@@ -45,6 +45,10 @@ mode = 'greedy'
 if not greedy:
     mode = 'less greedy'
 print('Released are the {0} capitalists.\n'.format(mode))
+if not greedy:
+    print("\tI'll spit out some profit to miximize mine.")
+else:
+    print('\tAll profit is mine!')
 alnNormalized = amplicon.initAlignment(alnString)
 wtaProfile = amplicon.winnerTakeAll(alnNormalized, progress=True, greedy=greedy)
 print('Winner take all profile found! {0} references survived.'.format(len(wtaProfile)))
