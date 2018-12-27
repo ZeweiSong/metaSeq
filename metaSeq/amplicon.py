@@ -202,12 +202,12 @@ def competition(graph, greedy=True, weight='ec'):
     return graph
 #%%
 # Define the winner take all function
-def winnerTakeAll(aln, progress=True, greedy=False):
+def winnerTakeAll(aln, progress=True, greedy=False, weight='ec'):
     G = initGraph(aln)
     if progress:
         print('Initial graph contains {0} references,'.format(len(G.graph['ref'])))
     while G.number_of_edges() > 0: # Need to change the condition to number of edge == 0
-        G = competition(G, greedy=greedy)
+        G = competition(G, greedy=greedy, weight=weight)
         if progress:
             print('\t{0} references left, {1} are in the profile,'.format(len(G.graph['ref']), len(G.graph['profile'])))
     return G.graph['profile']

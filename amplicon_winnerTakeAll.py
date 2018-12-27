@@ -19,9 +19,13 @@ parser.add_argument('-t', '--tab_out', help='File name of tab-delimited format o
 parser.add_argument('-b', '--biom_out', help='File name of biom format output.')
 method = parser.add_mutually_exclusive_group(required=True)
 method.add_argument('-g', '--greedy', action='store_true', default=True, help='Option to enable greedy method. [Default is greedy capitalists]')
-method.add_argument('-l', '--less_greedy', action='store_true', default=False, help='Option to enable less greedy method, equally greedy is nTargets = 1. [Enable me to disbale the greedy capitalists]')
+method.add_argument('-l', '--less_greedy', action='store_true', default=False, help='Option to enable less greedy method, equally greedy is nTargets = 1. [Enable me to disable the greedy capitalists]')
 parser.add_argument('-sn', default='SampleX', help="Sample name if specified.")
-#parser.add_argument('-suppress_progress', action='store_true', help='Indicators for suppressing progress.')
+score = parser.add_mutually_exclusive_group()
+#s = score.add_argument_group()
+score.add_argument('-ec', action='store_true', default=True, help='Specify to score using Effective Count [Default]')
+score.add_argument('-median', action='store_true', default=False, help='Specify to score using median of abundance.')
+score.add_argument('-ave', action='store_true', default=False, help='Specify to score using average of abundance.')
 args = parser.parse_args()
 
 alnString = []
@@ -31,14 +35,21 @@ targetNumber = len(alnString) # The number of targets used (normally this is 2, 
 sampleName = args.sn
 tabFile = args.tab_out
 biomFile = args.biom_out
-#progress = True
-#if args.suppress_progress:
-#    progress = False
+
 greedy = args.greedy
 less_greedy = args.less_greedy
 if less_greedy:
     greedy = False
 
+ec = args.ec
+median = args.median
+ave = args.ave
+if median:
+    weight = 'median'
+elif ave:
+    weight = 'average'
+elif ec:
+    weight = 'ec'
 
 print('Ah the bloody capitalism came to {0}!'.format(sampleName))
 mode = 'greedy'
@@ -50,7 +61,7 @@ if not greedy:
 else:
     print('\tAll profit is mine!\n')
 alnNormalized = amplicon.initAlignment(alnString)
-wtaProfile = amplicon.winnerTakeAll(alnNormalized, progress=True, greedy=greedy)
+wtaProfile = amplicon.winnerTakeAll(alnNormalized, progress=True, greedy=greedy, weight=weight)
 print('Winner take all profile found! {0} references survived.'.format(len(wtaProfile)))
 profile = list(wtaProfile.items())
 profile.sort(key=lambda x:x[1], reverse=True)
