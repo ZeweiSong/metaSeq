@@ -65,6 +65,7 @@ def initGraph(alnNormalized):
     G.graph['profile'] = {} # Graph attribute for the minimum profile
     G.graph['targetNumber'] = len(alnNormalized) # Graph attribute for the target number
     G = addAbundance(G, len(alnNormalized)) # Calculate the abundance for all reference node
+    #G['SRR3163732.100000']
     return G
 
 # Add abundance value to the graph
@@ -91,6 +92,10 @@ def effectiveCount(countString):
         return (countString[0], countString[0], 0)
 
 # Return the new Graph after market competition
+        # Consider Greedy and Less greedy methods
+        # In Greedy mode, winner will grab all queries
+        # In Less greedy mode, winner will balances the queries among targets to
+        # maximize its EC, the extra queries are returned to other references
 def competition(graph, greedy=True):
     import random
     # Get all references with ES >= 1
@@ -120,6 +125,9 @@ def competition(graph, greedy=True):
         graph.remove_nodes_from(list(queries)) # Remove all winner's query nodes
         graph.remove_node(ref) # Remove the winner node
         del graph.graph['ref'][ref]
+        # CRITICAL: need to update ref abundance string after each round
+        # Update the abundance string for the rest of references
+        graph = addAbundance(graph, graph.graph['targetNumber'])
     else: # The less greedy method, queries are recycled the maximize the balance of winner
         ref = winner[0]
         # allocate queries to corresponding target by their number
@@ -136,6 +144,7 @@ def competition(graph, greedy=True):
                 random.shuffle(target) # shuffle the query list
                 target.sort(key=lambda x:graph.degree(x)) # Sort query by their degree
                 querySurvived += target[minLength:]
+        print('\t{0} queries returned to the graph by the less greedy {1},'.format(len(querySurvived), winner[0]))
         queries = [x for x in list(queries) if x not in querySurvived]
         graph.remove_nodes_from(list(queries)) # Remove all winner's query nodes
         graph.remove_node(ref) # Remove the winner node
@@ -152,7 +161,7 @@ def competition(graph, greedy=True):
             graph.remove_node(ref)
             del graph.graph['ref'][ref]
         else: # Recheck the EC value of these losers, since some queries got recycled in the Less greedy method
-            if effectiveCount(graph.nodes[ref]['abundance']) < 1:
+            if effectiveCount(graph.nodes[ref]['abundance'])[0] < 1:
                 queries = graph.neighbors(ref)
                 graph.remove_nodes_from(list(queries))
                 graph.remove_node(ref)

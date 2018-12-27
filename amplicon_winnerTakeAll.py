@@ -19,7 +19,7 @@ parser.add_argument('-t', '--tab_out', help='File name of tab-delimited format o
 parser.add_argument('-b', '--biom_out', help='File name of biom format output.')
 method = parser.add_mutually_exclusive_group(required=True)
 method.add_argument('-g', '--greedy', action='store_true', default=True, help='Option to enable greedy method. [Default is greedy capitalists]')
-method.add_argument('-l', '--less_greedy', action='store_true', default=False, help='Option to enable less greedy method. [Enable me to disbale the greedy capitalists]')
+method.add_argument('-l', '--less_greedy', action='store_true', default=False, help='Option to enable less greedy method, equally greedy is nTargets = 1. [Enable me to disbale the greedy capitalists]')
 parser.add_argument('-sn', default='SampleX', help="Sample name if specified.")
 #parser.add_argument('-suppress_progress', action='store_true', help='Indicators for suppressing progress.')
 args = parser.parse_args()
@@ -40,15 +40,15 @@ if less_greedy:
     greedy = False
 
 
-print('Ah the bloody capitalism!')
+print('Ah the bloody capitalism came to {0}!'.format(sampleName))
 mode = 'greedy'
 if not greedy:
     mode = 'less greedy'
-print('Released are the {0} capitalists.\n'.format(mode))
+print('Released are the {0} capitalists.'.format(mode))
 if not greedy:
-    print("\tI'll spit out some profit to miximize mine.")
+    print("\tI'll spit out some profit to miximize mine.\n")
 else:
-    print('\tAll profit is mine!')
+    print('\tAll profit is mine!\n')
 alnNormalized = amplicon.initAlignment(alnString)
 wtaProfile = amplicon.winnerTakeAll(alnNormalized, progress=True, greedy=greedy)
 print('Winner take all profile found! {0} references survived.'.format(len(wtaProfile)))
