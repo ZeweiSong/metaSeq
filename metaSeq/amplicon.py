@@ -91,19 +91,45 @@ def effectiveCount(countString):
     else:
         return (countString[0], countString[0], 0)
 
+# Alternatives to effectiveCount
+# Median and Average maybe more suitable for technical replicates
+def mediam(countString):
+    if len(countString) > 1:
+        ave = sum(countString) / len(countString)
+        stdev = statistics.stdev(countString)
+        return (statistics.median(countString), ave, stdev)
+    else:
+        return (countString[0], countString[0], 0)
+
+def average(countString):
+    if len(countString) > 1:
+        ave = sum(countString) / len(countString)
+        stdev = statistics.stdev(countString)
+        return (ave, ave, stdev)
+    else:
+        return (countString[0], countString[0], 0)
+
+
 # Return the new Graph after market competition
         # Consider Greedy and Less greedy methods
         # In Greedy mode, winner will grab all queries
         # In Less greedy mode, winner will balances the queries among targets to
         # maximize its EC, the extra queries are returned to other references
-def competition(graph, greedy=True):
+def competition(graph, greedy=True, weight='ec'):
     import random
     # Get all references with ES >= 1
     references = graph.graph['ref'] # Dictionary for all available references
     refSurvivors = {} # Dictionary for saving survivors
     losers = [] # List for losers (ref with abundance < 1)
     for ref in references.keys():
-        effScore = effectiveCount(graph.nodes[ref]['abundance'])
+        if weight == 'ec': # Use Effective count
+            effScore = effectiveCount(graph.nodes[ref]['abundance']) # need to add two other methods (medium and average)
+        elif weight == 'median': # Use median number
+            effScore = mediam(graph.nodes[ref]['abundance'])
+        elif weight == 'average': # Use average number
+            effScore = average(graph.nodes[ref]['abundance'])
+        else:
+            print('This is an new species of capitalist!')
         if effScore[0] >= 1.0:
             refSurvivors[ref] = effScore
         else:
@@ -128,7 +154,9 @@ def competition(graph, greedy=True):
         # CRITICAL: need to update ref abundance string after each round
         # Update the abundance string for the rest of references
         graph = addAbundance(graph, graph.graph['targetNumber'])
-    else: # The less greedy method, queries are recycled the maximize the balance of winner
+    else: # The less greedy method, queries are recycled to maximize the balance of winner
+            # for nTarget = 2, keep the lower depth
+            # for nTarget > 2, need to think a different way (use medium depth, average depth ...)
         ref = winner[0]
         # allocate queries to corresponding target by their number
         queries = graph.neighbors(ref)
