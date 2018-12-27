@@ -139,7 +139,7 @@ def competition(graph, greedy=True, weight='ec'):
     winner = sorted([i for i in refSurvivors.items()], key=lambda x:x[1][0], reverse=True)[0]
     winner = list(winner)
     winner[1] = list(winner[1])
-    print('{0} is the winner, with ave = {1}, stdev = {2}.'.format(winner[0], winner[1][1], winner[1][2]))
+    print('{0} is the winner (weight on {3} = {4}), with ave = {1}, stdev = {2}.'.format(winner[0], winner[1][1], winner[1][2], weight, winner[1][0]))
 
     # Remove winner queires
         # Has two methods: Greedy and Less greedy
