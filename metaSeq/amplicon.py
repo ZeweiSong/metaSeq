@@ -12,6 +12,7 @@ import networkx as nx
 from metaSeq import io as seqIO
 import random
 import statistics
+from itertools import combinations
 
 # Put all alignment into lists
 # Read in multiple alignments (usually two, but more than two is allowed) from the alignment files,
@@ -68,6 +69,24 @@ def initGraph(alnNormalized):
     #G['SRR3163732.100000']
     return G
 
+# Build the reference graph, in which edge represents the number of overlapped queries
+    # Now only work for single target alignment graph
+def refGraph(alnGraph):
+    G = nx.Graph()
+    for node in alnGraph.nodes():
+        if alnGraph.nodes[node]['attribute'] != 'r': # The node is not a ref, thus a query
+            refs = list(alnGraph.neighbors(node))
+            if len(refs) > 1:
+                for pair in combinations(refs,2):
+                    try:
+                        G[pair[0]][pair[1]]['count'] += 1
+                    except KeyError:
+                        G.add_edge(pair[0],pair[1],count=1)
+        else:
+            G.add_node(node)
+    return G
+
+
 # Add abundance value to the graph
     # Abundance value need to be updated after removal of the winner
 def addAbundance(graph, n):
@@ -108,7 +127,6 @@ def average(countString):
         return (ave, ave, stdev)
     else:
         return (countString[0], countString[0], 0)
-
 
 # Return the new Graph after market competition
         # Consider Greedy and Less greedy methods
