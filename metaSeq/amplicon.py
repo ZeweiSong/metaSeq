@@ -86,7 +86,6 @@ def refGraph(alnGraph):
             G.add_node(node)
     return G
 
-
 # Add abundance value to the graph
     # Abundance value need to be updated after removal of the winner
 def addAbundance(graph, n):
