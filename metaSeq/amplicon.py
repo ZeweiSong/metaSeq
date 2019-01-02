@@ -75,8 +75,8 @@ def refGraph(alnGraph):
     G = nx.Graph()
     for node in alnGraph.nodes():
         if alnGraph.nodes[node]['attribute'] != 'r': # The node is not a ref, thus a query
-            refs = list(alnGraph.neighbors(node))
-            if len(refs) > 1:
+            refs = list(alnGraph.neighbors(node)) # Get all the ref nodes connect to this query
+            if len(refs) > 1: # if more than one alignements
                 for pair in combinations(refs,2):
                     try:
                         G[pair[0]][pair[1]]['count'] += 1
