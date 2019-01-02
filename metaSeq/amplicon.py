@@ -74,8 +74,18 @@ def initGraph(alnNormalized):
 # Build the reference graph, in which edge represents the number of overlapped queries
     # Now only work for single target alignment graph
 def refGraph(alnGraph):
-    G = nx.Graph()
-    G.add_nodes_from([refs for refs in alnGraph.graph['ref'].keys()]) # Add all ref nodes into the new graph
+    G = []
+    for i in range(alnGraph.graph['targetNumber']):
+        G.append(nx.Graph()) # Create a graph for each target
+        # Add all ref nodes into the new graph with attribute count
+        for ref in alnGraph.graph['ref'].keys():
+            G[i].add_node(ref, count=0)
+    for index, graph in enumerate(G):
+        queries = graph.graph[index].keys()
+        for query in queries:
+            refs = list(alnGraph.neighbors(query))
+            # Continue tomorrow!
+
     for node in alnGraph.nodes():
         if alnGraph.nodes[node]['attribute'] != 'r': # The node is not a ref, thus a query
             refs = list(alnGraph.neighbors(node)) # Get all the ref nodes connect to this query
