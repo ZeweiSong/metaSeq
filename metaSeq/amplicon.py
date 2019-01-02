@@ -53,26 +53,29 @@ def initAlignment(alnString):
 # Add ref node list as attribute of the graph as a dictionary
 def initGraph(alnNormalized):
     G = nx.Graph()
-    refDict = {}
+    G.graph['profile'] = {} # Graph attribute for the minimum profile
+    G.graph['targetNumber'] = len(alnNormalized) # Graph attribute for the target number
+    # Add placeholder for refs and all target queries
+    G.graph['ref'] = {}
+    for index, target in enumerate(alnNormalized):
+        G.graph[index] = {} # Group targets by their number
     for index, target in enumerate(alnNormalized):
         for alignment in target:
             ref = alignment[1]
             query = alignment[0]
-            refDict[ref] = {}
+            G.graph['ref'][ref] = {}
+            G.graph[index][query] = {}
             G.add_node(ref, attribute = 'r') # Assign attribute to a reference node
             G.add_node(query, attribute = index) # Assign attribute to a query node
             G.add_edge(ref, query) # Add the edge
-    G.graph['ref'] = refDict # Graph attribute for the reference names
-    G.graph['profile'] = {} # Graph attribute for the minimum profile
-    G.graph['targetNumber'] = len(alnNormalized) # Graph attribute for the target number
     G = addAbundance(G, len(alnNormalized)) # Calculate the abundance for all reference node
-    #G['SRR3163732.100000']
     return G
 
 # Build the reference graph, in which edge represents the number of overlapped queries
     # Now only work for single target alignment graph
 def refGraph(alnGraph):
     G = nx.Graph()
+    G.add_nodes_from([refs for refs in alnGraph.graph['ref'].keys()]) # Add all ref nodes into the new graph
     for node in alnGraph.nodes():
         if alnGraph.nodes[node]['attribute'] != 'r': # The node is not a ref, thus a query
             refs = list(alnGraph.neighbors(node)) # Get all the ref nodes connect to this query
@@ -94,8 +97,11 @@ def refGraph(alnGraph):
                         G.nodes[ref2]['count'] = 1
             else: # This is a unique reference
                 try:
+                    G.nodes[refs[0]]['count'] += 1
+                except KeyError:
+                    G.nodes[refs[0]]['count'] = 1
         else:
-            G.add_node(node)
+            pass
     return G
 
 # Add abundance value to the graph
