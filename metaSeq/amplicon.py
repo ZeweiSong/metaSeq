@@ -78,10 +78,22 @@ def refGraph(alnGraph):
             refs = list(alnGraph.neighbors(node)) # Get all the ref nodes connect to this query
             if len(refs) > 1: # if more than one alignements
                 for pair in combinations(refs,2):
+                    ref1 = pair[0]
+                    ref2 = pair[1]
                     try:
-                        G[pair[0]][pair[1]]['count'] += 1
+                        G[ref1][ref2]['overlap'] += 1
                     except KeyError:
-                        G.add_edge(pair[0],pair[1],count=1)
+                        G.add_edge(ref1,ref2,overlap=1)
+                    try:
+                        G.nodes[ref1]['count'] += 1
+                    except KeyError:
+                        G.nodes[ref1]['count'] = 1
+                    try:
+                        G.nodes[ref2]['count'] += 1
+                    except KeyError:
+                        G.nodes[ref2]['count'] = 1
+            else: # This is a unique reference
+                try:
         else:
             G.add_node(node)
     return G
