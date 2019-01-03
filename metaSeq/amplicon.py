@@ -81,37 +81,20 @@ def refGraph(alnGraph):
         for ref in alnGraph.graph['ref'].keys():
             G[i].add_node(ref, count=0)
     for index, graph in enumerate(G):
-        queries = graph.graph[index].keys()
+        queries = alnGraph.graph[index].keys()
+        # Record the alignments for each query
         for query in queries:
             refs = list(alnGraph.neighbors(query))
-            # Continue tomorrow!
-
-    for node in alnGraph.nodes():
-        if alnGraph.nodes[node]['attribute'] != 'r': # The node is not a ref, thus a query
-            refs = list(alnGraph.neighbors(node)) # Get all the ref nodes connect to this query
-            if len(refs) > 1: # if more than one alignements
-                for pair in combinations(refs,2):
-                    ref1 = pair[0]
-                    ref2 = pair[1]
-                    try:
-                        G[ref1][ref2]['overlap'] += 1
-                    except KeyError:
-                        G.add_edge(ref1,ref2,overlap=1)
-                    try:
-                        G.nodes[ref1]['count'] += 1
-                    except KeyError:
-                        G.nodes[ref1]['count'] = 1
-                    try:
-                        G.nodes[ref2]['count'] += 1
-                    except KeyError:
-                        G.nodes[ref2]['count'] = 1
-            else: # This is a unique reference
+            for ref in refs:
+                G[index].nodes[ref]['count'] += 1
+            for pair in combinations(refs,2):
+                ref1 = pair[0]
+                ref2 = pair[1]
                 try:
-                    G.nodes[refs[0]]['count'] += 1
+                    G[index][ref1][ref2]['overlap'] += 1
                 except KeyError:
-                    G.nodes[refs[0]]['count'] = 1
-        else:
-            pass
+                    G[index].add_edge(ref1, ref2)
+                    G[index][ref1][ref2]['overlap'] = 1
     return G
 
 # Add abundance value to the graph
