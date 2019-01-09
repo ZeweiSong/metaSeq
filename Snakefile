@@ -1,11 +1,13 @@
 configfile: "config.yaml"
 
 if config["threads"] > 4:
-    thead4fastp = 4
     thread4pigz = 4
-    thread4SPAdes = 4
+if config["threads"] > 6:
+    thread4fastp = 6
+if config["threads"] > 8:
+    thread4SPAdes = config["threads"]
 else:
-    thead4fastp = config["threads"]
+    thread4fastp = config["threads"]
     thread4pigz = config["threads"]
     thread4SPAdes  = config["threads"]
 
@@ -25,31 +27,31 @@ rule s1_stLFR:
     params:
         title = "{sample}"
     output:
-        r1 = "clean/{sample}.fp.1.fq.gz",
-        r2 = "clean/{sample}.fp.2.fq.gz",
-        json = "clean/{sample}.fp.json",
-        html = "clean/{sample}.fp.html",
-        freq = "clean/{sample}.code.freq.tsv"
+        r1 = "{sample}/clean/fastp.1.fq.gz",
+        r2 = "{sample}/clean/fastp.2.fq.gz",
+        json = "{sample}/clean/fastp.json",
+        html = "{sample}/clean/fastp.html"
+#        freq = "{sample}/clean/fastp.code.freq.tsv"
     log:
-        "clean/{sample}.fp.log"
+        "{sample}/clean/fastp.log"
     benchmark:
         "benchmarks/{sample}.fp.benchmark.txt"
-    threads: thead4fastp
+    threads: thread4fastp
     shell:
-        "fastp --stLFR_barcode_file {input.bfile} "
+        "fastp --stLFR_barcode_file {input.bfile} --stLFR_pos3 132 "
         "--in1 {input.r1} --in2 {input.r2} "#"--disable_adapter_trimming "
         "--adapter_sequence CTGTCTCTTATACACATCTTAGGAAGACAAGCACTGACGACATGATCACCAAGGATCGCCATAGTCCATGCTAAAGGACGTCAGGAAGGGCGATCTCAGG "
         "--adapter_sequence_r2 TCTGCTGAGTCGAGAACGTCTCTGTGAGCCAAGGAGTTGCTCTGGCGACGGCCACGAAGCTAACAGCCAATCTGCGTAACAGCCAAACCTGAGATCGCCC "
         "--out1 {output.r1} --out2 {output.r2} --json {output.json} --html {output.html} "
         "--disable_trim_poly_g --report_title {params.title} "
-        "-w {threads} &> {log};\n"
-        "perl src/jsonBarcode2txt.pl < {output.json} | sort -nrk2 > {output.freq}"
+        "-w {threads} -V &> {log}\n"
+#        "perl src/jsonBarcode2txt.pl < {output.json} | sort -nrk2 > {output.freq}"
 
 rule s2_sortR1:
     input:
-        r1 = "clean/{sample}.fp.1.fq.gz"
+        r1 = "{sample}/clean/fastp.1.fq.gz"
     output:
-        s1 = "clean/{sample}.fps.1.fq.gz"
+        s1 = "{sample}/clean/fastp.sort.1.fq.gz"
     params:
         tmp = config["tmp"]
     threads: thread4pigz
@@ -59,9 +61,9 @@ rule s2_sortR1:
 
 rule s2_sortR2:
     input:
-        r2 = "clean/{sample}.fp.2.fq.gz"
+        r2 = "{sample}/clean/fastp.2.fq.gz"
     output:
-        s2 = "clean/{sample}.fps.2.fq.gz"
+        s2 = "{sample}/clean/fastp.sort.2.fq.gz"
     params:
         tmp = config["tmp"]
     threads: thread4pigz
@@ -71,9 +73,9 @@ rule s2_sortR2:
 
 rule sum_bead:
     input:
-        s1 = "clean/{sample}.fps.1.fq.gz",
-        s2 = "clean/{sample}.fps.2.fq.gz",
-        cd = "clean/{sample}.code.freq.tsv"
+        s1 = "{sample}/clean/fastp.sort.1.fq.gz",
+        s2 = "{sample}/clean/fastp.sort.2.fq.gz",
+        cd = "{sample}/clean/fastp.code.freq.tsv"
     params:
         dir = "beadPool/{sample}/sumAb10"
     output:
@@ -90,15 +92,15 @@ rule sum_vsearch:
     output: "VSEARCH/{sample}/sumAb10/bead.merge.derep.nonchimeras.otus.pct6.tax.stat"
     params:
         sam= "{sample}",
-        threads = thead4fastp,
+        threads = thread4fastp,
         REF = config["REF_ITS"]
     shell:
         "sh src/template.vsearch.sum.sh {params.threads} {params.REF} {params.sam} 10 sumAb\n"
 
 rule s3_saveBeadR1:
     input:
-        fq = "clean/{sample}.fps.1.fq.gz",
-        freq = "clean/{sample}.code.freq.tsv"
+        fq = "{sample}/clean/fastp.fps.1.fq.gz",
+        freq = "{sample}/clean/fastp.code.freq.tsv"
     params:
         dir = "beadPool/{sample}",
         cut = config["beadSelect"],
@@ -113,8 +115,8 @@ rule s3_saveBeadR1:
 
 rule s3_saveBeadR2:
     input:
-        fq = "clean/{sample}.fps.2.fq.gz",
-        freq = "clean/{sample}.code.freq.tsv"
+        fq = "{sample}/clean/fastp.fps.2.fq.gz",
+        freq = "{sample}/clean/fastp.code.freq.tsv"
     params:
         dir = "beadPool/{sample}",
         cut = config["beadSelect"],
@@ -128,8 +130,8 @@ rule s3_saveBeadR2:
 
 rule s4_MashSketch:
     input:
-            s1 = "clean/{sample}.fps.1.fq.gz",
-            s2 = "clean/{sample}.fps.2.fq.gz",
+            s1 = "{sample}/clean/fastp.fps.1.fq.gz",
+            s2 = "{sample}/clean/fastp.fps.2.fq.gz",
     params:
         pfx = "dist/{sample}/all"
     threads: config["threads"]
@@ -203,11 +205,11 @@ rule annoCommunity:
         n1 = "dist/{sample}/1.node.rNum.lst",
         REF= "REF/ee_its_database.fasta",
         ANN= "REF/ee_its_database.ITSx.anno"
-    output: "Assemble/{sample}/Comms.log"
+    output: "{sample}/Assemble/Comms.log"
     params:
         sam = "{sample}",
         bDIR = "beadPool/{sample}",
-        aDIR = "Assemble/{sample}"
+        aDIR = "{sample}/Assemble"
     shell:
         "cNum=`cut -f1 {input.n1}|sort|uniq|wc -l`\n"
         "cNum=`echo $cNum -1 |bc`\n"
@@ -231,25 +233,57 @@ rule annoCommunity:
 
 rule t_SPAdes_all_in_one:
     input:
-        fq1 = "clean/{sample}.fps.1.fq.gz",
-        fq2 = "clean/{sample}.fps.2.fq.gz"
-    output: "Assemble/{sample}/all/scaffolds.fasta"
+        fq1 = "{sample}/clean/fastp.sort.1.fq.gz",
+        fq2 = "{sample}/clean/fastp.sort.2.fq.gz"
+    output: "{sample}/Assemble/all/contigs.fasta"
     params:
-        oDir = "Assemble/{sample}/all",
+        oDir = "{sample}/Assemble/all",
         threshold = config["beadSelect"],
         threads = config["threads"]
     shell:
         "mkdir -p {params.oDir} && spades.py --meta -t {params.threads} -o {params.oDir} -1 {input.fq1} -2 {input.fq2}"
+
+rule t_athena_0:
+    input:
+        fq1 = "{sample}/clean/fastp.sort.1.fq.gz",
+        fq2 = "{sample}/clean/fastp.sort.2.fq.gz",
+    output: "{sample}/clean/athena.sort.smart.fq"
+    shell:
+        "perl src/athenaFmt.pl -1 {input.fq1} -2 {input.fq2} -o {output}"
+
+rule t_athena_1:
+    input:
+        fq = "{sample}/clean/athena.sort.smart.fq",
+        ctg = "{sample}/Assemble/all/contigs.fasta"
+    output: "{sample}/athena/align-reads.metaspades-contigs.bam"
+    params:
+        threads = config["threads"]
+    shell:
+        "bwa index {input.ctg} && "
+        "bwa mem -t {params.threads} -C -p {input.ctg} {input.fq} | samtools sort -o {output} - && "
+        "samtools index {output}"
+
+rule t_athena_2:
+    input :"{sample}/athena/align-reads.metaspades-contigs.bam"
+    output:
+        cfg= "{sample}/athena/athena_cfg.json",
+        fa = "{sample}/athena/results/olc/athena.asm.fa"
+    params:
+        threads = config["threads"],
+        sam = "{sample}"
+    shell:
+        "sed 's/example/{params.sam}/' src/athena_cfg.json > {output.cfg} &&"
+        "athena-meta --thread {params.threads} --config {output.cfg}"
 
 rule s5_SPAdes_shell:
     input:
         inf1 = "beadPool/{sample}.1.info",
         inf2 = "beadPool/{sample}.2.info",
     output:
-        sh = "Assemble/{sample}.sh"
+        sh = "{sample}/Assemble.sh"
     params:
         iDir = "beadPool/{sample}",
-        oDir = "Assemble/{sample}",
+        oDir = "{sample}/Assemble",
         threshold = config["beadSelect"],
         threads = thread4SPAdes
     shell:
@@ -259,13 +293,13 @@ rule s5_SPAdes_shell:
         "{input.inf1} > {output.sh}\n"
 
 rule s5_SPAdes_run:
-    input: "Assemble/{sample}.sh"
-    output: "Assemble/{sample}.log"
+    input: "{sample}/Assemble.sh"
+    output: "{sample}/Assemble.log"
     params:
         iDir = "beadPool/{sample}",
-        oDir = "Assemble/{sample}",
+        oDir = "{sample}/Assemble",
         threshold = config["beadSelect"],
-        pfx = "Assemble/{sample}_",
+        pfx = "{sample}/Assemble_",
         divNum = divideNum
     shell:
         "line=`wc -l {input}|awk -v n={params.divNum} '{{printf \"%0.f\",$1/n}}'`;"
@@ -273,7 +307,7 @@ rule s5_SPAdes_run:
         "for i in {params.pfx}??;do sh $i & done && wait && echo done > {output}"
 
 rule s5_bwa_each_bead:
-    input: "Assemble/{sample}.sh"
+    input: "{sample}/Assemble.sh"
     output: "Assemble/bwa.{sample}.sh"
     params:
         threads = thread4SPAdes,
@@ -284,7 +318,7 @@ rule s5_bwa_each_bead:
         " {input} > {output} "
 
 rule s6_vsearch_EE_each_bead:
-    input: "Assemble/{sample}.sh"
+    input: "{sample}/Assemble.sh"
     output: "VSEARCH/{sample}.sh"
     params:
         threads = thread4SPAdes,

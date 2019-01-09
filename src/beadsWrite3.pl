@@ -27,7 +27,7 @@ default options:
     -k        skip if file exists
     -e        exchange barcode and seq ID (put barcode in front of seqID)
     -x        make index only
-    -p        prefix. When specificed, output all seq into a single file with this prefix.
+    -p        prefix. When specificed, output seq into a single file with this prefix.
     -o        output dir
     -v        verbose mode
 extract specific barcodes:
@@ -83,7 +83,11 @@ exit;
 sub makeindex {
   my $operate = shift;
   if($operate eq 'make'){
-    open IN, "pigz -p $proc -dc $in1|" or die $!;
+    if($in1 =~/.gz$/){
+      open IN, "pigz -p $proc -dc $in1|" or die $!;
+    }else{
+      open IN, "< $in1" or die $!;
+    }
     open IDX,"> $in1.idx";
     &verbose("Writing index into $in1.idx\n");
     my $pbc = "";
@@ -114,12 +118,27 @@ sub makeindex {
 sub specifcBarcode{
   my($in1,$in2,$bcode,$fmt,$out) = @_;
   &verbose("specifcBarcode mode. Start.\n");
-  my @bcs = split(",",$bcode);
-  my $bnum = @bcs;
+  my (%BCS);
+  if($bcode =~/\./){
+    open BC, "<$bcode" or die "barcode list format error.".$!;
+    while(<BC>){
+      chomp;
+      if($pfx){
+        push @{$BCS{0}}, $_;
+      }else{
+        my @a = split(/\t/,$_);
+        push @{$BCS{$a[0]}}, $a[1];
+      }
+    }
+    close BC;
+  }else{
+    @{$BCS{0}} = split(",",$bcode);
+  }
+  #my $bnum = @{$BCS{0}};
 
   if(-e "$in1.idx"){
     $idxEnable = 1;
-    open IDX,"> $in1.idx";
+    open IDX,"< $in1.idx";
     &verbose("Index found. Loading ... ");
     while(<IDX>){
       chomp;
@@ -131,54 +150,49 @@ sub specifcBarcode{
     &verbose("Done\n",1);
   }else{
     $idxEnable = 0;
-    open IDX,"> $in1.idx";
     &verbose("No index found. Pls make one first\n");
     exit;
   }
   my (@R1,@R2);
-  tie @R1, 'Tie::File',"pigz -p $proc -dc $in1|" or die $!;
-  tie @R2, 'Tie::File',"pigz -p $proc -dc $in2|" or die $!;
-
+  tie @R1, "Tie::File", $in1, autochomp => 0 or die $!;
+  tie @R2, 'Tie::File', $in2, autochomp => 0 or die $!;
+  if(defined $pfx){
+    &filesOpen(2,"$out/$pfx");
+  }
   my @p;
-  while(@bcs){
-    # Read one sequence info
-    my $bc = shift @bcs;
-    my $b1 = substr($bc,0,3);
-    my ($S,$E) = ($IDX{$bc}{'S'}-1,$IDX{$bc}{'E'}-1);
-    my $id = $_;
-
-    if($fmt =~ /fq/){
-      open Q1,"|pigz -p $proc > $out/$b1/$bc.1.fq.gz" or die $!;
-      open Q2,"|pigz -p $proc > $out/$b1/$bc.2.fq.gz" or die $!;
-    }
-    if($fmt =~ /fa/){
-      open A1,"> $out/$b1/$bc.1.fa" or die $!;
-      open A2,"> $out/$b1/$bc.2.fa" or die $!;
-    }
-    $FHcount ++ ;
-    &verbose("Find #$FHcount : $bc. Start writing.\n");
-
-    for(my $i=$S;$i<=$E;$i+=4){
-      if($fmt eq "fq"){
-        print Q1 $R1[$i].$R1[$i+1].$R1[$i+2].$R1[$i+3];
-        print Q2 $R2[$i].$R2[$i+1].$R2[$i+2].$R2[$i+3];
+  foreach my $cid (sort {$a<=>$b} keys %BCS){
+    my $cidName = sprintf("%05d",$cid);
+    unless(defined $pfx){
+      my $oDir = "$out/BC$cidName";
+      if (-e "$oDir/sort.1.fq" && $skip){
+        &verbose("BC$cidName already exist; skipped\n");
+        next;
       }
-      if($fmt eq "fa"){
-        print A1 $R1[$i].$R1[$i+1];
-        print A2 $R2[$i].$R2[$i+1];
-      }
-      $STAT{'barcodes'} ++;
+      mkdir $oDir unless -e $oDir;
+      &filesOpen(2,"$oDir/sort");
     }
+    while(@{$BCS{$cid}}){
+      # Read one sequence info
+      my $bc = shift @{$BCS{$cid}};
+      my ($S,$E) = ($IDX{$bc}{'S'}-1,$IDX{$bc}{'E'}-1);
 
-  }
+      $FHcount ++ ;
+      &verbose("Find #$FHcount : $cid => $bc. Writing\n");
 
-  if($fmt eq "fq"){
-    close Q1;
-    close Q2;
-  }
-  if($fmt eq "fa"){
-    close A1;
-    close A2;
+      for(my $i=$S;$i<=$E;$i+=4){
+        if($fmt eq "fq"){
+          print Q1 $R1[$i].$R1[$i+1].$R1[$i+2].$R1[$i+3];
+          print Q2 $R2[$i].$R2[$i+1].$R2[$i+2].$R2[$i+3];
+        }
+        if($fmt eq "fa"){
+          print A1 $R1[$i].$R1[$i+1];
+          print A2 $R2[$i].$R2[$i+1];
+        }
+        $STAT{'barcodes'} ++;
+      }
+    }
+    if($fmt eq "fq"){ close Q1; close Q2;}
+    if($fmt eq "fa"){ close A1; close A2;}
   }
 
   &verbose("$FHcount beads with  $STAT{'barcodes'} reads in total written. Done.\n")
@@ -385,6 +399,22 @@ sub filesOpen{
       unless($skip && -e "$sPFX.fa.gz"){ open AT,"|pigz -p $proc > $sPFX.fa.gz" or die $! };
     }elsif($fmt =~ /fa/){
       unless($skip && -e "$sPFX.fa"){ open AT,"> $sPFX.fa" or die $! };
+    }
+  }elsif($num==2){
+    my $sPFX = shift;
+    if($fmt =~ /fq.gz/){
+      unless($skip && -e "$sPFX.1.fq.gz"){ open Q1,"|pigz -p $proc > $sPFX.1.fq.gz" or die $! };
+      unless($skip && -e "$sPFX.2.fq.gz"){ open Q2,"|pigz -p $proc > $sPFX.2.fq.gz" or die $! };
+    }elsif($fmt =~ /fq/){
+      unless($skip && -e "$sPFX.1.fq"){ open Q1,"> $sPFX.1.fq" or die $! };
+      unless($skip && -e "$sPFX.2.fq"){ open Q2,"> $sPFX.2.fq" or die $! };
+    }
+    if($fmt =~ /fa.gz/){
+      unless($skip && -e "$sPFX.1.fa.gz"){ open A1,"|pigz -p $proc > $sPFX.1.fa.gz" or die $! };
+      unless($skip && -e "$sPFX.2.fa.gz"){ open A2,"|pigz -p $proc > $sPFX.2.fa.gz" or die $! };
+    }elsif($fmt =~ /fa/){
+      unless($skip && -e "$sPFX.1.fa"){ open A1,"> $sPFX.1.fa" or die $! };
+      unless($skip && -e "$sPFX.2.fa"){ open A2,"> $sPFX.2.fa" or die $! };
     }
   }
 }
