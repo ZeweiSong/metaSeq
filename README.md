@@ -1,4 +1,4 @@
-# MetaSeq
+# MetaSeq (Early access stage)
 
 This is a sequencing data treatment pipeline mainly implemented with stLFR technology.
 
@@ -37,9 +37,9 @@ I've modified `fastp` to speed up the split barcodes process
     export PATH="$MOPT/SPAdes-3.13.0-Linux/bin":$PATH
     ```
 
-## Prepare
-**Deploy pipeline**
+## Usage
 
+**Deploy pipeline**
 ```
 cd /path/to/your/dir
 git clone https://github.com/ZeweiSong/metaSeq.git
