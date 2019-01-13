@@ -1,24 +1,26 @@
 # MetaSeq
 
-This is  a sequencing data treatment pipeline mainly implemented with stLFR technology.
+This is a sequencing data treatment pipeline mainly implemented with stLFR technology.
 
 ## Requirment
 
 **Environment**: `python >= 3.6` `perl >= 5` `R3.4`
 
-**Developing projects**：
+**Requirements**：
 
 > Note: the biogit is an internal site and only accessable from intranet at present.
 
-**metaSeq** ( [github](https://github.com/ZeweiSong/metaSeq) | [biogit](https://biogit.cn/Fangchao/metaSeq) )
+**metabbq** ( [github](https://github.com/ZeweiSong/metaSeq) | [biogit](https://biogit.cn/Fangchao/metaSeq) )  
+metabbq means "METAgenome Bead Barcode Quantification", which is a launcher to initiate workdir and calling sub functions.
 
-**cOMG** ( [biogit](https://biogit.cn/Fangchao/Omics_pipeline) )
+~~**cOMG** ( [biogit](https://biogit.cn/Fangchao/Omics_pipeline) )~~
 
-**fastp** ( [github](https://github.com/OpenGene/fastp) | [biogit](https://biogit.cn/PUB/fastp) )
+**fastp** ( [github](https://github.com/OpenGene/fastp) | [biogit](https://biogit.cn/PUB/fastp) )  
+I've modified `fastp` to speed up the split barcodes process
 
-**Mash**( [github](https://github.com/marbl/Mash) | [biogit](https://biogit.cn/PUB/Mash) )
+~~**Mash**( [github](https://github.com/marbl/Mash) | [biogit](https://biogit.cn/PUB/Mash) )~~
 
-**Community ** ( [source](https://sites.google.com/site/findcommunities/) | [biogit](https://biogit.cn/PUB/community) )
+**Community** ([source](https://sites.google.com/site/findcommunities/) | [biogit](https://biogit.cn/PUB/community))
 
 > make sure  above commands can be found in the PATH
 
@@ -39,20 +41,34 @@ This is  a sequencing data treatment pipeline mainly implemented with stLFR tech
 **Deploy pipeline**
 
 ```
-cd /path/to/work/dir
+cd /path/to/your/dir
 git clone https://github.com/ZeweiSong/metaSeq.git
+
+export PATH="/path/to/your/dir/metaSeq":$PATH
 ```
+**Prepare configs**
+```bash
+cd instance
+metabbq cfg  
+```
+This command will create a `default.cfg` in your current dir. 
+You should modifed it to let the launcher know the required files and parameters
+
+**Initiating a project**
+```
+metabbq -i input.list -c default.cfg -V
+```
+By default, the launcher will initate the workshop in current directory.
 
 **Show pipeline directed acyclic graph(dag)**
-
 ```bash
-cd metaSeq/instance
 snakemake --dag | dot -Tsvg > dag.svg
 ```
 
-**test stLFR process**
+**test pipeline**
 
 ```
-snakemake -j -rp benchmarks/stLFR_summary.txt
+snakemake -j -np T01/VSEARCH/read.merge.derep.2T.bc.graph.tree
 # -j make the jobs execuated paralled under suitable cores/threads
+# -n mean dry-run with a preview of "what needs to be run". Remove it to really run the pipeline.
 ```
