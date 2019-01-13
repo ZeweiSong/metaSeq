@@ -53,13 +53,19 @@ awk -v c=$cluster '$1==c{print $2}' $samDir/VSEARCH/read.merge.derep.2T.bc.clust
 #perl ../src/beadsWrite3.pl --r1 ./clean/fastp.sort.1.fq --r2 ./clean/fastp.sort.2.fq -b $ASB/$subDir/beads.lst -o $ASB/$subDir -p sort -f fq -v
 
 echo
-echo "[BC] SPAdes assembly starting..."
-if [[ $force || ! -f "$samDir/$ASB/$subDir/scaffolds.fasta" ]];
+scaf="$samDir/$ASB/$subDir/scaffolds.fasta"
+if [[ -f $scaf && -z $force ]];
 then
-  spades.py --careful --cov-cutoff auto -t 8 -o $samDir/$ASB/$subDir -1 $samDir/$ASB/$subDir/sort.1.fq -2 $samDir/$ASB/$subDir/sort.2.fq
+  echo "[BC] BLAST SSU alignemnt results exists. Skiped (add \$6 to force re-run)"
 else
-  spades.py --continue -o $samDir/$ASB/$subDir
-  #spades.py --meta -t 48 -o $samDir/$ASB/$subDir -1 $samDir/$ASB/$subDir/sort.1.fq -2 $samDir/$ASB/$subDir/sort.2.fq
+  spaLog="$samDir/$ASB/$subDir/spades.log"
+  if [[ $force || ! -f $spaLog ]];
+  then
+    spades.py --careful --cov-cutoff auto -t 8 -o $samDir/$ASB/$subDir -1 $samDir/$ASB/$subDir/sort.1.fq -2 $samDir/$ASB/$subDir/sort.2.fq
+  else
+    spades.py --continue -o $samDir/$ASB/$subDir
+    #spades.py --meta -t 48 -o $samDir/$ASB/$subDir -1 $samDir/$ASB/$subDir/sort.1.fq -2 $samDir/$ASB/$subDir/sort.2.fq
+  fi
 fi
 
 if [ $mode == 'F' ];
@@ -176,13 +182,18 @@ else
     echo "[BC] Scaffolds BLAST results exists. Skiped (add \$6 to force re-run)"
   else
     echo "[BC] Scaffolds BLAST start"
-    blastn -num_threads 8 -db $refSSU -out ${scaf6/tax/SSU} -outfmt 6 \
-    -query $samDir/$ASB/$subDir/scaffolds.fasta
-    blastn -num_threads 8 -db $refSSU -out ${scaf6/tax/LSU} -outfmt 6 \
+    # blastn -num_threads 8 -db $refSSU -out ${scaf6/tax/SSU} -outfmt 6 \
+    # -query $samDir/$ASB/$subDir/scaffolds.fasta
+    blastn -num_threads 8 -db $refLSU -out ${scaf6/tax/LSU} -outfmt 6 \
     -query $samDir/$ASB/$subDir/scaffolds.fasta
     cat ${scaf6/tax/SSU} ${scaf6/tax/LSU} > $scaf6
+  fi
+  if [[ -f $scaf6.anno && -z $force ]];
+  then
+    echo "[BC] Scaffolds BLAST results exists. Skiped (add \$6 to force re-run)"
+  else
     echo "[BC] Adding taxonomy info for BLAST"
-    perl src/anno.pl $refSSU.ids ${scaf6/tax/SSU} > ${scaf6/tax/SSU}.anno
+#    perl src/anno.pl $refSSU.ids ${scaf6/tax/SSU} > ${scaf6/tax/SSU}.anno
     perl src/anno.pl $refLSU.ids ${scaf6/tax/LSU} > ${scaf6/tax/LSU}.anno
     cat ${scaf6/tax/SSU}.anno ${scaf6/tax/LSU}.anno > $scaf6.anno
   fi
