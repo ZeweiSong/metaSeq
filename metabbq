@@ -1,0 +1,111 @@
+#!/usr/bin/env perl
+# (c) 2016 - 2019 CHAO
+# ===================================================================
+my $Description  =  "Metagenome Beads Barcode Quantifictaion launcher";
+# Author:            Chao | fangchao@genomics.cn
+my $version      =  0.1;
+# Last modified:    13 Jan 2019 (since 13 Jan 2019)
+# ===================================================================
+# see detail below
+use warnings;
+use strict;
+use Getopt::Long;
+use File::Basename;
+use FindBin qw($RealBin);
+use Cwd 'abs_path';
+use Getopt::Long qw(:config no_ignore_case); # For case sensitive
+
+my $cwd = abs_path;
+my $Bin = $RealBin;
+my $cmd = basename $0;
+my $msg = $Description;
+
+sub usage {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  $cmd <bb|cfg|cmd> [option]
+mode:
+    bb   Initiate bead-barcode pipeline
+    cfg  Generata a default config file under current dir
+    cmd  List sub functions in src/util directory
+    ***  Call sub functions from the list cmd shows you.
+         e.g: "$cmd OAs1" will run OAs1 without its absolute path.
+options:
+    -i  input dataset list file
+    -o  output dir
+    -v  version
+    -V  verbose
+    -h  show help info
+USAGE
+}
+
+&usage($msg) && exit if @ARGV == 0 || $ARGV[0] eq "-h";
+die "version $version\n" if $ARGV[0] eq "-v";
+
+#################################
+####  config calling module  ####
+my $pattern = $ARGV[0];
+if($pattern eq "cfg"){
+    `cp $RealBin/default.cfg $cwd/`;
+    exit;
+}
+
+#################################
+###  sub func calling module  ###
+if ($pattern eq "cmd"){
+	print "Available sub commands:\n";
+	system("ls --color $Bin/src");
+	print "Available util commands:\n";
+	system("ls --color $Bin/util");
+	exit;
+}
+if ($pattern !~ /^(bb|cfg|-v|-h)$/){
+  my $path = ( -e "$Bin/src/$pattern")?"$Bin/src":
+             ( -e "$Bin/util/$pattern")?"$Bin/util":'';
+  die "No such script!." && `$cmd cmd` unless $path;
+  my $int = ($pattern=~/\.pl$/)?'perl ':
+            ($pattern=~/\.py$/)?'python ':
+            ($pattern=~/\.sh$/)?'sh ':
+            ($pattern=~/\.[Rr]$/)?'Rscript ':'';
+    print STDERR "$int$path/@ARGV\n";
+	if(system("$int$path/@ARGV")){
+		exit(1);
+	}else{
+		exit;
+	}
+}
+
+#################################
+##########  MAIN BODY(TODO)  ##########
+my ($inf,$out,$verbose,$help);
+GetOptions(
+  "i=s" => \$inf,
+  "o=s" => \$out,
+  "V" => \$verbose,
+  "v" => \$version,
+  "h|help|?" => \$help,
+);
+&usage && exit if $help;
+&usage("[fatal] Essential input is missing") && exit unless defined $inf;
+
+open INF, ($inf)?"<$inf":"<-" or die $!;
+open OUT, ($out)?">$out":">-" or die $!;
+
+# Main start
+&verbose("[log] Start ... ");
+
+
+close INF;
+close OUT;
+# Main end
+
+&verbose("done!\n");
+
+exit;
+
+sub verbose{
+  my $msg = shift;
+  print STDERR $msg if $verbose;
+}
