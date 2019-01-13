@@ -182,8 +182,8 @@ else
     echo "[BC] Scaffolds BLAST results exists. Skiped (add \$6 to force re-run)"
   else
     echo "[BC] Scaffolds BLAST start"
-    # blastn -num_threads 8 -db $refSSU -out ${scaf6/tax/SSU} -outfmt 6 \
-    # -query $samDir/$ASB/$subDir/scaffolds.fasta
+    blastn -num_threads 8 -db $refSSU -out ${scaf6/tax/SSU} -outfmt 6 \
+    -query $samDir/$ASB/$subDir/scaffolds.fasta
     blastn -num_threads 8 -db $refLSU -out ${scaf6/tax/LSU} -outfmt 6 \
     -query $samDir/$ASB/$subDir/scaffolds.fasta
     cat ${scaf6/tax/SSU} ${scaf6/tax/LSU} > $scaf6
