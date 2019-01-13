@@ -58,7 +58,7 @@ then
   echo "Beads Cluster from duplication result found. Skiped (add \$5 to force re-run)"
 else
   echo "Beads Cluster from duplication"
-  perl src/beadStat.pl -match 100 -m uc -i $pfx.merge.derep.uc -o $pfx.merge.derep.uc.bc -v
+  metabbq beadStat.pl -match 100 -m uc -i $pfx.merge.derep.uc -o $pfx.merge.derep.uc.bc -v
 fi
 
 echo
@@ -67,13 +67,13 @@ then
   echo "Beads Cluster from preCluster result found. Skiped (add \$5 to force re-run)"
 else
   echo "Beads Cluster from preCluster"
-  perl src/beadStat.pl -m uc -ident 100 -match 100 -i $pfx.merge.derep.preclustered.uc -o \
+  metabbq beadStat.pl -m uc -ident 100 -match 100 -i $pfx.merge.derep.preclustered.uc -o \
   $pfx.merge.derep.preclustered.uc.bc -v
 fi
 
 echo
 echo "Beads Cluster merging"
-perl  src/beadStat.pl -m merge -i $pfx.merge.derep.uc.bc,$pfx.merge.derep.preclustered.uc.bc \
+metabbq beadStat.pl -m merge -i $pfx.merge.derep.uc.bc,$pfx.merge.derep.preclustered.uc.bc \
 -o $pfx.merge.derep.2.bc -v
 
 awk '$4>1{print $0}' $pfx.merge.derep.2.bc | sort -nrk4,4 > $pfx.merge.derep.2T.bc.s4
@@ -82,7 +82,7 @@ awk '$4>1{print $2"\t"$3"\t"100/$4/$5}' $pfx.merge.derep.2T.bc.s4 > $pfx.merge.d
 
 echo
 echo "Find communities"
-perl src/filterMASHoutput.pl -i $pfx.merge.derep.2T.bc.dist -o $pfx.merge.derep.2T.bc.reNum.dist -M $pfx.merge.derep.2T.bc.map
+metabbq filterMASHoutput.pl -i $pfx.merge.derep.2T.bc.dist -o $pfx.merge.derep.2T.bc.reNum.dist -M $pfx.merge.derep.2T.bc.map
 convert -i $pfx.merge.derep.2T.bc.reNum.dist -w $pfx.merge.derep.2T.bc.w -o $pfx.merge.derep.2T.bc.bin
 community $pfx.merge.derep.2T.bc.bin -w $pfx.merge.derep.2T.bc.w -l -1 > $pfx.merge.derep.2T.bc.graph.tree
 
@@ -91,7 +91,7 @@ echo "Extracting Beads Cluster Reads according to the max level"
 maxLv=`hierarchy $pfx.merge.derep.2T.bc.graph.tree -n|head -1|sed 's/Number of levels: //'`
 ((maxLv=$maxLv -1 ))
 hierarchy $pfx.merge.derep.2T.bc.graph.tree -l $maxLv > $pfx.merge.derep.2T.bc.node\_Lv$maxLv.lst
-perl src/change.id.pl -n $pfx.merge.derep.2T.bc.node\_Lv$maxLv.lst \
+metabbq change.id.pl -n $pfx.merge.derep.2T.bc.node\_Lv$maxLv.lst \
 -m $pfx.merge.derep.2T.bc.map -v -o $pfx.merge.derep.2T.bc.cluster\_Lv$maxLv
 
 cut -d " " -f2 $pfx.merge.derep.2T.bc.node\_Lv$maxLv.lst|sort|uniq -c|sort -nr > $pfx.merge.derep.2T.bc.node\_Lv$maxLv.rank

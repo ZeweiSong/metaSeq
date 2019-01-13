@@ -32,9 +32,20 @@ mode:
     cmd  List sub functions in src/util directory
     ***  Call sub functions from the list cmd shows you.
          e.g: "$cmd OAs1" will run OAs1 without its absolute path.
+options  Defined according to the mode and cmd you chosed.
+USAGE
+}
+
+sub usageBB {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  $cmd bb [option]
 options:
     -i  input dataset list file
     -o  output dir
+    -c  config file
     -v  version
     -V  verbose
     -h  show help info
@@ -64,7 +75,7 @@ if ($pattern eq "cmd"){
 if ($pattern !~ /^(bb|cfg|-v|-h)$/){
   my $path = ( -e "$Bin/src/$pattern")?"$Bin/src":
              ( -e "$Bin/util/$pattern")?"$Bin/util":'';
-  die "No such script!." && `$cmd cmd` unless $path;
+  die "[cmd] Can not find sub func '$pattern'. Please check it again.\n" unless $path;
   my $int = ($pattern=~/\.pl$/)?'perl ':
             ($pattern=~/\.py$/)?'python ':
             ($pattern=~/\.sh$/)?'sh ':
@@ -77,35 +88,112 @@ if ($pattern !~ /^(bb|cfg|-v|-h)$/){
 	}
 }
 
+&verbose("[log] BB mode Start");
 #################################
-##########  MAIN BODY(TODO)  ##########
-my ($inf,$out,$verbose,$help);
+##########  MAIN BODY  ##########
+our(%CFG,%SAM);
+my ($inf,$out,$cfg,$verbose,$help);
 GetOptions(
   "i=s" => \$inf,
   "o=s" => \$out,
+  "c=s" => \$cfg,
   "V" => \$verbose,
   "v" => \$version,
   "h|help|?" => \$help,
 );
-&usage && exit if $help;
-&usage("[fatal] Essential input is missing") && exit unless defined $inf;
+&usageBB("Initiate bead-barcode pipeline") && exit if $help;
+&usageBB("[fatal] Essential input is missing") && exit unless defined $inf;
+$out ||= ".";
 
-open INF, ($inf)?"<$inf":"<-" or die $!;
-open OUT, ($out)?">$out":">-" or die $!;
+&verbose("[bb] Init workshop\n");
+my($dirDB, $dirIN);
+$out = abs_path($out);
+system "mkdir -p $out" unless(-d $out);
+$dirDB = "$out/database";
+$dirIN = "$out/rawSeq";
+system "mkdir -p $dirDB" unless(-d $dirDB);
+system "mkdir -p $dirIN" unless(-d $dirIN);
 
-# Main start
-&verbose("[log] Start ... ");
+&verbose("[bb] Prep config.yaml\n");
+open SCFG, ">$out/config.yaml" or die "can not write config.yaml. Please check\n";
 
+&verbose("[bb] Read config\n");
+&readCFG($cfg);
+&writeCFG;
+&verbose("[bb] Read input list\n");
+&readInput($inf);
 
-close INF;
-close OUT;
-# Main end
+&verbose("[bb] Link required files\n");
+die "barcodes list not defined. Check again.\n" unless $CFG{'BeadBarcodeList'};
+$CFG{'BeadBarcodeList'} = abs_path($CFG{'BeadBarcodeList'});
+system "ln -sf $CFG{'BeadBarcodeList'} $dirDB/barcode.list";
 
+print SCFG "samples:\n";
+foreach my $sam (sort keys %SAM){
+  my @fs = @{$SAM{$sam}};
+  for(my $i=1;$i<=@fs;$i++){
+    $fs[$i-1] =~ /.(f(|ast)[aq](|.gz))$/;
+    my $sufix = $1;
+    system "ln -sf $fs[$i-1] $dirIN/$sam\_$i.$sufix";
+    print SCFG "  $sam: rawSeq/$sam\n";
+  }
+}
+close SCFG;
+system "cp $Bin/Snakefile $out/Snakefile";
 &verbose("done!\n");
 
 exit;
-
+#################################
+##########  Sub funcs  ##########
 sub verbose{
   my $msg = shift;
   print STDERR $msg if $verbose;
+}
+
+sub readCFG {
+  my $cfg = shift;
+  if($cfg =~ /\.cfg$/ && -e $cfg ){
+    open CFG,"$cfg" or die "failed to open configure file $cfg. $!\n";
+    while(<CFG>){
+      chomp;
+      next if $_ =~ /^#/ || $_ eq "";
+      $_ =~ /(\S+)\s*=\s*(\S+)/;
+      $CFG{$1} = $2;
+    }
+  }else{
+    foreach my $par (split(/,/,$cfg)){
+      my @a = split(/=/,$par);
+      $CFG{$a[0]} = $a[1];
+    }
+  }
+}
+
+sub readInput {
+  my $path_f = shift;
+  my @paths = split (',',$path_f);
+  open PATH,"> $out/sam.id.path" or die $!;
+  while(@paths>0){
+  	my $path_i = shift @paths;
+  	$path_i = abs_path($path_i);
+  	open IN,"<$path_i" or die "can not open $path_i, $!\n";
+  	while (<IN>){
+  		print PATH $_ ;
+  		chomp;
+  		my @a = split;
+          $a[1] = abs_path($a[1]);
+  		my ($sam,$path) = @a;
+  		push @{$SAM{$sam}}, $path;
+  	}
+  	close IN;
+  }
+  close PATH;
+}
+
+sub writeCFG {
+  print SCFG "BeadBarcodeList: ".(($CFG{'BeadBarcodeList'})?"\"$CFG{'BeadBarcodeList'}\"\n\n":"\"unknown\"\n\n");
+  print SCFG "prefix: ".(($CFG{'prefix'})?"\"$CFG{'prefix'}\"\n\n":"\"default\"\n\n");
+  print SCFG "tmp: ".(($CFG{'tmp'})?"\"$CFG{'tmp'}\"\n\n":"\"./tmp\"\n\n");
+  print SCFG "threads: ".(($CFG{'threads'})?$CFG{'threads'}:1)."\n\n";
+  print SCFG "max_threads_per_script:  ".(($CFG{'max_threads_per_script'})?$CFG{'max_threads_per_script'}:1)."\n\n";
+  print SCFG "divideSH:  ".(($CFG{'divideSH'})?$CFG{'divideSH'}:10)."\n\n";
 }
