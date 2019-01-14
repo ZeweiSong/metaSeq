@@ -16,8 +16,8 @@ print <<USAGE;
 $msg
 usage:
   $0 -i input -o output
+    -m  mode [uc|tile|bc|bin]
     -i  unchime file with 10 column
-    -m  mode [uc|tile]
     -o  output filename
     -v  verbose
     -h  show help info
@@ -44,8 +44,10 @@ $match||= 30;
 open OUT, ($out)?">$out":">-" or die $!;
 
 # Main start
+my (%CLUST);
 &run_uc    if $mode eq "uc";
 &run_merge if $mode eq "merge";
+&run_BCent if $mode eq "bc";
 # Main end
 
 &verbose("[log] All done!\n");
@@ -195,4 +197,61 @@ sub run_merge {
 
   close OUT;
   &verbose("[log] Mode [merge] done ... \n");
+}
+
+sub run_BCent {
+  &verbose("[log] Mode [Bead Centroid] start ... \n");
+  my (%STAT,$RCCount,$BCCount);
+  #Here is the shorts for each column. Find more detail in VSEARCH manual.
+  ##   0         1       2            3            4  5  6      7     8        9##
+  ##Type  #Cluster  length  similarity%  orientation  *  *  CIGAR query centroid##
+  open INF, ($inf)?"<$inf":"<-" or die $!;
+  $RCCount = 0;
+  $BCCount = 1;
+  while(<INF>){
+    next if $_ =~ /^C/;
+    if($. % 1000000 == 0 ){
+      &verbose("[log] lines: $. | RC: $RCCount | BC: $BCCount\n");
+    }
+    if($_ =~ /^S/){
+      &writePreCluster;
+      %CLUST = () ;
+      $RCCount ++ ;
+    }
+    chomp;
+    my @info = split(/\t/,$_);
+    #my $iMatch = ($info[7] =~ /(\d+)M/)?$1:$info[2];
+    #$STAT{'O'} ++ && next if $iMatch < $match || $info[3] < $ident;  #Skip when identity or length less than cutoff;
+
+    my ($BC0,$BC1,$BC8,$BC9,$s0,$s8,$s9) = (); #init
+    ($BC8,$s8) = &BC2Num($info[8]);
+    if($CLUST{$BC8}{'S'}){
+      $CLUST{$BC8}{'H'}{$CLUST{$BC8}{'C'}} = sprintf("H\t%8d\t%3d\t%5s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+      $BCCount-1,$info[2],$info[3],$info[4],$info[5],$info[6],$info[7],$info[8],$CLUST{$BC8}{'Center'});
+      $CLUST{$BC8}{'C'} ++;
+    }else{
+      $CLUST{$BC8}{'S'} = sprintf("S\t%8d\t%3d\t%5s\t%s\t%s\t%s\t%s\t%s",
+      $BCCount-1,$info[2],$info[3],$info[4],$info[5],$info[6],$info[7],$info[8]);
+
+      $CLUST{$BC8}{'C'} = 1;
+      $CLUST{$BC8}{'Center'} = $info[8];
+      $BCCount ++;
+    }
+  }
+
+  close INF;
+  close OUT;
+
+  &verbose("[log] Mode [Bead Centroid] done ... \n");
+}
+
+sub writePreCluster{
+  return(1) unless %CLUST;
+  foreach my $BC (sort keys %CLUST){
+    print OUT "$CLUST{$BC}{'S'}\t$CLUST{$BC}{'C'}\n";
+    print "$BC\t$CLUST{$BC}{'C'}\n";
+    foreach my $HT (sort {$a<=>$b} keys %{$CLUST{$BC}{'H'}}){
+      print OUT "$CLUST{$BC}{'H'}{$HT}";
+    }
+  }
 }

@@ -33,6 +33,7 @@ default options:
 extract specific barcodes:
     --r2        read2 fq file
     -b        barcode id
+    -d        individual barcode id
 
 
 USAGE
@@ -40,7 +41,7 @@ USAGE
 };
 
 &usage && exit unless @ARGV;
-my ($in1,$in2,$list,$cut,$sfx,$bcode,$proc,$skip,$exchange,$index,$pfx,$fmt,$out,$verbose);
+my ($in1,$in2,$list,$cut,$sfx,$bcode,$idvd,$proc,$skip,$exchange,$index,$pfx,$fmt,$out,$verbose);
 GetOptions(
     "r1:s"        => \$in1,
     "r2:s"        => \$in2,
@@ -48,6 +49,7 @@ GetOptions(
     "c|cutoff:s"  => \$cut,
     "s|sufix:s"   => \$sfx,
     "b|barcode:s" => \$bcode,
+    "d|individual:s"=>\$idvd,
     "t|thread=i"  => \$proc,
     "k|skip"      => \$skip,
     "e|exchange"  => \$exchange,
@@ -124,15 +126,28 @@ sub specifcBarcode{
     while(<BC>){
       chomp;
       if($pfx){
-        push @{$BCS{0}}, $_;
+        push @{$BCS{'BC'}{0}}, $_;
       }else{
         my @a = split(/\t/,$_);
-        push @{$BCS{$a[0]}}, $a[1];
+        push @{$BCS{'BC'}{$a[0]}}, $a[1];
       }
     }
     close BC;
   }else{
     @{$BCS{0}} = split(",",$bcode);
+  }
+  if($idvd){
+    open DD, "<$idvd" or die "barcode list format error.".$!;
+    while(<DD>){
+      chomp;
+      if($pfx){
+        push @{$BCS{'BI'}{0}}, $_;
+      }else{
+        my @a = split(/\t/,$_);
+        push @{$BCS{'BI'}{$a[0]}}, $a[1];
+      }
+    }
+    close DD;
   }
   #my $bnum = @{$BCS{0}};
 
@@ -160,41 +175,42 @@ sub specifcBarcode{
     &filesOpen(2,"$out/$pfx");
   }
   my @p;
-  foreach my $cid (sort {$a<=>$b} keys %BCS){
-    my $cidName = sprintf("%05d",$cid);
-    unless(defined $pfx){
-      my $oDir = "$out/BC$cidName";
-      if (-e "$oDir/sort.1.fq" && $skip){
-        &verbose("BC$cidName already exist; skipped\n");
-        next;
-      }
-      mkdir $oDir unless -e $oDir;
-      &filesOpen(2,"$oDir/sort");
-    }
-    while(@{$BCS{$cid}}){
-      # Read one sequence info
-      my $bc = shift @{$BCS{$cid}};
-      my ($S,$E) = ($IDX{$bc}{'S'}-1,$IDX{$bc}{'E'}-1);
-
-      $FHcount ++ ;
-      &verbose("Find #$FHcount : $cid => $bc. Writing\n");
-
-      for(my $i=$S;$i<=$E;$i+=4){
-        if($fmt eq "fq"){
-          print Q1 $R1[$i].$R1[$i+1].$R1[$i+2].$R1[$i+3];
-          print Q2 $R2[$i].$R2[$i+1].$R2[$i+2].$R2[$i+3];
+  foreach my $tag (keys %BCS){
+    foreach my $cid (sort {$a<=>$b} keys %{$BCS{$tag}}){
+      my $cidName = sprintf("%s%05d",$tag,$cid);
+      unless(defined $pfx){
+        my $oDir = "$out/$cidName";
+        if (-e "$oDir/sort.1.fq" && $skip){
+          &verbose("$cidName already exist; skipped\n");
+          next;
         }
-        if($fmt eq "fa"){
-          print A1 $R1[$i].$R1[$i+1];
-          print A2 $R2[$i].$R2[$i+1];
-        }
-        $STAT{'barcodes'} ++;
+        system "mkdir -p $oDir" unless -e $oDir;
+        &filesOpen(2,"$oDir/sort");
       }
+      while(@{$BCS{$tag}{$cid}}){
+        # Read one sequence info
+        my $bc = shift @{$BCS{$tag}{$cid}};
+        my ($S,$E) = ($IDX{$bc}{'S'}-1,$IDX{$bc}{'E'}-1);
+
+        $FHcount ++ ;
+        &verbose("Find $tag #$FHcount : $cid => $bc. Writing\n");
+
+        for(my $i=$S;$i<=$E;$i+=4){
+          if($fmt eq "fq"){
+            print Q1 $R1[$i].$R1[$i+1].$R1[$i+2].$R1[$i+3];
+            print Q2 $R2[$i].$R2[$i+1].$R2[$i+2].$R2[$i+3];
+          }
+          if($fmt eq "fa"){
+            print A1 $R1[$i].$R1[$i+1];
+            print A2 $R2[$i].$R2[$i+1];
+          }
+          $STAT{'barcodes'} ++;
+        }
+      }
+      if($fmt eq "fq"){ close Q1; close Q2;}
+      if($fmt eq "fa"){ close A1; close A2;}
     }
-    if($fmt eq "fq"){ close Q1; close Q2;}
-    if($fmt eq "fa"){ close A1; close A2;}
   }
-
   &verbose("$FHcount beads with  $STAT{'barcodes'} reads in total written. Done.\n")
 }
 

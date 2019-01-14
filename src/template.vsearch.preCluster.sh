@@ -72,13 +72,17 @@ else
 fi
 
 echo
-echo "Beads Cluster merging"
-metabbq beadStat.pl -m merge -i $pfx.merge.derep.uc.bc,$pfx.merge.derep.preclustered.uc.bc \
--o $pfx.merge.derep.2.bc -v
+if [[ -f $pfx.merge.derep.2.bc && -z $force ]];
+then
+  echo "Beads Cluster seems already merged. Skiped (add \$5 to force re-run)"
+else
+  echo "Beads Cluster merging"
+  metabbq beadStat.pl -m merge -i $pfx.merge.derep.uc.bc,$pfx.merge.derep.preclustered.uc.bc \
+  -o $pfx.merge.derep.2.bc -v
+  awk '$4>1{print $0}' $pfx.merge.derep.2.bc | sort -nrk4,4 > $pfx.merge.derep.2T.bc.s4
+fi
 
-awk '$4>1{print $0}' $pfx.merge.derep.2.bc | sort -nrk4,4 > $pfx.merge.derep.2T.bc.s4
-
-awk '$4>1{print $2"\t"$3"\t"100/$4/$5}' $pfx.merge.derep.2T.bc.s4 > $pfx.merge.derep.2T.bc.dist
+awk -F '\t' '$4>1{print $2"\t"$3"\t"100/$4/$5}' $pfx.merge.derep.2T.bc.s4 > $pfx.merge.derep.2T.bc.dist
 
 echo
 echo "Find communities"
@@ -97,12 +101,42 @@ metabbq change.id.pl -n $pfx.merge.derep.2T.bc.node\_Lv$maxLv.lst \
 cut -d " " -f2 $pfx.merge.derep.2T.bc.node\_Lv$maxLv.lst|sort|uniq -c|sort -nr > $pfx.merge.derep.2T.bc.node\_Lv$maxLv.rank
 
 idxFile=${fq1/gz/gz.idx}
-perl -e 'open IN,"<$idxFile";while(<IN>){chomp;@a=split;$num=($a[2]-$a[1]+1)/4;$HASH{$a[0]}=$num};while(<>){chomp;@a=split;$HB{$a[0]}{R}+=$HASH{$a[1]};$HB{$a[0]}{C}++};foreach my $c (sort {$a<=>$b} keys %HB){print "$c\t$HB{$c}{C}\t$HB{$c}{R}\n"}' <  $pfx.merge.derep.2T.bc.cluster\_Lv$maxLv >  \
+echo
+if [[ -f $idxFile && -z $force ]];
+then
+  echo "Beads barcode index found."
+else
+  echo "Beads barcode index haven't found. Generate now..."
+  metabbq beadsWrite3.pl -x $fq1
+fi
+
+perl -e 'open IN,"<'$idxFile'";while(<IN>){chomp;@a=split;$num=($a[2]-$a[1]+1)/4;$HASH{$a[0]}=$num};while(<>){chomp;@a=split;$HB{$a[0]}{R}+=$HASH{$a[1]};$HB{$a[0]}{C}++};foreach my $c (sort {$a<=>$b} keys %HB){print "$c\t$HB{$c}{C}\t$HB{$c}{R}\n"}' <  $pfx.merge.derep.2T.bc.cluster\_Lv$maxLv >  \
 $pfx.merge.derep.2T.bc.cluster\_Lv$maxLv.count
 
+#sort -k3,3nr $pfx.merge.derep.2T.bc.cluster\_Lv$maxLv.count| \
+#awk 'FNR==1{b=$2;r=$3}($2>b/10 && $3>r/10 && FNR<300){b=$2;r=$3;print $0}'|sort -k1,1n \
 sort -k3,3nr $pfx.merge.derep.2T.bc.cluster\_Lv$maxLv.count| \
-awk 'FNR==1{b=$2;r=$3}($2>b/10 && $3>r/10 && FNR<300){b=$2;r=$3;print $0}'|sort -k1,1n \
+awk 'BEGIN{b=$2;r=$3}($2<=50&&$3>=50){b=$2;r=$3;print $0}'|sort -k1,1n \
 > $pfx.merge.derep.2T.bc.cluster\_Lv$maxLv.count.main
-perl -e 'open IN,"sort -k1,1n $pfx.merge.derep.2T.bc.cluster\_Lv'$maxLv'.count.main|";while(<IN>){@a=split(/\t/,$_);push @ids, $a[0]}; $tag= shift @ids; while(<>){@a=split /\t/, $_; if($a[0] < $tag){next}elsif($a[0] == $tag){print $_}else{$tag= shift @ids;print $_ if $a[0] == $tag } }' < $pfx.merge.derep.2T.bc.cluster\_Lv$maxLv |sort -k1,1n > $pfx.merge.derep.2T.bc.cluster\_Lv$maxLv.main
+perl -e 'open IN,"sort -k1,1n '$pfx'.merge.derep.2T.bc.cluster\_Lv'$maxLv'.count.main|";while(<IN>){@a=split(/\t/,$_);push @ids, $a[0]}; $tag= shift @ids; while(<>){@a=split /\t/, $_; if($a[0] < $tag){next}elsif($a[0] == $tag){print $_}else{$tag= shift @ids;print $_ if $a[0] == $tag } }' < $pfx.merge.derep.2T.bc.cluster\_Lv$maxLv |sort -k1,1n > $pfx.merge.derep.2T.bc.cluster\_Lv$maxLv.main
+
+cp $pfx.merge.derep.2T.bc.cluster\_Lv$maxLv.main $pfx.merge.derep.2T.bc.cluster_LvMax.main
+
+
+
+#Find uniq reads in each bead
+perl -e 'while(<>){chomp;@a=split;$num=($a[2]-$a[1]+1)/4;print "$a[0]\t$num\n"}' \
+< $idxFile > $pfx.in.beads.tsv
+metabbq beadStat.pl -m bc -i $pfx.merge.derep.uc -o $pfx.merge.derep.bead.uc \
+|sort -k1,1 > $pfx.merge.derep.bead.dup
+
+awk 'BEGIN{bc=0;d=0;c=0}(bc!=$1&&FNR>1){print bc"\t"c"\t"d;d=0;c=0}{c=c+1;d=d+$2;bc=$1}END{print bc"\t"c"\t"d}' $pfx.merge.derep.bead.dup > $pfx.merge.derep.bead.dup.uniq
+
+metabbq binWrite uniq -t $pfx.in.beads.tsv -c $pfx.merge.derep.2T.bc.cluster_LvMax.main \
+-u $pfx.merge.derep.bead.dup.uniq -o $pfx.in.beads.uniq.tsv -v
+
+awk 'BEGIN{c=0}($1!~/0000/ && $3>=50){print c"\t"$0;c=c+1}' $pfx.in.beads.uniq.tsv >  $pfx.individual.beads.list
+
+
 
 # Stop at here

@@ -16,7 +16,7 @@ mode=$1 #[F|B]
 samDir=$2
 level=$3
 cluster=$4
-ident=$5
+tag=$5
 force=$6
 
 if [ $mode == "F" ];
@@ -33,14 +33,10 @@ if [ $level -gt 0 ];
 then
   ASB="Assemble_Lv$level"
 else
-  ASB="Assemble"
+  ASB="Assemble_$level"
 fi
 
-subDir=BC$clusterFmt
-
-if [ -z $ident ];then
-  ident=97
-fi
+subDir=$tag$clusterFmt
 
 echo [BC] Barcode cluster assembly pipeline start:
 echo [BC] info: sample directory: $samDir/$ASB/$subDir
@@ -49,7 +45,12 @@ echo [BC] info: REF Database:     $refDB
 echo
 echo "[BC] list beads contained in this cluster"
 #mkdir $ASB/$subDir
-awk -v c=$cluster '$1==c{print $2}' $samDir/VSEARCH/read.merge.derep.2T.bc.cluster|sort > $samDir/$ASB/$subDir/beads.lst
+if [ $level == "BC" ];
+then
+  awk -v c=$cluster '$1==c{print $0}' $samDir/VSEARCH/APR842_00/VSEARCH/read.merge.derep.2T.bc.cluster_LvMax.main|sort > $samDir/$ASB/$subDir/beads.lst
+else
+  awk -v c=$cluster '$1==c{print $0}' $samDir/VSEARCH/read.individual.beads.list|sort > $samDir/$ASB/$subDir/beads.lst
+fi
 #perl ../src/beadsWrite3.pl --r1 ./clean/fastp.sort.1.fq --r2 ./clean/fastp.sort.2.fq -b $ASB/$subDir/beads.lst -o $ASB/$subDir -p sort -f fq -v
 
 echo
@@ -61,12 +62,17 @@ else
   spaLog="$samDir/$ASB/$subDir/spades.log"
   if [[ $force || ! -f $spaLog ]];
   then
-    spades.py --careful --cov-cutoff auto -t 8 -o $samDir/$ASB/$subDir -1 $samDir/$ASB/$subDir/sort.1.fq -2 $samDir/$ASB/$subDir/sort.2.fq
+    ###Temp
+    #spades.py --restart-from k77 -k 21,33,55,77 --mismatch-correction --careful --cov-cutoff auto -t 8 -o $samDir/$ASB/$subDir
+    spades.py --careful --cov-cutoff auto -t 8 -k 21,33,55 -o $samDir/$ASB/$subDir \
+    -1 $samDir/$ASB/$subDir/sort.1.fq -2 $samDir/$ASB/$subDir/sort.2.fq
   else
     spades.py --continue -o $samDir/$ASB/$subDir
     #spades.py --meta -t 48 -o $samDir/$ASB/$subDir -1 $samDir/$ASB/$subDir/sort.1.fq -2 $samDir/$ASB/$subDir/sort.2.fq
   fi
 fi
+
+
 
 if [ $mode == 'F' ];
 then
@@ -130,7 +136,7 @@ then
   fi
   ### BLAST for scaffolds ###
   echo
-  scaf6="$samDir/$ASB/$subDir/scaffolds.$mode.BLAST.tax_$ident.blast6"
+  scaf6="$samDir/$ASB/$subDir/scaffolds.$mode.BLAST.tax.blast6"
   if [[ -f $scaf6 && -z $force ]];
   then
     echo "[BC] Scaffolds BLAST results exists. Skiped (add \$6 to force re-run)"
@@ -141,7 +147,7 @@ then
     -out $scaf6 -outfmt 6
 
     echo "[BC] Adding taxonomy info for BLAST"
-    perl src/anno.pl $refBT.ids $scaf6 > $scaf6.anno
+    metabbq anno.pl $refBT.ids $scaf6 > $scaf6.anno
   fi
 else
   ###   BAC   ###
@@ -176,7 +182,7 @@ else
   fi
   ### BLAST for scaffolds ###
   echo
-  scaf6="$samDir/$ASB/$subDir/scaffolds.$mode.BLAST.tax_$ident.blast6"
+  scaf6="$samDir/$ASB/$subDir/scaffolds.$mode.BLAST.tax.blast6"
   if [[ -f $scaf6 && -z $force ]];
   then
     echo "[BC] Scaffolds BLAST results exists. Skiped (add \$6 to force re-run)"
@@ -194,7 +200,7 @@ else
   else
     echo "[BC] Adding taxonomy info for BLAST"
 #    perl src/anno.pl $refSSU.ids ${scaf6/tax/SSU} > ${scaf6/tax/SSU}.anno
-    perl src/anno.pl $refLSU.ids ${scaf6/tax/LSU} > ${scaf6/tax/LSU}.anno
+    metabbq anno.pl $refLSU.ids ${scaf6/tax/LSU} > ${scaf6/tax/LSU}.anno
     cat ${scaf6/tax/SSU}.anno ${scaf6/tax/LSU}.anno > $scaf6.anno
   fi
 fi

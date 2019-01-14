@@ -27,8 +27,8 @@ rule s1_stLFR:
     params:
         title = "{sample}"
     output:
-        r1 = "{sample}/clean/fastp.1.fq.gz",
-        r2 = "{sample}/clean/fastp.2.fq.gz",
+        r1 = "{sample}/clean/fastp.1.fq",
+        r2 = "{sample}/clean/fastp.2.fq",
         json = "{sample}/clean/fastp.json",
         html = "{sample}/clean/fastp.html"
     log:
@@ -46,9 +46,9 @@ rule s1_stLFR:
 
 rule s2_sortR1:
     input:
-        r1 = "{sample}/clean/fastp.1.fq.gz"
+        r1 = "{sample}/clean/fastp.1.fq"
     output:
-        s1 = "{sample}/clean/fastp.sort.1.fq.gz"
+        s1 = "{sample}/clean/fastp.sort.1.fq"
     params:
         tmp = config["tmp"]
     threads: thread4pigz
@@ -57,16 +57,16 @@ rule s2_sortR1:
         "tr \"\\t\" \"\\n\" |pigz -p {threads} > {output.s1}"
 
 rule s3_idxR1:
-    input:  "{sample}/clean/fastp.sort.1.fq.gz"
-    output: "{sample}/clean/fastp.sort.1.fq.gz.idx"
+    input:  "{sample}/clean/fastp.sort.1.fq"
+    output: "{sample}/clean/fastp.sort.1.fq.idx"
     shell:
         "metabbq beadsWrite3.pl -x --r1 {input} -v "
 
 rule s2_sortR2:
     input:
-        r2 = "{sample}/clean/fastp.2.fq.gz"
+        r2 = "{sample}/clean/fastp.2.fq"
     output:
-        s2 = "{sample}/clean/fastp.sort.2.fq.gz"
+        s2 = "{sample}/clean/fastp.sort.2.fq"
     params:
         tmp = config["tmp"]
     threads: thread4pigz
@@ -74,14 +74,28 @@ rule s2_sortR2:
         "pigz -p {threads} -dc {input.r2} | paste - - - - | sort -T {params.tmp} -k2,2 -t \"/\" | "
         "tr \"\\t\" \"\\n\" |pigz -p {threads} > {output.s2}"
 
-rule vsearch:
+rule BC_method:
     input:
-        s1 = "{sample}/clean/fastp.sort.1.fq.gz",
-        s2 = "{sample}/clean/fastp.sort.2.fq.gz",
-        idx= "{sample}/clean/fastp.sort.1.fq.gz.idx"
+        s1 = "{sample}/clean/fastp.sort.1.fq",
+        s2 = "{sample}/clean/fastp.sort.2.fq",
+        idx= "{sample}/clean/fastp.sort.1.fq.idx"
     output: "{sample}/VSEARCH/read.merge.derep.2T.bc.graph.tree"
     params:
         pfx= "{sample}/VSEARCH/read",
         threads = config["threads"]
     shell:
         "metabbq template.vsearch.preCluster.sh {params.threads} {input.s1} {input.s2} {params.pfx}\n"
+
+rule BC_write:
+    input:
+        s1 = "{sample}/clean/fastp.sort.1.fq",
+        s2 = "{sample}/clean/fastp.sort.2.fq",
+        bc = "{sample}/VSEARCH/read.merge.derep.2T.bc.cluster_LvMax.main",
+        bi = "{sample}/VSEARCH/read.individual.beads.list"
+    output: "{sample}/Assemble_Max.log"
+    params:
+        outDir = "{sample}/Assemble_Max"
+        threads = config["threads"]
+    shell:
+        "metabbq beadsWrite3.pl -b {input.bc} -d {input.bi} -f fq -t 4 -o {params.outDir} -v "
+        "--r1 {input.s1}  --r2 {input.s2} > {output}\n"

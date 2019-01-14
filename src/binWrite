@@ -1,0 +1,227 @@
+#!/usr/bin/env perl
+# (c) 2016 - 2019 Chao IN-HORSE SHARE ONLY
+# ===================================================================
+# Description:       stat the overlap depth between each 2 beads.
+# Author:            Chao | fangchao@genomics.cn
+# Version:           V0.0
+# Last modified:    14 Jan 2019 (since 14 Jan 2019)
+# ===================================================================
+# see detail below
+
+use strict;
+use Getopt::Long;
+
+my($verbose,$help);
+sub usage {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  binWrite <mode> [option]
+mode:
+    bin binnig preparation
+
+options:  Defined according to the mode and cmd you chosed.
+USAGE
+}
+
+&usage("A writing script for binning process") && exit if @ARGV == 0 || $ARGV[0] eq "-h";
+
+my $mode = shift @ARGV unless $ARGV[0] =~/^-/;
+
+### MAIN
+&run_bin if $mode =~ /^(bin|)$/;
+&run_uniq if $mode eq "uniq";
+### END
+
+sub usage4bin {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage [v0.1] :
+  binWrite bin -l level -i anno -a asmDir -o binDir
+    -i  unique annoataion file
+    -o  output dir
+    -a  Assemble dir
+    -l  level [species|genus|family|...]
+    -v  verbose
+    -h  show help info
+USAGE
+}
+
+sub run_bin {
+  &usage4bin("Writing scaffolds according to specified level") && exit unless @ARGV;
+  my (%BINS,$inf,$asmD,$out,$lv,@heads,$head,$ilv);
+  GetOptions(
+    "i=s" => \$inf,
+    "a=s" => \$asmD,
+    "o=s" => \$out,
+    "l=s" => \$lv,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4bin("Writing scaffolds according to specified level") && exit if $help;
+  &verbose("[bin] Mode start ... \n");
+  open INF, ($inf)?"<$inf":"<-" or die $!;
+
+  chomp($head = <INF>);
+  @heads = split(/\t/,$head);
+  for(my $i=0;$i<@heads;$i++){
+    $ilv = $i if $heads[$i] eq $lv;
+  }
+  die "Can not find the specified level: $lv. Please check again!\n" unless $ilv;
+  &verbose("[bin] Reading annotation ... ");
+  while(<INF>){
+    chomp;
+    my @info = split (/\t/,$_);
+    $BINS{$info[$ilv]}{$info[3]}{$info[0]} = $info[4];
+  }
+  close INF;
+  &verbose("done!\n[bin] Reading and wirting scaffolds.\n");
+  my $bak=$/; $/=">";
+  foreach my $tax (sort keys %BINS){
+    system("mkdir -p $out\/$tax") unless(-d "$out/$tax");
+    open OUT, ">$out/$tax/scaffolds.fasta" or die $!;
+    open FQ1, ">$out/$tax/reads_1.fastq" or die $!;
+    open FQ2, ">$out/$tax/reads_2.fastq" or die $!;
+    foreach my $bc (sort keys %{$BINS{$tax}}){
+      my @nodes = sort {$a<=>$b} keys %{$BINS{$tax}{$bc}};
+      open SF, "<$asmD/$bc/scaffolds.fasta" or die "cannot open $asmD/$bc/scaffolds.fasta!\n$!\n";
+      #my $inode = shift @nodes;
+      my $seqid = $BINS{$tax}{$bc}{shift @nodes};
+      while(<SF>){
+        chomp;
+        if($_ =~ /^$seqid/){
+          print OUT ">$bc\_$_";
+          last unless @nodes;
+          $seqid = $BINS{$tax}{$bc}{shift @nodes};
+        }
+      }
+      close SF;
+      open IQ1, "<$asmD/$bc/sort.1.fq" or die "$!";
+      open IQ2, "<$asmD/$bc/sort.2.fq" or die "$!";
+      print FQ1 <IQ1>;
+      print FQ2 <IQ2>;
+      close IQ1;
+      close IQ2;
+    }
+    close OUT;
+    close FQ1;
+    close FQ2;
+    &verbose("[bin] Passing $tax ...\n");
+  }
+  &verbose("[bin] All done!\n");
+}
+
+sub usage4uniq {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage [v0.1] :
+  binWrite uniq -t read.in.beads.tsv -c count.main -u bead.dup.uniq -o output
+    -t  read.in.beads.tsv
+    -c  count.main file
+    -u  bead.dup.uniq file
+    -o  output
+    -v  verbose
+    -h  show help info
+USAGE
+}
+sub run_uniq {
+  &usage4uniq("stat beads uniq reads number") && exit unless @ARGV;
+  my ($tsv,$cnt,$dup,$out,%M);
+  GetOptions(
+    "t=s" => \$tsv,
+    "c=s" => \$cnt,
+    "u=s" => \$dup,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4uniq("stat beads uniq reads number") && exit if $help;
+  &verbose("[bin] Mode start ... \n");
+  open IN1, "<$tsv" or die $!;
+  open IN2, "<$dup" or die $!;
+  open OUT, ($out)?">$out":">-" or die $!;
+  open CNT, "<$cnt" or die $!;
+  while(<CNT>){
+    chomp;
+    my @a = split(/\t/,$_);
+    $M{$a[1]} = 1;
+  }
+  close CNT;
+
+  #Here is the shorts for each column.
+  ##   0         1         2  ##
+  ##  BB     uniqs  allCount  ##
+  my ($run1, $run2, $count1, $count2) = (1,1,0,0);
+  chomp(my $read1 = <IN1>);
+  my @inf1 = split (/\t/,$read1);
+  chomp(my $read2 = <IN2>);
+  my @inf2 = split (/\t/,$read2);
+  my $sdups = $inf2[2] - $inf2[1];
+
+  while($run1 && $run2){
+
+    while($run1 && "$inf1[0]" lt "$inf2[0]"){
+      $count1 ++;
+      print OUT "$read1\t$inf1[1]\n" unless $M{$inf1[0]};
+      chomp($read1 = <IN1>);
+      $run1 = 0 && close IN1 if $read1 eq <EOF>;
+      @inf1 = split (/\t/,$read1);
+    }
+
+    while("$inf1[0]" eq "$inf2[0]" && $inf1[0] ne <EOF>){
+      my $uniqs = $inf1[1] - $sdups;
+      $count1 ++; $count2 ++;
+      print OUT "$read1\t$uniqs\n" unless $M{$inf1[0]};
+
+      chomp($read1 = <IN1>);
+      $run1 = 0 && close IN1 if $read1 eq <EOF>;
+      @inf1 = split (/\t/,$read1);
+      chomp($read2 = <IN2>);
+      $run2 = 0 && close IN2 if $read2 eq <EOF>;
+      @inf2 = split (/\t/,$read2);
+      $sdups = $inf2[2] - $inf2[1];
+    }
+
+    while($run2 && "$inf1[0]" gt "$inf2[0]"){
+      $count2 ++;
+      print OUT "$inf2[0]\tNA\t-$sdups\n" unless $M{$inf2[0]}; ;
+      chomp($read2 = <IN2>);
+      $run2 = 0 && close IN2 if $read2 eq <EOF>;
+      @inf2 = split (/\t/,$read2);
+      $sdups = $inf2[2] - $inf2[1];
+    }
+    if($count1 % 10000 == 0 || $count2 % 10000 == 0){
+      &verbose(sprintf("[log] Processing | file1: %9d | file2: %9d\n", $count1, $count2));
+    }
+  }
+  &verbose("[log] tsv file closed.\n") unless $run1;
+  &verbose("[log] dup file closed.\n") unless $run2;
+  while($run1){
+    $count1 ++;
+    print OUT "$read1\t$inf1[1]\n" unless $M{$inf1[0]};
+    chomp($read1 = <IN1>);
+    $run1 = 0 && close IN2 if $read1 eq <EOF>;
+    @inf1 = split (/\t/,$read1);
+  }
+  while($run2){
+    $count2 ++;
+    print OUT "$inf2[0]\tNA\t-$sdups\n" unless $M{$inf2[0]};
+    chomp($read2 = <IN2>);
+    $run2 = 0 && close IN2 if $read2 eq <EOF>;
+    @inf2 = split (/\t/,$read2);
+    $sdups = $inf2[2] - $inf2[1];
+  }
+
+  close OUT;
+  &verbose("[log] Mode [uniq] done ... \n");
+  exit;
+}
+
+
+sub verbose{
+  my $msg = shift;
+  print STDERR $msg if $verbose;
+}
