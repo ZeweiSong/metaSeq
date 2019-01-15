@@ -113,20 +113,20 @@ def effectiveCount(countString):
     if len(countString) > 1:
         ave = sum(countString) / len(countString)
         stdev = statistics.stdev(countString)
-        ec = ave - stdev
+        ec = int(ave - stdev)
         if ec < 0:
-            ec = 0.0
+            ec = 0
         return (ec, ave, stdev)
     else:
         return (countString[0], countString[0], 0)
 
 # Alternatives to effectiveCount
 # Median and Average maybe more suitable for technical replicates
-def mediam(countString):
+def median(countString):
     if len(countString) > 1:
         ave = sum(countString) / len(countString)
         stdev = statistics.stdev(countString)
-        return (statistics.median(countString), ave, stdev)
+        return (int(statistics.median(countString)), ave, stdev)
     else:
         return (countString[0], countString[0], 0)
 
@@ -134,7 +134,7 @@ def average(countString):
     if len(countString) > 1:
         ave = sum(countString) / len(countString)
         stdev = statistics.stdev(countString)
-        return (ave, ave, stdev)
+        return (int(ave), ave, stdev)
     else:
         return (countString[0], countString[0], 0)
 
@@ -153,7 +153,7 @@ def competition(graph, greedy=True, weight='ec'):
         if weight == 'ec': # Use Effective count
             effScore = effectiveCount(graph.nodes[ref]['abundance']) # need to add two other methods (medium and average)
         elif weight == 'median': # Use median number
-            effScore = mediam(graph.nodes[ref]['abundance'])
+            effScore = median(graph.nodes[ref]['abundance'])
         elif weight == 'average': # Use average number
             effScore = average(graph.nodes[ref]['abundance'])
         else:
