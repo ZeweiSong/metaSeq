@@ -49,8 +49,9 @@ else
   --id 0.99 --strand plus --sizein --sizeout --fasta_width 0 \
   --uc $pfx.merge.derep.preclustered.uc --minuniquesize 2 \
   --centroids $pfx.merge.derep.preclustered.fasta
+  echo "Unique (non-singleton) sequences:" $(grep -c "^>" $pfx.merge.derep.preclustered.fasta)
 fi
-echo "Unique (non-singleton) sequences:" $(grep -c "^>" $pfx.merge.derep.preclustered.fasta)
+
 
 echo
 if [[ -f $pfx.merge.derep.uc.bc && -z $force ]];
