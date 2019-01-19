@@ -62,7 +62,7 @@ if($sam){
     my $bb = $1 if $a[0] =~ /\/(\d+_\d+_\d+)$/;
     unless($BB{$bb}){
       $stack ++;
-      $CL{$bb} = "spectral-15-div-".($stack%15+1)."\_a8";
+      $CL{$bb} = "spectral-9-div-".($stack%9+1)."\_a5";
       foreach my $node (sort keys %POS){
         for(my $i=0;$i<=$POS{$node};$i++){
           $BB{$bb}{$node}{$i} = 0;
