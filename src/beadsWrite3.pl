@@ -71,7 +71,7 @@ my @timeS;
 if($list){
   `mkdir -p $out`;
   &writeAll($in1,$list,$cut,$sfx,$proc,$fmt,$out);
-}elsif($bcode){
+}elsif($bcode||$idvd){
   &specifcBarcode($in1,$in2,$bcode,$fmt,$out);
 }elsif($index){
   &makeindex('make');
