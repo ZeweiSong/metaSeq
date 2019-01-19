@@ -19,7 +19,9 @@ $msg
 usage:
   binWrite <mode> [option]
 mode:
-    bin binnig preparation
+    bin     binnig preparation
+    uniq    stat unique centroids of dulicates within each beads
+    best    output best anno with specified cutoffs
 
 options:  Defined according to the mode and cmd you chosed.
 USAGE
@@ -29,9 +31,12 @@ USAGE
 
 my $mode = shift @ARGV unless $ARGV[0] =~/^-/;
 
+#Global needed vars
+my (%CDD);
 ### MAIN
 &run_bin if $mode =~ /^(bin|)$/;
 &run_uniq if $mode eq "uniq";
+&run_best if $mode eq "best";
 ### END
 
 sub usage4bin {
@@ -41,6 +46,7 @@ $msg
 usage [v0.1] :
   binWrite bin -l level -i anno -a asmDir -o binDir
     -i  unique annoataion file
+    -6  blast6 file with annoatation.
     -o  output dir
     -a  Assemble dir
     -l  level [species|genus|family|...]
@@ -51,9 +57,10 @@ USAGE
 
 sub run_bin {
   &usage4bin("Writing scaffolds according to specified level") && exit unless @ARGV;
-  my (%BINS,$inf,$asmD,$out,$lv,@heads,$head,$ilv);
+  my (%BINS,$inf,$blast6,$asmD,$out,$lv,@heads,$head,$ilv);
   GetOptions(
     "i=s" => \$inf,
+    "6=s" => \$blast6,
     "a=s" => \$asmD,
     "o=s" => \$out,
     "l=s" => \$lv,
@@ -62,22 +69,40 @@ sub run_bin {
   );
   &usage4bin("Writing scaffolds according to specified level") && exit if $help;
   &verbose("[bin] Mode start ... \n");
-  open INF, ($inf)?"<$inf":"<-" or die $!;
+  if($inf){
+    open INF, ($inf)?"<$inf":"<-" or die $!;
 
-  chomp($head = <INF>);
-  @heads = split(/\t/,$head);
-  for(my $i=0;$i<@heads;$i++){
-    $ilv = $i if $heads[$i] eq $lv;
+    chomp($head = <INF>);
+    @heads = split(/\t/,$head);
+    for(my $i=0;$i<@heads;$i++){
+      $ilv = $i if $heads[$i] eq $lv;
+    }
+    die "Can not find the specified level: $lv. Please check again!\n" unless $ilv;
+    &verbose("[bin] Reading annotation ...");
+    while(<INF>){
+      chomp;
+      my @info = split (/\t/,$_);
+      $BINS{$info[$ilv]}{$info[3]}{$info[0]} = $info[4];
+    }
+    close INF;
+    my $taxs = keys %BINS;
+    &verbose("[bin] done!\n Found $taxs taxonomies.\n");
   }
-  die "Can not find the specified level: $lv. Please check again!\n" unless $ilv;
-  &verbose("[bin] Reading annotation ... ");
-  while(<INF>){
-    chomp;
-    my @info = split (/\t/,$_);
-    $BINS{$info[$ilv]}{$info[3]}{$info[0]} = $info[4];
+  if($blast6){
+    &verbose("[bin] Reading from blast6 file with annoatation... ");
+    open INF, ($blast6)?"<$blast6":"<-" or die $!;
+    my $lv1 = substr($lv,0,1);
+    while(<INF>){
+      chomp;
+      my @info = split (/\t/,$_);
+      $info[17] =~ /s__([a-zA-Z_]+)(;|)/;
+      $BINS{$1}{$info[0]}{$info[1]} = $info[4];
+    }
+    close INF;
+    my $taxs = keys %BINS;
+    &verbose("[bin] done!\n Found $taxs taxonomies.\n");
   }
-  close INF;
-  &verbose("done!\n[bin] Reading and wirting scaffolds.\n");
+  &verbose("[bin] Reading and wirting scaffolds.\n");
   my $bak=$/; $/=">";
   foreach my $tax (sort keys %BINS){
     system("mkdir -p $out\/$tax") unless(-d "$out/$tax");
@@ -85,10 +110,11 @@ sub run_bin {
     open FQ1, ">$out/$tax/reads_1.fastq" or die $!;
     open FQ2, ">$out/$tax/reads_2.fastq" or die $!;
     foreach my $bc (sort keys %{$BINS{$tax}}){
-      my @nodes = sort {$a<=>$b} keys %{$BINS{$tax}{$bc}};
+      my @nodes = sort keys %{$BINS{$tax}{$bc}};
       open SF, "<$asmD/$bc/scaffolds.fasta" or die "cannot open $asmD/$bc/scaffolds.fasta!\n$!\n";
       #my $inode = shift @nodes;
-      my $seqid = $BINS{$tax}{$bc}{shift @nodes};
+      #my $seqid = $BINS{$tax}{$bc}{shift @nodes};
+      my $seqid = shift @nodes;
       while(<SF>){
         chomp;
         if($_ =~ /^$seqid/){
@@ -110,6 +136,7 @@ sub run_bin {
     close FQ2;
     &verbose("[bin] Passing $tax ...\n");
   }
+  $/=$bak;
   &verbose("[bin] All done!\n");
 }
 
@@ -218,6 +245,136 @@ sub run_uniq {
   close OUT;
   &verbose("[log] Mode [uniq] done ... \n");
   exit;
+}
+
+sub usage4best {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage [v0.1] :
+  binWrite uniq -e evalue -l length -c completeness -i input.blast6 -o output
+    -e  evalue
+    -l  length
+    -c  completeness
+    -i  input blast6 format (Make sure the query are sorted)
+    -o  output prefix (will add .best suffix)
+    -m  output a much more detailed result
+    -m  output a uniq recrod for each scaffold
+    -v  verbose
+    -h  show help info
+USAGE
+}
+
+sub run_best {
+  &usage4best("output the best annoatation for each scaffold") && exit unless @ARGV;
+  my ($eval,$len,$cpt,$inf,$out,$more,$uniq);
+  GetOptions(
+    "e=s" => \$eval,
+    "l=s" => \$len,
+    "c=s" => \$cpt,
+    "i=s" => \$inf,
+    "o=s" => \$out,
+    "m" => \$more,
+    "u" => \$uniq,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4best("output the best annoatation for each scaffold") && exit if $help;
+  &verbose("[best] Mode start ... \n");
+  #Init
+  $eval||= 1;
+  $len ||= 0;
+  $cpt ||= 0;
+  open IN,"<$inf" or die "Cannot open input file: $inf.\n";
+  open OUT,">$out.best" or die "Cannot open output file: $out.\n";
+  open MORE,">$out.more" or die "Cannot open output file: $more.\n" if $more;
+  open UNIQ,">$out.uniq" or die "Cannot open output file: $uniq.\n" if $uniq;
+
+  ## Here is the shorts for each column.
+  ##     0       1       2       3         4        5       6     7       8     9      10        11##
+  ##qseqid  sseqid  pident  length  mismatch  gapopen  qstart  qend  sstart  send  evalue  bitscore##
+  my ($cddi,%RG,$rgi,$pTag,$pEval); # candidates records, regions of alignments saved here
+  while(<IN>){
+    chomp;
+    my @rec = split(/\t/,$_);
+    if($pTag ne $rec[0]){
+      &writeCDD($uniq);
+      %CDD = ();
+      %RG  = ();
+      $rgi = 1;
+      $pEval = $rec[10];
+      $pTag = $rec[0];
+    }
+    #filter by arguments
+    next if $rec[10] > $eval;
+    next if $rec[3] <= $len;
+    #align candidates
+    my $thisRg = "";
+    unless(%CDD){
+      $thisRg = $rgi;
+      #First region determined
+      %{$RG{$thisRg}} = ('5'=>$rec[6],'3'=>$rec[7],'E'=>$rec[10],'L'=>$rec[3]);
+      $CDD{$rec[0]}{$thisRg}{'_'} = $_;
+      &verbose("[best] New scafs found: $rec[0]\n");
+    }else{
+      for(my $i=1;$i<=$rgi;$i++){
+        my $board = sprintf("%0d",($RG{$i}{3}-$RG{$i}{5})/10);
+        unless($rec[7] < $RG{$i}{5} + $board || $rec[6] > $RG{$i}{3} - $board){
+          $thisRg = $i;
+          #Same region determined
+          last if $rec[10] > $RG{$i}{'E'};
+          last if $rec[3] <= $RG{$i}{'L'};
+          #&verbose("[Discard] \$.:$. | RG:$i | by Eval\n") && last if $rec[10] > $RG{$i}{'E'};
+          #&verbose("[Discard] \$.:$. | RG:$i | by length\n") && last if $rec[3] <= $RG{$i}{'L'};
+          #Then it's a better record
+          %{$RG{$thisRg}} = ('5'=>$rec[6],'3'=>$rec[7],'E'=>$rec[10],'L'=>$rec[3]);
+          $CDD{$rec[0]}{$thisRg}{'_'} = $_;
+          #&verbose("[Replace] \$.:$. | RG:$i | new: $rec[6] - $rec[7] | RG: $RG{$i}{5} - $RG{$i}{3}\n");
+          last;
+        }
+        #&verbose("[Differ] \$.:$. | RG:$i | new: $rec[6] - $rec[7] | RG: $RG{$i}{5} - $RG{$i}{3}\n");
+      }
+      unless($thisRg){
+        $rgi ++;
+        $thisRg = $rgi;
+        #new region determined
+        %{$RG{$thisRg}} = ('5'=>$rec[6],'3'=>$rec[7],'E'=>$rec[10],'L'=>$rec[3]);
+        $CDD{$rec[0]}{$thisRg}{'_'} = $_;
+        #&verbose("[best] New regin found: $thisRg | $rec[6] - $rec[7]\n");
+      }
+    }
+    if($more){
+      print MORE "$thisRg\t$_\n";
+    }
+  }
+  close IN;
+  close MORE;
+  # The last one
+  &writeCDD($uniq);
+  close OUT;
+  close UNIQ;
+  &verbose("[Best] done!\n");
+  exit;
+}
+
+sub writeCDD {
+  my $uniq = shift;
+  return() unless %CDD;
+  foreach my $query (sort keys %CDD){
+    my ($best,$score) = ("",0);
+    foreach my $regin (sort keys %{$CDD{$query}}){
+      print OUT "$CDD{$query}{$regin}{'_'}\n";
+      if($uniq){
+        my @rec = split(/\t/,$CDD{$query}{$regin}{'_'});
+        if($rec[2] > $score){
+          $best = $CDD{$query}{$regin}{'_'};
+          $score = $rec[2];
+        }
+      }
+    }
+    print UNIQ "$best\n" if $uniq;
+  }
+  return();
 }
 
 
