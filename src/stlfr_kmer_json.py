@@ -27,6 +27,7 @@ reportFile = args.report
 
 kmerPool = []
 report = {}
+kmerFrag = []
 with open(inputFile, 'r') as f:
     for line in f:
         b = bead.beadSequence(json.loads(line))
@@ -34,6 +35,8 @@ with open(inputFile, 'r') as f:
         barcode = b.barcode
         kmerPool.append({barcode:kmers.kmers})
         kmerNumber = len(kmers.kmers)
+        fragNumber = len(b.fragments)
+        kmerFrag.append((kmerNumber, fragNumber))
         report[kmerNumber] = report.get(kmerNumber, 1) + 1
 with open(outputFile, 'w') as f:
     for line in kmerPool:
@@ -44,4 +47,9 @@ report = sorted([x for x in report.items()], key=lambda i:i[0])
 with open(reportFile, 'w') as f:
     f.write('KmerNumber\tCount\n')
     for line in report:
+        f.write('{0}\t{1}\n'.format(line[0], line[1]))
+
+with open('kmerFrag.tsv', 'w') as f:
+    f.write('KmerNumber\tFragNumber\n')
+    for line in kmerFrag:
         f.write('{0}\t{1}\n'.format(line[0], line[1]))
