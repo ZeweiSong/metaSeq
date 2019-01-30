@@ -340,22 +340,34 @@ def fastq2json(fwdFile, revFile, barcodePosition=-2, gz=True):
 
 
 # Convert the pair end merged files (one assembled, two unassembled) into bead dictionary
-def mergepairs2bead(assemFile, fwdFile, revFile):
+def mergepairs2bead(assemFile, fwdFile, revFile, fastx='q'):
     bead = {} # Dictionary for storing bead
-    for item in sequence_bytes(assemFile, fastx='q'):
-        for record in item:
+    for record in sequence(assemFile, fastx=fastx):
+        if fastx == 'q':
             barcode = record[0].split('/')[-2]
             try:
                 bead[barcode].append([record[1], record[3]])
             except KeyError:
                 bead[barcode] = [[record[1], record[3]]]
+        elif fastx == 'a':
+            barcode = record[0].split('/')[-2]
+            try:
+                bead[barcode].append([record[1]])
+            except KeyError:
+                bead[barcode] = [[record[1]]]
 
-    for r1, r2 in sequence_twin(fwdFile, revFile, fastx='q'):
-        barcode = r1[0].split('/')[-2]
-        try:
-            bead[barcode].append([r1[1], r1[3], r2[1], r2[3]])
-        except KeyError:
-            bead[barcode] = [[r1[1], r1[3], r2[1], r2[3]]]
+    for r1, r2 in sequence_twin(fwdFile, revFile, fastx=fastx):
+        if fastx == 'q':
+            barcode = r1[0].split('/')[-2]
+            try:
+                bead[barcode].append([r1[1], r1[3], r2[1], r2[3]])
+            except KeyError:
+                bead[barcode] = [[r1[1], r1[3], r2[1], r2[3]]]
+        elif fastx == 'a':
+            try:
+                bead[barcode].append([r1[1], r2[1]])
+            except KeyError:
+                bead[barcode] = [[r1[1], r2[1]]]
     return bead
 
 
