@@ -12,9 +12,10 @@
 # Last modified:     19 Jan 2019 (since 19 Jan 2019)
 # ===================================================================
 #
-BCDIR=$1
-refDB=$2
-force=$3
+thread=$1
+BCDIR=$2
+refDB=$3
+force=$4
 
 outDir="$BCDIR/align"
 
@@ -31,10 +32,13 @@ if [[ -f $sam && -z $force ]];
 then
   echo "[BC] BC alignemnt results exists. Skiped (add \$3 to force re-run)"
 else
-  echo "[BC] BC alignemnt start. Indexing scaffolds.fasta\n"
-  bwa index $BCDIR/scaffolds.fasta -p $outDir/scaffolds.bwa
-  echo "[BC] bwa mem aligning\n"
-  bwa mem -a -v 3 -t 8 $outDir/scaffolds.bwa $BCDIR/sort.{1,2}.fq -o $sam
+  echo "[BC] BC alignemnt start. Indexing scaffolds.fasta"
+  #awk -F "_" '($0~/^>/){if($6>=50&&$4>=100){s=1}else{s=0}};(s==1){print}' \
+  awk -F "_" '($0~/^>/){if($4>=100){s=1;S=S+1}else{s=0}};(s==1 && S<=30){print}' \
+   $BCDIR/scaffolds.fasta > $outDir/scaffolds.fasta
+  bwa index $outDir/scaffolds.fasta -p $outDir/scaffolds.bwa
+  echo "[BC] bwa mem aligning"
+  bwa mem -a -v 3 -t $thread $outDir/scaffolds.bwa $BCDIR/sort.{1,2}.fq -o $sam
 fi
 
 
@@ -46,8 +50,8 @@ then
   echo "[BC] BLAST results exists. Skiped (add \$6 to force re-run)"
 else
   echo "[BC] BLAST start"
-  echo "[CMD] blastn -num_threads 8 -db $refDB -query $BCDIR/scaffolds.fasta -out $sam6 -outfmt 6"
-  blastn -num_threads 8 -db $refDB -query $BCDIR/scaffolds.fasta -out $scaf6 -outfmt 6
+  echo "[CMD] blastn -num_threads $thread -db $refDB -query $BCDIR/scaffolds.fasta -out $sam6 -outfmt 6"
+  blastn -num_threads $thread -db $refDB -query $BCDIR/scaffolds.fasta -out $scaf6 -outfmt 6
 fi
 
 
