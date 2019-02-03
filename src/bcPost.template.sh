@@ -28,7 +28,7 @@ else
   refLSU="REF/silva132/LSU/SILVA_132_LSURef_tax_RNA.fasta"
 fi
 
-clusterFmt=`printf "%05d" $cluster`
+clusterFmt=`printf "%06d" $cluster`
 if [ $level -gt 0 ];
 then
   ASB="Assemble_Lv$level"
@@ -47,7 +47,7 @@ echo "[BC] list beads contained in this cluster"
 #mkdir $ASB/$subDir
 if [ $level == "BC" ];
 then
-  awk -v c=$cluster '$1==c{print $0}' $samDir/VSEARCH/APR842_00/VSEARCH/read.merge.derep.2T.bc.cluster_LvMax.main|sort > $samDir/$ASB/$subDir/beads.lst
+  awk -v c=$cluster '$1==c{print $0}' $samDir/VSEARCH/read.merge.derep.2T.bc.cluster_Lv$level.main|sort > $samDir/$ASB/$subDir/beads.lst
 else
   awk -v c=$cluster '$1==c{print $0}' $samDir/VSEARCH/read.individual.beads.list|sort > $samDir/$ASB/$subDir/beads.lst
 fi
@@ -64,7 +64,8 @@ else
   then
     ###Temp
     #spades.py --restart-from k77 -k 21,33,55,77 --mismatch-correction --careful --cov-cutoff auto -t 8 -o $samDir/$ASB/$subDir
-    spades.py --careful --cov-cutoff auto -t 8 -k 21,33,55 -o $samDir/$ASB/$subDir \
+    #spades.py --careful --cov-cutoff auto -t 8 -o $samDir/$ASB/$subDir \
+    spades.py --meta -t 8 -o $samDir/$ASB/$subDir \
     -1 $samDir/$ASB/$subDir/sort.1.fq -2 $samDir/$ASB/$subDir/sort.2.fq
   else
     spades.py --continue -o $samDir/$ASB/$subDir
