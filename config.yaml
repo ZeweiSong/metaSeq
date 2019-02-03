@@ -1,0 +1,37 @@
+prefix: "test"
+threads: 48
+tmp: "./tmp"
+
+# int cutoff of freq number for select beads; 0 means output all beads
+beadSelect: 10
+distCutoff: 0.04
+divideSH: 10
+
+REF_GEN: "REF/ncbi.5Ref.fasta"
+REF_ITS: "REF/ee_its_database.fasta" #UNITE + 5 fungi used in test
+
+
+samples:
+  APR831: Aprl_83L01
+  APR832: Aprl_83L02
+  APR841: Aprl_84L01
+  APR842: Aprl_84L02
+
+
+### method selection
+method:
+  cluster:
+    mash:
+      do: True
+    dups:
+      do: False
+    circos: True
+######################
+
+### Thread control
+thread:
+  manualDivide: 10
+  pigz: 4
+  fastp: 6
+  spades: 8
+  vsearch: 16
