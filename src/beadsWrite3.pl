@@ -177,7 +177,7 @@ sub specifcBarcode{
   my @p;
   foreach my $tag (keys %BCS){
     foreach my $cid (sort {$a<=>$b} keys %{$BCS{$tag}}){
-      my $cidName = sprintf("%s%05d",$tag,$cid);
+      my $cidName = sprintf("%s%06d",$tag,$cid);
       unless(defined $pfx){
         my $oDir = "$out/$cidName";
         if (-e "$oDir/sort.1.fq" && $skip){
