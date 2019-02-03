@@ -124,6 +124,7 @@ my %HS;
 while(<INF>){
   chomp;
   my @a=split;
+  next unless $a[2] >= $ident;
   if(defined $HS{$a[1]}){
     $HS{$a[1]}{'5'}=($a[8]<$HS{$a[1]}{'5'})?$a[8]:$HS{$a[1]}{'5'};
     $HS{$a[1]}{'3'}=($a[9]>$HS{$a[1]}{'3'})?$a[9]:$HS{$a[1]}{'3'};
@@ -132,7 +133,6 @@ while(<INF>){
     $HS{$a[1]}{'3'}=$a[9];
   }
   next unless $link;
-  next unless $a[2] >= $ident;
   print LINK "$a[0]\t".($zoom*$a[6])."\t".($zoom*$a[7])."\t$a[1]\t$a[8]\t$a[9]\n";
 }
 close INF;
@@ -140,7 +140,7 @@ close LINK if $link;
 
 &verbose("done!\nRead ref and writing ... ");
 while(<REF>){
-  $_=~/(Contig_|NODE_|Scaffold|chromosome )(\d+|\w+)/;
+  $_=~/(Contig_|NODE_|Scaffold|chromosome |\w+\d+\.)(\d+|\w+|\d+\.\d+)/;
   my $n=$2;
   my @a=split;
   next unless $HS{$a[1]};
