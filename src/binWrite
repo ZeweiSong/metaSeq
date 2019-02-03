@@ -22,6 +22,7 @@ mode:
     bin     binnig preparation
     uniq    stat unique centroids of dulicates within each beads
     best    output best anno with specified cutoffs
+    fqpick  filter fq files with beads above a threashold
 
 options:  Defined according to the mode and cmd you chosed.
 USAGE
@@ -37,7 +38,9 @@ my (%CDD);
 &run_bin if $mode =~ /^(bin|)$/;
 &run_uniq if $mode eq "uniq";
 &run_best if $mode eq "best";
+&run_fqpick if $mode eq "fqpick";
 ### END
+exit;
 
 sub usage4bin {
   my $msg = shift;
@@ -142,7 +145,7 @@ sub run_bin {
 
 sub usage4uniq {
   my $msg = shift;
-print <<USAGE;
+  print <<USAGE;
 $msg
 usage [v0.1] :
   binWrite uniq -t read.in.beads.tsv -c count.main -u bead.dup.uniq -o output
@@ -253,13 +256,14 @@ print <<USAGE;
 $msg
 usage [v0.1] :
   binWrite uniq -e evalue -l length -c completeness -i input.blast6 -o output
+    -f  format
     -e  evalue
     -l  length
     -c  completeness
     -i  input blast6 format (Make sure the query are sorted)
     -o  output prefix (will add .best suffix)
     -m  output a much more detailed result
-    -m  output a uniq recrod for each scaffold
+    -u  output a uniq recrod for each scaffold
     -v  verbose
     -h  show help info
 USAGE
@@ -267,28 +271,39 @@ USAGE
 
 sub run_best {
   &usage4best("output the best annoatation for each scaffold") && exit unless @ARGV;
-  my ($eval,$len,$cpt,$inf,$out,$more,$uniq);
+  my ($eval,$fmt,$ident,$len,$cpt,$inf,$out,$more,$writeRegion,$uniq);
   GetOptions(
+    "f=s" => \$fmt,
     "e=s" => \$eval,
+    "d=f" => \$ident,
     "l=s" => \$len,
     "c=s" => \$cpt,
     "i=s" => \$inf,
     "o=s" => \$out,
     "m" => \$more,
     "u" => \$uniq,
+    "r" => \$writeRegion,
     "v" => \$verbose,
     "h|help|?" => \$help,
   );
   &usage4best("output the best annoatation for each scaffold") && exit if $help;
   &verbose("[best] Mode start ... \n");
   #Init
+  $more||=0;
+  $writeRegion||=0;
+  $uniq||=0;
+
+  $fmt ||= "blast6";
   $eval||= 1;
+  $ident||=90;
   $len ||= 0;
   $cpt ||= 0;
+  $out ||= $inf;
   open IN,"<$inf" or die "Cannot open input file: $inf.\n";
   open OUT,">$out.best" or die "Cannot open output file: $out.\n";
   open MORE,">$out.more" or die "Cannot open output file: $more.\n" if $more;
   open UNIQ,">$out.uniq" or die "Cannot open output file: $uniq.\n" if $uniq;
+  open REGION,">$out.region" or die "Cannot open output file: $out.region.\n" if $writeRegion;
 
   ## Here is the shorts for each column.
   ##     0       1       2       3         4        5       6     7       8     9      10        11##
@@ -306,10 +321,16 @@ sub run_best {
       $pTag = $rec[0];
     }
     #filter by arguments
-    next if $rec[10] > $eval;
-    next if $rec[3] <= $len;
+    if($fmt eq "blast6"){
+      next if $rec[10] > $eval;
+      next if $rec[2] < $ident;
+      next if $rec[3] <= $len;
+      next if $rec[3]/$rec[7] < $cpt;
+    }
+
     #align candidates
     my $thisRg = "";
+    #new scaffolds
     unless(%CDD){
       $thisRg = $rgi;
       #First region determined
@@ -320,6 +341,7 @@ sub run_best {
       for(my $i=1;$i<=$rgi;$i++){
         my $board = sprintf("%0d",($RG{$i}{3}-$RG{$i}{5})/10);
         unless($rec[7] < $RG{$i}{5} + $board || $rec[6] > $RG{$i}{3} - $board){
+          #Same region
           $thisRg = $i;
           #Same region determined
           last if $rec[10] > $RG{$i}{'E'};
@@ -350,8 +372,9 @@ sub run_best {
   close IN;
   close MORE;
   # The last one
-  &writeCDD($uniq);
+  &writeCDD($uniq,$writeRegion);
   close OUT;
+  close REGION if $writeRegion;
   close UNIQ;
   &verbose("[Best] done!\n");
   exit;
@@ -359,11 +382,13 @@ sub run_best {
 
 sub writeCDD {
   my $uniq = shift;
+  my $writeRegion = shift;
   return() unless %CDD;
   foreach my $query (sort keys %CDD){
     my ($best,$score) = ("",0);
     foreach my $regin (sort keys %{$CDD{$query}}){
       print OUT "$CDD{$query}{$regin}{'_'}\n";
+      print REGION "$CDD{$query}{$regin}{'_'}\n" if $writeRegion;
       if($uniq){
         my @rec = split(/\t/,$CDD{$query}{$regin}{'_'});
         if($rec[2] > $score){
@@ -376,6 +401,63 @@ sub writeCDD {
   }
   return();
 }
+
+sub usage4fqpick {
+  my $msg = shift;
+  print <<USAGE;
+$msg
+usage [v0.1] :
+  binWrite fqpick -x fastq.idx -c cutoff -i fastq -o output
+    -x  fastq index file
+    -c  minial reads number of a bead allowed
+    -i  fqstq file
+    -o  output
+    -v  verbose
+    -h  show help info
+USAGE
+}
+
+sub run_fqpick {
+  &usage4uniq("filter fq files with beads above a threashold\n") && exit unless @ARGV;
+  my ($idx,$cut,$inf,$out,%IDX);
+  GetOptions(
+    "x=s" => \$idx,
+    "c=s" => \$cut,
+    "i=s" => \$inf,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4uniq("filter fq files with beads above a threashold\n") && exit if $help;
+  &verbose("[pick] Mode start ... \n");
+  open IDX, "<$idx" or die $!;
+  open INF, "<$inf" or die $!;
+  open OUT, ($out)?">$out":">-" or die $!;
+
+  my ($Li, @idxs) = (0,0,0,0);
+  while(<INF>){
+    $Li ++;
+    my $idx_;
+    while($Li>$idxs[2] && ($idx_ = <IDX>)){
+      chomp($idx_);
+      next if $idx_ =~ /0000/;
+      my @a = split(/\t/,$idx_);
+      my $n = ($a[2] - $a[1] + 1 ) / 4;
+      next if $n < $cut;
+      @idxs = @a;
+      last;
+    }
+    while($Li<$idxs[1]){ $_ = <INF> ; $Li ++ }
+    print OUT $_ if $Li <= $idxs[2];
+  }
+  close IDX;
+  close INF;
+  close OUT;
+  &verbose("[pick] done ... \n");
+  exit;
+}
+
+
 
 
 sub verbose{
