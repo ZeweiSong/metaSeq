@@ -99,6 +99,12 @@ if [[ -f $circosPNG && -z $force ]];
 then
   echo "[BC] $circosPNG exists. Skiped (add \$3 to force re-run)"
 else
+  echo "[BC] Perparing circos configures ..."
+  thick=`grep -E -o "\d+_\d+_\d+" $stack2S|sort|uniq|awk 'END{print int(500/FNR)}'`
+  if [ $thick -gt 50 ]; then thick=50; fi
+  cp ${conf/circos/ticks} $oDIR/
+  cp ${conf/circos/ideogram} $oDIR/
+  sed 's/DEFAULTSUF/'$suffix'/g;s/DEFAULTTHICKNESS/'$thick'/' $conf > $oDIR/circos.conf
   echo "[BC] running circos..."
   cmd="circos -conf $oDIR/circos.conf -outputdir $oDIR -outputfile circos.$suffix"
   echo $cmd && $cmd
