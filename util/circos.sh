@@ -41,6 +41,7 @@ else
   mkdir -p $oDIR/data
   cp ${conf/circos/ticks} $oDIR/
   cp ${conf/circos/ideogram} $oDIR/
+  cp ${conf/circos/housekeeping} $oDIR/
   sed 's/DEFAULTSUF/'$suffix'/g' $conf > $oDIR/circos.conf
 fi
 
@@ -89,7 +90,7 @@ then
   echo "[BC] stack.read2scaf.$suffix.tsv. Skiped (add \$3 to force re-run)"
 else
   echo "[BC] Getting stack.read2scaf.$suffix.tsv."
-  metabbq findRegion -s $aDIR/read2scaf.sam -x $zoom -o $stack2S
+  metabbq findRegion -s $aDIR/read2scaf.sam -x $zoom -o $stack2S -r $karyoREF
 fi
 
 echo
