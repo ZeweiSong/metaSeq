@@ -89,6 +89,7 @@ rule ATHENA_7_quast:
     output: "{sample}/athena/quast_REF_output/report.pdf"
     shell:
         "quast.py -t 24 {input.scaf} \ "
+        "-R {input.refFA} \ "
         "-1 {input.read1} \ "
         "-2 {input.read2} \ "
         "-o {params.oDir} \n"
