@@ -10,6 +10,8 @@ divideSH: 10
 REF_GEN: "REF/ncbi.5Ref.fasta"
 REF_ITS: "REF/ee_its_database.fasta" #UNITE + 5 fungi used in test
 
+REF_FA: "REF/ncbi.5Ref.fasta"
+REF_ID: "REF/ncbi.5Ref.faID"
 
 samples:
   APR831: Aprl_83L01
