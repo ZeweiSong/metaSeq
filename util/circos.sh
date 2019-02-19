@@ -6,24 +6,30 @@
 #                    bead cluster dir
 #                    ---------------------------
 # Author:            fangchao@genomics.cn
-# Version:           V0.1
-# Last modified:     19 Jan 2019 (since 19 Jan 2019)
+# Version:           V0.11
+# Last modified:     19 Feb 2019 (since 19 Jan 2019)
 # ===================================================================
 #
-BCDIR=$1
-refID=$2
-zoom=$3
-cutoff=$4
-force=$5
+if [ ! $1 ];
+then
+  echo -e "Usage:\n  circos.sh <zoom> <cutoff> <alignDir> <refID> <output Dir> [force]" && exit
+fi
 
-aDIR=$BCDIR/align
+zoom=$1
+cutoff=$2
+aDIR=$3
+refID=$4
+oDIR=$5
+force=$6
+
+#aDIR=$BCDIR/align
 bDIR=`dirname $0`
 conf="$bDIR/template/circos.conf"
-oDIR=$BCDIR/circos
+
 suffix="i$cutoff.x$zoom"
 
 echo "####################################"
-echo [CC] info: Alignment dir: $BCDIR
+echo [CC] info: Alignment dir: $aDIR
 echo [CC] info: Output CC dir: $oDIR/circos.$suffix
 echo [CC] info: link pos zoom: $zoom
 echo [CC] info: circos config: $conf
@@ -101,7 +107,7 @@ then
 else
   echo "[BC] Perparing circos configures ..."
   thick=`grep -E -o "\d+_\d+_\d+" $stack2S|sort|uniq|awk 'END{print int(500/FNR)}'`
-  if [ $thick -gt 50 ]; then thick=50; fi
+  if [ -z $thick || $thick -gt 50 ]; then thick=50; fi
   cp ${conf/circos/ticks} $oDIR/
   cp ${conf/circos/ideogram} $oDIR/
   sed 's/DEFAULTSUF/'$suffix'/g;s/DEFAULTTHICKNESS/'$thick'/' $conf > $oDIR/circos.conf

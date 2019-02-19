@@ -8,22 +8,27 @@
 #                    continue from break point if defined
 #                    ---------------------------
 # Author:            fangchao@genomics.cn
-# Version:           V0.1
-# Last modified:     19 Jan 2019 (since 19 Jan 2019)
+# Version:           V0.11
+# Last modified:     19 Feb 2019 (since 19 Jan 2019)
 # ===================================================================
 #
+if [ ! $1 ];
+then
+  echo -e "Usage:\n  reAlign.sh [threads] <R1> <R2> <scaffolds> <reference> <output dir> [force]" && exit
+fi
 thread=$1
-BCDIR=$2
-refDB=$3
-force=$4
-
-outDir="$BCDIR/align"
+r1=$2
+r2=$3
+scaf=$4
+refDB=$5
+outDir=$6
+force=$7
 
 echo [BC] Post aligment pipeline start:
-echo [BC] info: sample directory: $BCDIR
-echo [BC] info: REF Database:     $refDB
+echo [BC] info: Scaffolds:     $scaf
+echo [BC] info: REF Database:  $refDB
 
-mkdir -p $BCDIR/align
+mkdir -p $outDir
 echo [BC] info: output dir :      $outDir
 
 echo
@@ -35,10 +40,10 @@ else
   echo "[BC] BC alignemnt start. Indexing scaffolds.fasta"
   #awk -F "_" '($0~/^>/){if($6>=50&&$4>=100){s=1}else{s=0}};(s==1){print}' \
   awk -F "_" '($0~/^>/){if($4>=100){s=1;S=S+1}else{s=0}};(s==1 && S<=30){print}' \
-   $BCDIR/scaffolds.fasta > $outDir/scaffolds.fasta
-  bwa index $outDir/scaffolds.fasta -p $outDir/scaffolds.bwa
+   $scaf > $outDir/scaffolds.fasta
+  bwa index $scaf -p $outDir/scaffolds.bwa
   echo "[BC] bwa mem aligning"
-  bwa mem -a -v 3 -t $thread $outDir/scaffolds.bwa $BCDIR/sort.{1,2}.fq -o $sam
+  bwa mem -a -v 3 -t $thread $outDir/scaffolds.bwa $r1 $r2 -o $sam
 fi
 
 
@@ -50,8 +55,8 @@ then
   echo "[BC] BLAST results exists. Skiped (add \$6 to force re-run)"
 else
   echo "[BC] BLAST start"
-  echo "[CMD] blastn -num_threads $thread -db $refDB -query $BCDIR/scaffolds.fasta -out $sam6 -outfmt 6"
-  blastn -num_threads $thread -db $refDB -query $BCDIR/scaffolds.fasta -out $scaf6 -outfmt 6
+  echo "[CMD] blastn -num_threads $thread -db $refDB -query $scaf -out $sam6 -outfmt 6"
+  blastn -num_threads $thread -db $refDB -query $scaf -out $scaf6 -outfmt 6
 fi
 
 
