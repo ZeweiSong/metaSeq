@@ -43,16 +43,16 @@ rule ATHENA_3_index:
 
 rule ATHENA_4_config:
     input:
-        fqs = "clean/sort_atn_sp.fastq",
-        ctg = "spadesMeta/contigs.fasta",
-        bam = "reads.2.metaspades-contigs.bam"
+        fqs = "{sample}/clean/sort_atn_sp.fastq",
+        ctg = "{sample}/spadesMeta/contigs.fasta",
+        bam = "{sample}/athena/reads.2.metaspades-contigs.bam"
     output:   "{sample}/athena/config.json"
     shell:
         """
         echo {{
-          "input_fqs": "../{input.fqs}",
-          "ctgfasta_path": "../{input.ctg}",
-          "reads_ctg_bam_path": "{input.bam}"
+          "input_fqs": "../clean/sort_atn_sp.fastq",
+          "ctgfasta_path": "../spadesMeta/contigs.fasta",
+          "reads_ctg_bam_path": "reads.2.metaspades-contigs.bam"
         }} > {output}
         """
 
