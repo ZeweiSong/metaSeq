@@ -61,7 +61,7 @@ rule ATHENA_5_FinalShell:
     output:"{sample}/athena/run.athena.sh"
     shell:
         "source activate athena_env\n"
-        "athena-meta --config {input} --threads 64\n"
+        "athena-meta --config {input} --threads 64\n" # For now, run it manully
 
 rule ATHENA_6_annotation:
     input:
@@ -78,7 +78,22 @@ rule ATHENA_6_annotation:
         "metabbq reAlign.sh 24 {input.r1} {input.r2} {input.scaf} {input.refFA} {params.oDir}\n"
         "metabbq anno.pl {input.refID} {params.b6} > {output}"
 
-rule ATHENA_7_circos:
+rule ATHENA_7_quast:
+    input:
+        scaf  = "{sample}/athena/results/olc/flye-asm-1/scaffolds.fasta",
+        refFA = config["REF_FA"],
+        read1 = "{sample}/clean/fastp.sort.1.fq",
+        read2 = "{sample}/clean/fastp.sort.2.fq"
+    params:
+        oDir = "{sample}/athena/quast_REF_output",
+    output: "{sample}/athena/quast_REF_output/report.pdf"
+    shell:
+        "quast.py -t 24 {input.scaf} \ "
+        "-1 {input.read1} \ "
+        "-2 {input.read2} \ "
+        "-o {params.oDir} \n"
+
+rule ATHENA_8_circos:
     input:
         anno  = "{sample}/athena/reAlign/scaf2ref.blast6.anno",
         refID = config["REF_ID"]
