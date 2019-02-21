@@ -11,24 +11,44 @@ This script contains functions that take a sequence file as input.
 from __future__ import print_function
 from __future__ import division
 
+# Function for checking the file type (gz, fasta, fastq)
+# Return a tuple with two boolean value (T/F, T/F) --> (gz/not_gz, FASTQ/FASTA)
+# FBI WARNING, this is a weak checker
+    # It only check the file extension for gz file
+    # It only check the first character for sequence type
+def showMeTheType(filePath):
+    import gzip
+    seqType = {'>':False, '@':True}
+    fileType = []
+    if filePath.endswith('.gz'):
+        fileType.append(True)
+    else:
+        fileType.append(False)
+    if fileType[0]:
+        with gzip.open(filePath, 'rt') as f:
+            headSymbol = f.readline()[0]
+    else:
+        with open(filePath, 'r') as f:
+            headSymbol = f.readline()[0]
+    fileType.append(seqType[headSymbol])
+    return tuple(fileType)
+
 # an iterator oobject for reading a single sequence file. This is the most common Class.
 # It will NOT check the format of the file, either can it deal with multiple line FASTA file.
 # At my desktop computer, 1 M reads can be read in in about 2 seconds.
 class sequence(object):
-    def __init__(self, filePath, fastx='a', gz=False):
-        self.fastx = fastx
-        self.gzip = gz
-        if self.gzip:
+    def __init__(self, filePath):
+        fileType = showMeTheType(filePath)
+        if fileType[0]:
             import gzip
             self.file = gzip.open(filePath, 'rt')
         else:
             self.file = open(filePath, 'r')
-        if fastx == 'a':
-            self.n = 2
-        elif fastx == 'q':
+
+        if fileType[1]:
             self.n = 4
         else:
-            print('Please specify the right format, "a" for FASTA and "q" for FASTQ.')
+            self.n = 2
 
     def __iter__(self):
         return self
@@ -48,22 +68,18 @@ class sequence(object):
 # Same iterator but read in multiple record into memory at once
 # By testing, read in file in trunk does not boost the reading speed.
 class sequence_trunk(object):
-    def __init__(self, filePath, fastx='a', gz=False, trunk_size=2):
-        self.fastx = fastx
-        self.gzip = gz
-        self.trunk_size = trunk_size
-        if self.gzip:
+    def __init__(self, filePath, trunk_size=100000):
+        fileType = showMeTheType(filePath)
+        if fileType[0]:
             import gzip
             self.file = gzip.open(filePath, 'rt')
         else:
             self.file = open(filePath, 'r')
-        if fastx == 'a':
-            self.n = 2
-        elif fastx == 'q':
+
+        if fileType[1]:
             self.n = 4
         else:
-            print('Please specify the right format, "a" for FASTA and "q" for FASTQ.')
-            self.n = 1
+            self.n = 2
 
     def __iter__(self):
         return self
