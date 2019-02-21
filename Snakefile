@@ -24,7 +24,11 @@ rule all:
 include: src + "/rules/BBprep.smk"
 
 # Module #02: cluster beads
-include: src + "/rules/beadsCluster.smk"
+if config["method"]["cluster"]["bb1m"]:
+    include: src + "/rules/beadsCluster_1m.smk"
+    include: src + "/rules/beadsCluster_2m.smk"
+else:
+    include: src + "/rules/beadsCluster.smk"
 
 # Module #03: Assemble Draft
 #include: src + "/rules/assemble.smk"

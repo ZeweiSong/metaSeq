@@ -7,6 +7,7 @@ beadSelect: 10
 distCutoff: 0.04
 divideSH: 10
 
+BB_LIST: "REF/barcode.list"
 REF_GEN: "REF/ncbi.5Ref.fasta"
 REF_ITS: "REF/ee_its_database.fasta" #UNITE + 5 fungi used in test
 
@@ -23,11 +24,11 @@ samples:
 ### method selection
 method:
   cluster:
-    mash:
-      do: True
-    dups:
-      do: False
+    mash: False
+    dups: False
+    bb1m: True
     circos: True
+
 ######################
 
 ### Thread control

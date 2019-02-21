@@ -133,7 +133,7 @@ then
     -query $samDir/$ASB/$subDir/scaffolds.$mode.units.fasta
 
     echo "[BC] units annotating"
-    perl src/anno.pl $refBT.ids $units6 > $units6.anno
+    metabbq anno.pl $refBT.ids $units6 > $units6.anno
   fi
   ### BLAST for scaffolds ###
   echo
@@ -173,13 +173,13 @@ else
     echo "[BC] units BLAST results exists. Skiped (add \$6 to force re-run)"
   else
     echo "[BC] units BLAST start"
-    blastn -num_threads 8 -db $refSSU -query $barrnapFa -out ${units6/units/SSU} -outfmt 6
-    blastn -num_threads 8 -db $refLSU -query $barrnapFa -out ${units6/units/LSU} -outfmt 6
-    cat ${units6/units/SSU} ${units6/units/LSU} > $units6
+    blastn -num_threads 8 -db $refSSU -query $barrnapFa -out ${units6/units/units.SSU} -outfmt 6
+    blastn -num_threads 8 -db $refLSU -query $barrnapFa -out ${units6/units/units.LSU} -outfmt 6
+    cat ${units6/units/units.SSU} ${units6/units/units.LSU} > $units6
     echo "[BC] units BLAST annotating"
-    perl src/anno.pl $refSSU.ids ${units6/units/SSU} > ${units6/units/SSU}.anno
-    perl src/anno.pl $refLSU.ids ${units6/units/LSU} > ${units6/units/LSU}.anno
-    cat ${units6/units/SSU}.anno ${units6/units/LSU}.anno > $units6.anno
+    metabbq anno.pl $refSSU.ids ${units6/units/units.SSU} > ${units6/units/units.SSU}.anno
+    metabbq anno.pl $refLSU.ids ${units6/units/units.LSU} > ${units6/units/units.LSU}.anno
+    cat ${units6/units/units.SSU}.anno ${units6/units/units.LSU}.anno > $units6.anno
   fi
   ### BLAST for scaffolds ###
   echo
@@ -189,11 +189,11 @@ else
     echo "[BC] Scaffolds BLAST results exists. Skiped (add \$6 to force re-run)"
   else
     echo "[BC] Scaffolds BLAST start"
-    blastn -num_threads 8 -db $refSSU -out ${scaf6/tax/SSU} -outfmt 6 \
+    blastn -num_threads 8 -db $refSSU -out ${scaf6/tax/tax.SSU} -outfmt 6 \
     -query $samDir/$ASB/$subDir/scaffolds.fasta
-    blastn -num_threads 8 -db $refLSU -out ${scaf6/tax/LSU} -outfmt 6 \
+    blastn -num_threads 8 -db $refLSU -out ${scaf6/tax/tax.LSU} -outfmt 6 \
     -query $samDir/$ASB/$subDir/scaffolds.fasta
-    cat ${scaf6/tax/SSU} ${scaf6/tax/LSU} > $scaf6
+    #cat ${scaf6/tax/tax.SSU} ${scaf6/tax/tax.LSU} > $scaf6
   fi
   if [[ -f $scaf6.anno && -z $force ]];
   then
@@ -201,7 +201,8 @@ else
   else
     echo "[BC] Adding taxonomy info for BLAST"
 #    perl src/anno.pl $refSSU.ids ${scaf6/tax/SSU} > ${scaf6/tax/SSU}.anno
-    metabbq anno.pl $refLSU.ids ${scaf6/tax/LSU} > ${scaf6/tax/LSU}.anno
+    metabbq anno.pl $refLSU.ids ${scaf6/tax/tax.LSU} > ${scaf6/tax/tax.LSU}.anno
+    metabbq anno.pl $refSSU.ids ${scaf6/tax/tax.SSU} > ${scaf6/tax/tax.SSU}.anno
     cat ${scaf6/tax/SSU}.anno ${scaf6/tax/LSU}.anno > $scaf6.anno
   fi
 fi

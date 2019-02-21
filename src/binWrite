@@ -410,6 +410,7 @@ usage [v0.1] :
   binWrite fqpick -x fastq.idx -c cutoff -i fastq -o output
     -x  fastq index file
     -c  minial reads number of a bead allowed
+    -m  maximal reads number of a bead allowed
     -i  fqstq file
     -o  output
     -v  verbose
@@ -418,17 +419,18 @@ USAGE
 }
 
 sub run_fqpick {
-  &usage4uniq("filter fq files with beads above a threashold\n") && exit unless @ARGV;
-  my ($idx,$cut,$inf,$out,%IDX);
+  &usage4fqpick("filter fq files with beads above a threashold") && exit unless @ARGV;
+  my ($idx,$cut,$cMax,$inf,$out,%IDX);
   GetOptions(
     "x=s" => \$idx,
     "c=s" => \$cut,
+    "m=s" => \$cMax,
     "i=s" => \$inf,
     "o=s" => \$out,
     "v" => \$verbose,
     "h|help|?" => \$help,
   );
-  &usage4uniq("filter fq files with beads above a threashold\n") && exit if $help;
+  &usage4fqpick("filter fq files with beads above a threashold\n") && exit if $help;
   &verbose("[pick] Mode start ... \n");
   open IDX, "<$idx" or die $!;
   open INF, "<$inf" or die $!;
@@ -444,6 +446,7 @@ sub run_fqpick {
       my @a = split(/\t/,$idx_);
       my $n = ($a[2] - $a[1] + 1 ) / 4;
       next if $n < $cut;
+      next if $cMax && $n > $cMax ;
       @idxs = @a;
       last;
     }

@@ -9,9 +9,9 @@
 
 rule BB_1_stLFR:
     input:
-        r1 = "rawSeq/{sample}_1.fq.gz",
-        r2 = "rawSeq/{sample}_2.fq.gz",
-        bfile = "database/barcode.list"
+        r1 = "{sample}/input/rawSeq_1.fq.gz",
+        r2 = "{sample}/input/rawSeq_2.fq.gz",
+        bfile = config["BB_LIST"]
     params:
         title = "{sample}"
     output:
@@ -46,9 +46,12 @@ rule BB_2_sortR1:
 
 rule BB_3_idxR1:
     input:  "{sample}/clean/fastp.sort.1.fq"
-    output: "{sample}/clean/fastp.sort.1.fq.idx"
+    output:
+        idx = "{sample}/clean/fastp.sort.1.fq.idx",
+        stat= "{sample}/clean/BB.stat"
     shell:
-        "metabbq beadsWrite3.pl -x --r1 {input} -v "
+        "metabbq beadsWrite3.pl -x --r1 {input} -v \n"
+        "awk '$1!~/0000/{{print ($3-$2+1)/4}}' {output.idx}|sort|uniq -c|sort -k2,2nr|awk '{{b=b+$1;print $0\"\\t\"b}}' > {output.stat}"
 
 rule BB_2_sortR2:
     input:

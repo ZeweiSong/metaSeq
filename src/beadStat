@@ -240,7 +240,21 @@ sub run_merge {
   &verbose("[log] Mode [merge] done ... \n");
 }
 
+sub usage4bc {
+  my $msg = shift;
+  print <<USAGE;
+$msg
+usage [v0.1] :
+  beadStat bc -i input -ident [identity] -match [match] -o output -v -h
+    -i  annotation of scaffolds
+    -o  output
+    -v  verbose
+    -h  show help info
+USAGE
+}
+
 sub run_BCent {
+  &usage4bc("Found Bead Clusters' center\n") && exit if $help;
   my ($inf,$ident,$match,$out,$verbose,$help);
   GetOptions(
     "i=s" => \$inf,
@@ -250,7 +264,7 @@ sub run_BCent {
     "v" => \$verbose,
     "h|help|?" => \$help,
   );
-  &usage4uc("Found Bead Clusters' center\n") && exit if $help;
+  &usage4bc("Found Bead Clusters' center\n") && exit if $help;
   #&usage("[fatal] Essential input is missing");
 
   $ident||= 98;
