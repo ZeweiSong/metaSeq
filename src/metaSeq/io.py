@@ -33,6 +33,7 @@ def showMeTheType(filePath):
     fileType.append(seqType[headSymbol])
     return tuple(fileType)
 
+
 # an iterator oobject for reading a single sequence file. This is the most common Class.
 # It will NOT check the format of the file, either can it deal with multiple line FASTA file.
 # At my desktop computer, 1 M reads can be read in in about 2 seconds.
@@ -105,21 +106,21 @@ class sequence_trunk(object):
 # Iterator for two files
 # It only work for files with ABSOLUTELY corresponding record.
 class sequence_twin(object):
-    def __init__(self, file_r1, file_r2, fastx='a', gz=False):
-        self.fastx = fastx
-        self.gzip = gz
-        if self.gzip:
+    def __init__(self, file_r1, file_r2):
+        fileType = showMeTheType(file_r1)
+        fileType_2 = showMeTheType(file_r2)
+        if fileType[0] != fileType_2[0] or fileType[1] != fileType_2[1]:
+            print('Inconsistent file type, are you serious?')
+            self.n = 1
+        if fileType[0]:
             import gzip
             self.r1 = gzip.open(file_r1, 'rt')
             self.r2 = gzip.open(file_r2, 'rt')
         else:
             self.r1 = open(file_r1, 'r')
             self.r2 = open(file_r2, 'r')
-        if fastx == 'a': self.n = 2
-        elif fastx == 'q': self.n = 4
-        else:
-            print('Please specify the right format, "a" for FASTA and "q" for FASTQ.')
-            self.n = 1
+        if fileType[1]: self.n = 4
+        else: self.n = 2
 
     def __iter__(self):
         return self
@@ -140,21 +141,21 @@ class sequence_twin(object):
 
 
 class sequence_twin_trunk(object):
-    def __init__(self, file_r1, file_r2, fastx='a', gz=False, trunk_size=2):
-        self.fastx = fastx
-        self.gzip = gz
-        if self.gzip:
+    def __init__(self, file_r1, file_r2, trunk_size=100000):
+        fileType = showMeTheType(file_r1)
+        fileType_2 = showMeTheType(file_r2)
+        if fileType[0] != fileType_2[0] or fileType[1] != fileType_2[1]:
+            print('Inconsistent file type, are you serious?')
+            self.n = 1
+        if fileType[0]:
             import gzip
             self.r1 = gzip.open(file_r1, 'rt')
             self.r2 = gzip.open(file_r2, 'rt')
         else:
             self.r1 = open(file_r1, 'r')
             self.r2 = open(file_r2, 'r')
-        if fastx == 'a': self.n = 2
-        elif fastx == 'q': self.n = 4
-        else:
-            print('Please specify the right format, "a" for FASTA and "q" for FASTQ.')
-            self.n = 1
+        if fileType[1]: self.n = 4
+        else: self.n = 2
         self.trunk_size = trunk_size
 
     def __iter__(self):
@@ -230,17 +231,14 @@ class sequence_bytes(object):
 
 
 # Write the content to a fastx file
-def write_seqs(seq_content, filePath, fastx='a', gz=False, mode='w'):
+def write_seqs(seq_content, filePath, fastx='a', gz=True, mode='w'):
     count = 0
     if fastx == 'a':
-        n = 2
         header = '>'
     elif fastx == 'q':
-        n = 4
         header = '@'
     else:
-        n = 1
-        header = ''
+        header = '-_-b'
 
     if not gz:
         f = open(filePath, mode, newline='')
@@ -254,6 +252,8 @@ def write_seqs(seq_content, filePath, fastx='a', gz=False, mode='w'):
         count += 1
     f.close()
     return count
+
+
 #%% Functions for alignment
 class alignment(object):
     def __init__(self, alnFile):
@@ -287,6 +287,8 @@ def writeAlignment(alnList, outFile):
             f.write('{0}\n'.format('\t'.join([str(i) for i in line])))
             i += 1
     return i
+
+
 #%%# Parse a sorted stLFR FASTA data by bead (barcode)
 # Return a tuple containing all the short sequences in the bead
 # Barcode is saved after the last "-", for example /102_1324_573
@@ -343,9 +345,9 @@ class stlfr_bead(object):
 # Convert a stLFR sequence data (FASTQ) into JSON format per bead,
 # Work for splited file with R1 and R2 files
 # A dictionary is returned with barcode as key:
-def fastq2json(fwdFile, revFile, barcodePosition=-2, gz=True):
+def fastq2json(fwdFile, revFile, barcodePosition=-2):
     beadJson = {}
-    for r1, r2 in sequence_twin(fwdFile, revFile, fastx='q', gz=gz):
+    for r1, r2 in sequence_twin(fwdFile, revFile):
         barcode = r1[0].split('/')[barcodePosition]
         try:
             beadJson[barcode].append(r1 + r2)
@@ -354,37 +356,41 @@ def fastq2json(fwdFile, revFile, barcodePosition=-2, gz=True):
     return beadJson
 
 
-
 # Convert the pair end merged files (one assembled, two unassembled) into bead dictionary
-def mergepairs2bead(assemFile, fwdFile, revFile, fastx='q'):
+def mergepairs2bead(assemFile, fwdFile, revFile):
     bead = {} # Dictionary for storing bead
-    for record in sequence(assemFile, fastx=fastx):
-        if fastx == 'q':
+    ft = showMeTheType(assemFile)
+    for record in sequence(assemFile):
+        if ft[1]:
             barcode = record[0].split('/')[-2]
             try:
                 bead[barcode].append([record[1], record[3]])
             except KeyError:
                 bead[barcode] = [[record[1], record[3]]]
-        elif fastx == 'a':
+        else:
             barcode = record[0].split('/')[-2]
             try:
                 bead[barcode].append([record[1]])
             except KeyError:
                 bead[barcode] = [[record[1]]]
-
-    for r1, r2 in sequence_twin(fwdFile, revFile, fastx=fastx):
-        if fastx == 'q':
-            barcode = r1[0].split('/')[-2]
-            try:
-                bead[barcode].append([r1[1], r1[3], r2[1], r2[3]])
-            except KeyError:
-                bead[barcode] = [[r1[1], r1[3], r2[1], r2[3]]]
-        elif fastx == 'a':
-            try:
-                bead[barcode].append([r1[1], r2[1]])
-            except KeyError:
-                bead[barcode] = [[r1[1], r2[1]]]
-    return bead
+    ft1 = showMeTheType(fwdFile)
+    ft2 = showMeTheType(revFile)
+    if ft1 != ft2:
+        print('Inconsisten forward and reverse file, come on, dude!')
+    else:
+        for r1, r2 in sequence_twin(fwdFile, revFile):
+            if ft1[1]:
+                barcode = r1[0].split('/')[-2]
+                try:
+                    bead[barcode].append([r1[1], r1[3], r2[1], r2[3]])
+                except KeyError:
+                    bead[barcode] = [[r1[1], r1[3], r2[1], r2[3]]]
+            else:
+                try:
+                    bead[barcode].append([r1[1], r2[1]])
+                except KeyError:
+                    bead[barcode] = [[r1[1], r2[1]]]
+        return bead
 
 
 # Convert a pair of FASTQ record into list format as [seq1, q1, seq2, q2]
