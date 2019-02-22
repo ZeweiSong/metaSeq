@@ -47,7 +47,7 @@ import textwrap
 import argparse
 import time
 import json
-import gzip
+#import gzip
 parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
                                      epilog=textwrap.dedent('''\
                                         Split raw stLFR data into beads. Open the script to see a detail document.
@@ -66,7 +66,7 @@ parser.add_argument('-o', help='Output base for FASTQ or JSON.')
 parser.add_argument('-fastq', action='store_true', help='Turn on output to FASTQ, suffix will be added for four files.')
 parser.add_argument('-json', action='store_true', help='Turn on output to JSON format, will write to one file with .json extension.')
 parser.add_argument('-bl', default='42', help='Specify the length of barcode string, 42 or 54 bp.')
-parser.add_argument('-not_gz', action='store_false', help='Specify if the input is not a gz file, in most case you do not need it.')
+#parser.add_argument('-not_gz', action='store_false', help='Specify if the input is not a gz file, in most case you do not need it.')
 args = parser.parse_args()
 r1File = args.r1
 r2File = args.r2
@@ -143,7 +143,7 @@ def number_set(barcodes, forwardDict, forwardSnpDict, reverseDict):
                 return None
     return '_'.join(number)
 
-
+''' Dyfunced now, RIP.
 # Iterator for two files
 # It only work for files with ABSOLUTELY corresponding record.
 class sequence_twin(object):
@@ -179,6 +179,7 @@ class sequence_twin(object):
         record[0][0] = record[0][0][1:]
         record[1][0] = record[1][0][1:]
         return record[0], record[1]
+'''
 #%% Read in the barcode list
 # Forward and Reverse barcodes are saved in two Dictionaries.
 print('Reading in the barcode list from {0} ...'.format(barcodeFile))
@@ -228,7 +229,7 @@ beadError = {'0_0_0':[]}  # This is the dicionary that organizes seqs without ba
 
 logFile = base + '.log'
 
-seqs = sequence_twin(r1File, r2File, fastx='q', gz=not_gz)
+seqs = seqIO.sequence_twin(r1File, r2File)
 count = 0
 error_count = 0
 offsets = [0,-1,1,-2,2]
