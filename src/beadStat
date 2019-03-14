@@ -3,51 +3,40 @@
 # ===================================================================
 # Description:       stat the overlap depth between each 2 beads.
 # Author:            Chao | fangchao@genomics.cn
-# Version:           V0.1
-# Last modified:    03 Jan 2019 (since 03 Jan 2019)
+# Version:           v0.1
+# Last modified:     03 Jan 2019 (since 03 Jan 2019)
 # ===================================================================
 # see detail below
 use strict;
 use Getopt::Long;
-
+my (%CLUST);
+my($verbose,$help);
 sub usage {
   my $msg = shift;
 print <<USAGE;
 $msg
 usage:
-  $0 -i input -o output
-    -m  mode [uc|tile|bc|bin]
-    -i  unchime file with 10 column
-    -o  output filename
-    -v  verbose
-    -h  show help info
+  beadStat <mode> [option]
+  mode:
+    uc     Stat the overlap depth between each 2 beads
+    merge  Merge 2 cluster files together
+    bc     output best anno with specified cutoffs
+    bin    filter fq files with beads above a threashold
+    RBS    Reads supports from Beads to Scaffolds
+
+options:  Defined according to the mode and cmd you chosed.
 USAGE
 }
-&usage("Stat the overlap depth between each 2 beads.") && exit unless @ARGV;
 
-my ($inf,$mode,$ident,$match,$out,$verbose,$help);
-GetOptions(
-  "i=s" => \$inf,
-  "m=s" => \$mode,
-  "ident=i" => \$ident,
-  "match=i" => \$match,
-  "o=s" => \$out,
-  "v" => \$verbose,
-  "h|help|?" => \$help,
-);
-&usage && exit if $help;
-#&usage("[fatal] Essential input is missing");
+&usage("Stating beads related information") && exit if @ARGV == 0 || $ARGV[0] eq "-h";
 
-$ident||= 98;
-$match||= 30;
-#open INF, ($inf)?"<$inf":"<-" or die $!;
-open OUT, ($out)?">$out":">-" or die $!;
+my $mode = shift @ARGV unless $ARGV[0] =~/^-/;
 
 # Main start
-my (%CLUST);
 &run_uc    if $mode eq "uc";
 &run_merge if $mode eq "merge";
 &run_BCent if $mode eq "bc";
+&run_rbs   if $mode eq "RBS";
 # Main end
 
 &verbose("[log] All done!\n");
@@ -69,7 +58,41 @@ sub BC2Num {
   return($id,$status);
 }
 
+##########################
+
+sub usage4uc {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  $0 uc -i input -o output
+    -i  unchime file with 10 column
+    -o  output filename
+    -v  verbose
+    -h  show help info
+USAGE
+}
+&usage4uc("Stat the overlap depth between each 2 beads.") && exit unless @ARGV;
+
 sub run_uc {
+  my (%CLUST);
+  my ($inf,$ident,$match,$out,$verbose,$help);
+  GetOptions(
+    "i=s" => \$inf,
+    "ident=i" => \$ident,
+    "match=i" => \$match,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4uc("Stat the overlap depth between each 2 beads.") && exit if $help;
+  #&usage("[fatal] Essential input is missing");
+
+  $ident||= 98;
+  $match||= 30;
+  #open INF, ($inf)?"<$inf":"<-" or die $!;
+  open OUT, ($out)?">$out":">-" or die $!;
+
   &verbose("[log] Mode [UC] start ... \n");
   my(%HASH,%CLUST,%STAT,$clusterCount,$linkCount);
   #Here is the shorts for each column. Find more detail in VSEARCH manual.
@@ -129,6 +152,24 @@ sub run_uc {
 }
 
 sub run_merge {
+  my (%CLUST);
+  my ($inf,$ident,$match,$out,$verbose,$help);
+  GetOptions(
+    "i=s" => \$inf,
+    "ident=i" => \$ident,
+    "match=i" => \$match,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4uc("Merge 2 cluster files together.") && exit if $help;
+  #&usage("[fatal] Essential input is missing");
+
+  $ident||= 98;
+  $match||= 30;
+  #open INF, ($inf)?"<$inf":"<-" or die $!;
+  open OUT, ($out)?">$out":">-" or die $!;
+
   &verbose("[log] Mode [merge] start ... \n");
   my @files = split (",",$inf);
   &verbose("[err] [merge] needs two files. Pls check\n") & die $! if @files != 2;
@@ -199,7 +240,38 @@ sub run_merge {
   &verbose("[log] Mode [merge] done ... \n");
 }
 
+sub usage4bc {
+  my $msg = shift;
+  print <<USAGE;
+$msg
+usage [v0.1] :
+  beadStat bc -i input -ident [identity] -match [match] -o output -v -h
+    -i  annotation of scaffolds
+    -o  output
+    -v  verbose
+    -h  show help info
+USAGE
+}
+
 sub run_BCent {
+  &usage4bc("Found Bead Clusters' center\n") && exit if $help;
+  my ($inf,$ident,$match,$out,$verbose,$help);
+  GetOptions(
+    "i=s" => \$inf,
+    "ident=i" => \$ident,
+    "match=i" => \$match,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4bc("Found Bead Clusters' center\n") && exit if $help;
+  #&usage("[fatal] Essential input is missing");
+
+  $ident||= 98;
+  $match||= 30;
+  #open INF, ($inf)?"<$inf":"<-" or die $!;
+  open OUT, ($out)?">$out":">-" or die $!;
+
   &verbose("[log] Mode [Bead Centroid] start ... \n");
   my (%STAT,$RCCount,$BCCount);
   #Here is the shorts for each column. Find more detail in VSEARCH manual.
@@ -254,4 +326,75 @@ sub writePreCluster{
       print OUT "$CLUST{$BC}{'H'}{$HT}";
     }
   }
+}
+
+sub usage4rbs {
+  my $msg = shift;
+  print <<USAGE;
+$msg
+usage [v0.1] :
+  beadStat.pl RBS -r  bb2scaf -a anno -o output
+    -r  alignment from reads to scaffolds, sam format
+    -a  annotation of scaffolds
+    -o  output
+    -v  verbose
+    -h  show help info
+USAGE
+}
+
+sub run_rbs {
+  &usage4rbs("stat reads supports for beads to scaffolds") && exit unless @ARGV;
+  my ($r2s,$anno,$out);
+  GetOptions(
+    "r=s" => \$r2s,
+    "a=s" => \$anno,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4best("stat reads supports for beads to scaffolds") && exit if $help;
+  &verbose("[RBS] Mode start ... \n");
+  #Init
+  open INR,"<$r2s" or die "Cannot open alignment file: $r2s.\n";
+  open INA,"<$anno" or die "Cannot open annoatation file: $anno.\n";
+  open OUT,">$out" or die "Cannot open output file: $out.\n";
+  my (%R2S,%ANNO);
+  while(<INR>){
+    chomp;
+    next if $_ =~ /^@/;
+    my @r=split (/\t/);
+    #my @r2=split (/\t/,<INR>);
+    $r[0] =~ /\/(\d+_\d+_\d+)$/; my $bb = $1;
+    $R2S{$bb}{'sum'} ++;
+    $R2S{$bb}{'hit'}{$r[2]} ++;
+
+    #Alternative position
+    my @ats =();
+    @ats = split (/;/,$1) if $_ =~ /XA:Z:(.+);/;
+    unless(@ats){
+      $R2S{$bb}{'uniq'}{$r[2]} ++;
+    }
+    while(@ats){
+      my $at = shift @ats;
+      if($at=~/(NODE_\d+_length_\d+_cov_[0-9.]+),/){
+        $R2S{$bb}{'hit'}{$1} ++;
+      }
+    }
+  }
+  close INR;
+  while(<INA>){
+    chomp;
+    my @a = split(/\t/);
+    $ANNO{$a[0]}{$a[12]} = sprintf("%s(%6.2f\%,%4dbp)",$a[12],$a[2],$a[3]);
+  }
+  &verbose("[RBS] Writing ...\n");
+  foreach my $BB (sort keys %R2S){
+    foreach my $ND (sort keys %{$R2S{$BB}{'hit'}}){
+      print OUT sprintf("%s\t%-36s\t%6d(%6.2f\%)\t%6d(%6.2f\%)\t%18s\t%18s\t%18s\t%18s\t%18s\n",
+      $BB,$ND, $R2S{$BB}{'uniq'}{$ND},100*$R2S{$BB}{'uniq'}{$ND}/$R2S{$BB}{'sum'},
+      $R2S{$BB}{'hit'}{$ND},100*$R2S{$BB}{'hit'}{$ND}/$R2S{$BB}{'sum'},
+      $ANNO{$ND}{Sc},$ANNO{$ND}{Fv},$ANNO{$ND}{Le},$ANNO{$ND}{Pe},$ANNO{$ND}{Hm});
+    }
+  }
+  &verbose("[RBS] Mode done!\n");
 }
