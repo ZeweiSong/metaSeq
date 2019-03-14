@@ -27,7 +27,24 @@ method:
     mash: False
     dups: False
     bb1m: True
-    circos: True
+  circos: True
+
+### params
+p_cluster_minR: 2
+p_cluster_maxR: 20
+p_cluster_topB: 0
+p_cluster_ranP: 0
+
+p_dist_min: 0
+p_dist_max: 0.04
+
+#reads/beads per cluster threashold
+p_rpc_min: 0
+p_bpc_min: 0
+
+#Circos
+p_cc_zoom: 1
+p_cc_cut:  97
 
 ######################
 

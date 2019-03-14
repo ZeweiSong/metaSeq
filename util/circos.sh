@@ -91,6 +91,8 @@ fi
 
 echo
 stack2S="$oDIR/data/stack.read2scaf.$suffix.tsv"
+touch $stack2S # skip this step by now
+
 if [[ -f $stack2S && -z $force ]];
 then
   echo "[BC] stack.read2scaf.$suffix.tsv. Skiped (add \$3 to force re-run)"
@@ -106,8 +108,9 @@ then
   echo "[BC] $circosPNG exists. Skiped (add \$3 to force re-run)"
 else
   echo "[BC] Perparing circos configures ..."
-  thick=`grep -E -o "\d+_\d+_\d+" $stack2S|sort|uniq|awk 'END{print int(500/FNR)}'`
-  if [ -z $thick || $thick -gt 50 ]; then thick=50; fi
+#  thick=`grep -E -o "[0-9]+_[0-9]+_[0-9]+" $stack2S|sort|uniq|awk 'END{print int(500/FNR)}'`
+#  if [ -z $thick || $thick -gt 50 ]; then thick=50; fi
+  thick=5
   cp ${conf/circos/ticks} $oDIR/
   cp ${conf/circos/ideogram} $oDIR/
   sed 's/DEFAULTSUF/'$suffix'/g;s/DEFAULTTHICKNESS/'$thick'/' $conf > $oDIR/circos.conf

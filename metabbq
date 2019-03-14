@@ -25,14 +25,15 @@ sub usage {
 print <<USAGE;
 $msg
 usage:
-  $cmd <bb|cfg|cmd> [option]
+  $cmd <init|cfg|smk|cmd> [option]
 mode:
-    bb   Initiate bead-barcode pipeline
-    cfg  Generata a default config file under current dir
-    cmd  List sub functions in src/util directory
-    ***  Call sub functions from the list cmd shows you.
-         e.g: "$cmd OAs1" will run OAs1 without its absolute path.
-options  Defined according to the mode and cmd you chosed.
+    init  Initiate bead-barcode pipeline
+    cfg   Generata a default config file under current dir
+    smk   Call the Snakefile located in the source dir
+    cmd   List sub functions in src/util directory
+    ***   Call sub functions from the list cmd shows you.
+          e.g: "$cmd OAs1" will run OAs1 without its absolute path.
+options   Defined according to the mode and cmd you chosed.
 USAGE
 }
 
@@ -56,11 +57,23 @@ USAGE
 die "version $version\n" if $ARGV[0] eq "-v";
 
 #################################
-####  config calling module  ####
+##########  MAIN BODY  ##########
 my $pattern = $ARGV[0];
+#################################
+####  config calling module  ####
 if($pattern eq "cfg"){
-    `cp $RealBin/default.cfg $cwd/`;
+    `cp $RealBin/config.yaml $cwd/`;
     exit;
+}
+
+#################################
+###  Snakefile calling module  ###
+if($pattern eq "smk"){
+  shift @ARGV;
+  my $cmd = "snakemake -s $RealBin/Snakefile @ARGV";
+  print STDERR "$cmd\n";
+  system($cmd);
+  exit;
 }
 
 #################################
@@ -72,7 +85,7 @@ if ($pattern eq "cmd"){
 	system("ls --color $Bin/util");
 	exit;
 }
-if ($pattern !~ /^(bb|cfg|-v|-h)$/){
+if ($pattern !~ /^(init|cfg|smk|-v|-h)$/){
   my $path = ( -e "$Bin/src/$pattern")?"$Bin/src":
              ( -e "$Bin/util/$pattern")?"$Bin/util":'';
   die "[cmd] Can not find sub func '$pattern'. Please check it again.\n" unless $path;
@@ -88,9 +101,9 @@ if ($pattern !~ /^(bb|cfg|-v|-h)$/){
 	}
 }
 
-&verbose("[log] BB mode Start");
 #################################
-##########  MAIN BODY  ##########
+###    pipeline initiation    ###
+&verbose("[log] BB mode Start");
 our(%CFG,%SAM);
 my ($inf,$out,$cfg,$verbose,$help);
 GetOptions(

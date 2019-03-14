@@ -140,9 +140,9 @@ close LINK if $link;
 
 &verbose("done!\nRead ref and writing ... ");
 while(<REF>){
-  $_=~/(Contig_|NODE_|Scaffold|chromosome |\w+\d+\.)(\d+|\w+|\d+\.\d+)/;
+  $_=~/(ITS_|Contig_|NODE_|Scaffold|chromosome |\w+\d+\.)(\d+|\w+|\d+\.\d+)/;
   my $n=$2;
-  my @a=split;
+  my @a=split("\t");
   next unless $HS{$a[1]};
   print OUT "chr - $a[1]\t$a[0]$n\t".($HS{$a[1]}{'5'}-1000)."\t".($HS{$a[1]}{'3'}+1000)."\t$a[0]\n";
 }

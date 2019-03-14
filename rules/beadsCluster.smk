@@ -11,21 +11,34 @@ if config["method"]["cluster"]["mash"]["do"]:
         input:
             id = "{sample}/clean/fastp.sort.1.fq.idx",
             x1 = "{sample}/clean/fastp.sort.1.fq",
-            x2 = "{sample}/clean/fastp.sort.2.fq"
+            x2 = "{sample}/clean/fastp.sort.2.fq",
+            bb = "{sample}/clean/BB.stat"
         output:  "{sample}/mash/bMin2.msh"
-        params:  "{sample}/mash/bMin2"
+        params:
+            pfx = "{sample}/mash/bMin2",
+            minR= config['p_cluster_minR'],
+            maxR= config['p_cluster_maxR'],
+            topB= config['p_cluster_topB'],
+            ranP= config['p_cluster_ranP']
         shell:
-            "metabbq binWrite fqpick -x {input.id} -c 2 -i {input.x1} -o {params}.sort.1.fq & \n"
-            "metabbq binWrite fqpick -x {input.id} -c 2 -i {input.x2} -o {params}.sort.2.fq & \n"
-            "wait && mash sketch -r -B {params}.sort.1.fq {params}.sort.2.fq -o {params}"
+            "export maxC={params.maxR} \n export minC={params.minR}\n"
+            "echo choose minc = $minC , maxc = $maxC \n"
+            "metabbq binWrite fqpick -x {input.id} -c {params.minR} -m {params.maxR} -b {params.topB} -r {params.ranP} -i {input.x1} -o {params.pfx}.sort.1.fq & \n"
+            "metabbq binWrite fqpick -x {input.id} -c {params.minR} -m {params.maxR} -b {params.topB} -r {params.ranP} -i {input.x2} -o {params.pfx}.sort.2.fq & \n"
+            "wait && mash sketch -r -B {params.pfx}.sort.1.fq {params.pfx}.sort.2.fq -o {params.pfx}"
 
-    rule BC_1_distRaw:
+    rule BC_1_dist:
         input:  "{sample}/mash/bMin2.msh"
-        output: "{sample}/mash/bMin2.raw.dist"
-        shell:  "mash dist -p 24 -d 0.5 {input} {input}  > {output}"
+        output: "{sample}/mash/bMin2.dist"
+        params:
+            min = config["p_dist_min"],
+            max = config["p_dist_max"]
+        shell:
+            "mash dist -p 24 -d {params.mx} {input} {input} | "
+            "awk '($3>{params.min}){{print}}' > {output}"
 
     rule BC_2_distReNum:
-        input:  "{sample}/mash/bMin2.raw.dist"
+        input:  "{sample}/mash/bMin2.dist"
         output:
             d = "{sample}/mash/bMin2.bc.dist",
             m = "{sample}/mash/bMin2.bc.map"
@@ -53,7 +66,7 @@ if config["method"]["cluster"]["mash"]["do"]:
         shell:
             "export maxLv=$[ `hierarchy {input.t} | wc -l` - 2 ]\n"
             "hierarchy {input.t} -l $maxLv > {input.t}.Lv$maxLv.lst\n"
-            "metabbq change.id.pl -n {input}.Lv$maxLv.lst "
+            "metabbq change.id.pl -n {input.t}.Lv$maxLv.lst "
             "-m {input.m} -v -o {input.t}.Lv$maxLv.cluster\n"
             "ln -s bMin2.bc.tree.Lv$maxLv.cluster {output}"
 
@@ -68,7 +81,26 @@ if config["method"]["cluster"]["mash"]["do"]:
             "$HB{{$a[0]}}{{R}}+=$HASH{{$a[1]}};$HB{{$a[0]}}{{C}}++}};"
             "foreach my $c (sort {{$a<=>$b}} keys %HB){{"
             "print \"$c\t$HB{{$c}}{{C}}\t$HB{{$c}}{{R}}\n\"}}' < {input.c} > {output}"
-    rule BC_7_write:
+
+    rule BC_7_main:
+        input:
+            count   = "{sample}/mash/bMin2.bc.tree.target.cluster.count",
+            cluster = "{sample}/mash/bMin2.bc.tree.target.cluster"
+        output:
+            count   = "{sample}/mash/bMin2.bc.tree.target.cluster.count.main",
+            cluster = "{sample}/mash/bMin2.bc.tree.target.cluster.main"
+        params:
+            rpc = config["p_rpc_min"],
+            bpc = config["p_bpc_min"]
+        shell:
+            "awk '($2>={params.bpc}&&$3>={params.rpc}){{print}}' {input.count} | sort -k1,1n > {output.count}\n"
+            "perl -e 'open IN,\"sort -k1,1n {output.count}|\";"
+            "while(<IN>){{@a=split(/\\t/,$_);push @ids, $a[0]}}; $tag= shift @ids;"
+            "while(<>){{@a=split /\\t/, $_; if($a[0] < $tag){{next}}elsif($a[0] == $tag){{"
+             "print $_}}else{{$tag= shift @ids;print $_ if $a[0] == $tag }}}}' "
+             "{input.cluster} |sort -k1,1n > {output.cluster}\n"
+
+    rule BC_8_write:
         input:
             s1 = "{sample}/clean/fastp.sort.1.fq",
             s2 = "{sample}/clean/fastp.sort.2.fq",
@@ -81,17 +113,18 @@ if config["method"]["cluster"]["mash"]["do"]:
             "metabbq beadsWrite3.pl -b {input.bc} -f fq -t 4 -o {params.outDir} -v "
             "--r1 {input.s1}  --r2 {input.s2} > {output}\n"
 
-    rule BC_8_initASMsh:
+    rule BC_9_initASMsh:
         input:
             log = "{sample}/Assemble_mashBC.log",
-            bc = "{sample}/mash/bMin2.bc.tree.target.cluster.count",
+            bc = "{sample}/mash/bMin2.bc.tree.target.cluster.count.main",
         output: "{sample}/batch.assemble.BC.sh"
         params:
-            samDir = "{sample}",
+            sType  = config["sampleType"],
+            samDir = "{sample}/TT1M",
             outDir = "{sample}/Assemble_mashBC",
         shell:
             "for i in `sort -k2,2nr {input.bc} | cut -f1`; do "
-            "echo metabbq bcPost.template.sh F {params.samDir} mashBC $i BC;"
+            "echo metabbq bcPost.template.sh {params.sType} {params.samDir} mashBC $i BC;"
             "done > {params.samDir}/batch.assemble.BC.sh\n"
 
 # Previous method

@@ -8,10 +8,7 @@
 # ===================================================================
 
 # Init
-import os, sys
-src=os.path.split(os.path.realpath("Snakefile"))[0]
-
-#Read config
+## Read config
 configfile: "config.yaml"
 
 #  Main
@@ -19,19 +16,18 @@ rule all:
     input:
         expand("beadPool/{sample}.B.filter.dist", sample=config["samples"])
 
-
 # Module #01: Beadbarcods detection
-include: src + "/rules/BBprep.smk"
+include: "rules/BBprep.smk"
 
 # Module #02: cluster beads
 if config["method"]["cluster"]["bb1m"]:
-    include: src + "/rules/beadsCluster_1m.smk"
-    include: src + "/rules/beadsCluster_2m.smk"
+    include: "rules/beadsCluster_1m.smk"
+    include: "rules/beadsCluster_2m.smk"
 else:
-    include: src + "/rules/beadsCluster.smk"
+    include: "rules/beadsCluster.smk"
 
 # Module #03: Assemble Draft
 #include: src + "/rules/assemble.smk"
 
 # Module #04: binning method
-include: src + "/rules/athena.smk"
+include: "rules/athena.smk"

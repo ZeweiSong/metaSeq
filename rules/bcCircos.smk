@@ -7,20 +7,26 @@
 # ===================================================================
 
 if config["method"]["cluster"]["circos"]:
-    rule CC_circos:
+    rule circos:
         input:
-            log = "{sample}/circos_mashBC.log",
-            bc = "{sample}/mash/bxxxx.bc.tree.target.cluster.count",
-        output: "{sample}/batch.assemble.BC.sh"
+            log = "{sample}/Assemble_mashBC.log",
+            bc = "{sample}/mash/bMin2.bc.tree.target.cluster.count.main",
+        output: "{sample}/batch.circos.BC.sh"
         params:
-            samDir = "{sample}",
+            refDB  = config["REF_GEN"],
+            refID  = config["REF_ID"],
+            zoom   = config["p_cc_zoom"],
+            cut    = config["p_cc_cut"],
             outDir = "{sample}/Assemble_mashBC",
-            threads = config["threads"]
         shell:
-            "for i in `sort -k2,2nr {input.bc} | cut -f1`; do "
-            "echo metabbq bcPost.template.sh F {params.samDir} mashBC $i BC;"
-            "done > {params.samDir}/batch.assemble.BC.sh\n"
-
+            """
+            for i in `ls {params.outDir}`; do
+              echo metabbq reAlign.sh 8 {params.outDir}/$i/sort.{{1,2}}.fq \
+              {params.outDir}/$i/scaffolds.fasta {params.refDB} {params.outDir}/$i/reAlign
+              echo metabbq circos.sh {params.zoom} {params.cut} {params.outDir}/$i/reAlign \
+              {params.refID} {params.outDir}/$i/circos;
+            done > {output}
+            """
 
 
 # metabbq reAlign.sh {sample}/Assemble_Lv1/BC00000 REF/silva132/SSU/132_SSURef_Nr99_tax_RNA.fasta

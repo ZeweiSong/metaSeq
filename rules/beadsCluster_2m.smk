@@ -56,7 +56,7 @@ rule BC2M_5_clusterMAP:
     shell:
         "export maxLv=$[ `hierarchy {input.t} | wc -l` - 2 ]\n"
         "hierarchy {input.t} -l $maxLv > {input.t}.Lv$maxLv.lst\n"
-        "metabbq change.id.pl -n {input}.Lv$maxLv.lst "
+        "metabbq change.id.pl -n {input.t}.Lv$maxLv.lst "
         "-m {input.m} -v -o {input.t}.Lv$maxLv.cluster\n"
         "ln -s bMin2.bc.tree.Lv$maxLv.cluster {output}"
 

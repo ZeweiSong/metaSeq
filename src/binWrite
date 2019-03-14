@@ -411,6 +411,8 @@ usage [v0.1] :
     -x  fastq index file
     -c  minial reads number of a bead allowed
     -m  maximal reads number of a bead allowed
+    -b  top beads numer, for the sake of downsampling
+    -r  randomly piece num, pick one piece of this num
     -i  fqstq file
     -o  output
     -v  verbose
@@ -420,23 +422,30 @@ USAGE
 
 sub run_fqpick {
   &usage4fqpick("filter fq files with beads above a threashold") && exit unless @ARGV;
-  my ($idx,$cut,$cMax,$inf,$out,%IDX);
+  my ($idx,$cut,$cMax,$topB,$randomPiece,$inf,$out,%IDX);
   GetOptions(
     "x=s" => \$idx,
-    "c=s" => \$cut,
-    "m=s" => \$cMax,
+    "c=i" => \$cut,
+    "m=i" => \$cMax,
+    "b=i" => \$topB,
+    "r=i" => \$randomPiece,
     "i=s" => \$inf,
     "o=s" => \$out,
     "v" => \$verbose,
     "h|help|?" => \$help,
   );
   &usage4fqpick("filter fq files with beads above a threashold\n") && exit if $help;
+  undef $topB if $topB == 0;
+  undef $randomPiece if $randomPiece ==0;
+  
   &verbose("[pick] Mode start ... \n");
   open IDX, "<$idx" or die $!;
   open INF, "<$inf" or die $!;
   open OUT, ($out)?">$out":">-" or die $!;
 
-  my ($Li, @idxs) = (0,0,0,0);
+  srand($randomPiece) if $randomPiece;
+
+  my ($Li,$bcount, @idxs) = (0,0,0,0,0);
   while(<INF>){
     $Li ++;
     my $idx_;
@@ -447,11 +456,15 @@ sub run_fqpick {
       my $n = ($a[2] - $a[1] + 1 ) / 4;
       next if $n < $cut;
       next if $cMax && $n > $cMax ;
+      next if $randomPiece && int(rand($randomPiece))>0;
       @idxs = @a;
+      $bcount ++;
       last;
     }
     while($Li<$idxs[1]){ $_ = <INF> ; $Li ++ }
+
     print OUT $_ if $Li <= $idxs[2];
+    last if $topB && $Li>=$idxs[2] && $bcount >= $topB;
   }
   close IDX;
   close INF;

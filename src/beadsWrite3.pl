@@ -191,7 +191,7 @@ sub specifcBarcode{
         # Read one sequence info
         my $bc = shift @{$BCS{$tag}{$cid}};
         my ($S,$E) = ($IDX{$bc}{'S'}-1,$IDX{$bc}{'E'}-1);
-
+        die "[ERR] Can not find $bc in the index. Please check!" if $S < 0;
         $FHcount ++ ;
         &verbose("Find $tag #$FHcount : $cid => $bc. Writing\n");
 

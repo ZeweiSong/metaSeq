@@ -21,8 +21,8 @@ force=$6
 
 if [ $mode == "F" ];
 then
-  refDB="REF/ee_its_database.fasta"
-  refBT="REF/ee_its_database.blast"
+  refDB="REF/fungal5REF.fa"
+  refBT="REF/fungal5REF.fa"
 else
   refSSU="REF/silva132/SSU/132_SSURef_Nr99_tax_RNA.fasta"
   refLSU="REF/silva132/LSU/SILVA_132_LSURef_tax_RNA.fasta"
@@ -48,8 +48,13 @@ echo "[BC] list beads contained in this cluster"
 if [ $level == "BC" ];
 then
   awk -v c=$cluster '$1==c{print $0}' $samDir/VSEARCH/read.merge.derep.2T.bc.cluster_Lv$level.main|sort > $samDir/$ASB/$subDir/beads.lst
-else
+elif [$level == "BI"];
+then
   awk -v c=$cluster '$1==c{print $0}' $samDir/VSEARCH/read.individual.beads.list|sort > $samDir/$ASB/$subDir/beads.lst
+else
+  fq="$samDir/$ASB/$subDir/sort.1.fq"
+  metabbq beadsWrite3.pl -x --r1 $fq
+  awk '$1!~/0000/{print ($3-$2+1)/4}' $fq.idx|sort|uniq -c|sort -k2,2nr|awk '{b=b+$1;print $0"\t"b}' > $fq.stat
 fi
 #perl ../src/beadsWrite3.pl --r1 ./clean/fastp.sort.1.fq --r2 ./clean/fastp.sort.2.fq -b $ASB/$subDir/beads.lst -o $ASB/$subDir -p sort -f fq -v
 
@@ -94,30 +99,13 @@ then
   barrnapFa="$samDir/$ASB/$subDir/scaffolds.$mode.barrnap.fasta"
   if [[ -f $barrnapFa && -z $force ]];
   then
-    echo "[BC] BLAST SSU alignemnt results exists. Skiped (add \$6 to force re-run)"
+    echo "[BC] barrnap detection results exists. Skiped (add \$6 to force re-run)"
   else
-    echo "[BC] Annotating SSU by BLAST"
+    echo "[BC] Finding units by barrnap"
     barrnap -kingdom euk --reject 0.1 < $samDir/$ASB/$subDir/scaffolds.fasta \
      > $samDir/$ASB/$subDir/scaffolds.barrnap.positions.txt --outseq $barrnapFa
     sed -i 's/^>\(.*\)::\(.*\):\(.*\)$/>\2|N|\1 (\3)/' $barrnapFa
   fi
-  # #### usearch annotation ###
-  # echo
-  # usearchFile="$samDir/$ASB/$subDir/scaffolds.$mode.tax\_$ident.blast6"
-  # if [[ -f $usearchFile && -z $force ]];
-  # then
-  #   echo "[BC] VSEARCH alignemnt results exists. Skiped (add \$6 to force re-run)"
-  # else
-  #   echo "[BC] Annotating by VSEARCH"
-  #   vsearch --threads 8 --usearch_global $samDir/$ASB/$subDir/scaffolds.$mode.fasta --db \
-  #   $refDB --id 0.$ident --maxaccepts 0 --maxrejects 0 \
-  #   --blast6out $usearchFile \
-  #   --samout $samDir/$ASB/$subDir/scaffolds.$mode.tax\_$ident.sam
-  #
-  #   echo "[BC] Adding taxonomy info for VSERACH"
-  #   perl src/anno.pl $refDB.ids $usearchFile \
-  #   > $samDir/$ASB/$subDir/scaffolds.$mode.tax\_$ident.blast6.anno
-  # fi
 
   ### BLAST for predicted units ###
   echo
@@ -134,6 +122,7 @@ then
 
     echo "[BC] units annotating"
     metabbq anno.pl $refBT.ids $units6 > $units6.anno
+    metabbq binWrite best -u -m -i $units6.anno
   fi
   ### BLAST for scaffolds ###
   echo
@@ -149,6 +138,7 @@ then
 
     echo "[BC] Adding taxonomy info for BLAST"
     metabbq anno.pl $refBT.ids $scaf6 > $scaf6.anno
+    metabbq binWrite best -u -m -i $scaf6.anno
   fi
 else
   ###   BAC   ###
