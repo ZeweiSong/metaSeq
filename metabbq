@@ -14,6 +14,7 @@ use File::Basename;
 use FindBin qw($RealBin);
 use Cwd 'abs_path';
 use Getopt::Long qw(:config no_ignore_case); # For case sensitive
+use Term::ANSIColor; #colored messages
 
 my $cwd = abs_path;
 my $Bin = $RealBin;
@@ -93,7 +94,7 @@ if ($pattern !~ /^(init|cfg|smk|-v|-h)$/){
             ($pattern=~/\.py$/)?'python ':
             ($pattern=~/\.sh$/)?'sh ':
             ($pattern=~/\.[Rr]$/)?'Rscript ':'';
-    print STDERR "$int$path/@ARGV\n";
+    print STDERR colored("[cmd] ",'bold blue').colored("$int$path/@ARGV\n",'underline green');
 	if(system("$int$path/@ARGV")){
 		exit(1);
 	}else{
