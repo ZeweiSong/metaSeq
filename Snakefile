@@ -19,12 +19,8 @@ rule all:
 # Module #01: Beadbarcods detection
 include: "rules/BBprep.smk"
 
-# Module #02: cluster beads
-if config["method"]["cluster"]["bb1m"]:
-    include: "rules/beadsCluster_1m.smk"
-    include: "rules/beadsCluster_2m.smk"
-else:
-    include: "rules/beadsCluster.smk"
+# Module #02: cluster beads assembly solution
+include: "rules/beadsCluster.smk"
 
 # Module #03: Assemble Draft
 #include: src + "/rules/assemble.smk"
