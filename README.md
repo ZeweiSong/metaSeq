@@ -22,11 +22,11 @@ I've modified `fastp` to speed up the split barcodes process
 
 **Community** ([source](https://sites.google.com/site/findcommunities/) | [biogit](https://biogit.cn/PUB/community))
 
-- **Snakemake** - a pythonic workflow system ([bitbucket](https://bitbucket.org/snakemake/snakemake))
+**Snakemake** - a pythonic workflow system ([bitbucket](https://bitbucket.org/snakemake/snakemake))
 
-- **SPAdes** - SPAdes Genome Assembler ( [about ](http://cab.spbu.ru/software/spades/)| [github ](https://github.com/ablab/spades) )
+**SPAdes** - SPAdes Genome Assembler ( [about ](http://cab.spbu.ru/software/spades/)| [github ](https://github.com/ablab/spades) )
 
-- **MEGAHIT** -  An ultra-fast and memory-efficient NGS assembler ([github](https://github.com/voutcn/megahit))
+**MEGAHIT** -  An ultra-fast and memory-efficient NGS assembler ([github](https://github.com/voutcn/megahit))
 
 > make sure  above commands can be found in the PATH
 
