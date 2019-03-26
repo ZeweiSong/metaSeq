@@ -37,6 +37,9 @@ I've modified `fastp` to speed up the split barcodes process
     export PATH="$MOPT/SPAdes-3.13.0-Linux/bin":$PATH
     ```
 
+- **MEGAHIT** -  An ultra-fast and memory-efficient NGS assembler ([github](https://github.com/voutcn/megahit))
+
+
 ## Usage
 
 **Deploy pipeline**
