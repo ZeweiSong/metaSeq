@@ -188,7 +188,7 @@ rule BCA_9_initASMsh:
         ref2   = config["REF_FA"]
     shell:
         "for i in `sort -k2,2nr {input.bc} | cut -f1`; do "
-        "echo sh ./bcPost.template.sh {params.mode} {params.samDir} mashBC $i BC "
+        "echo metabbq bcPost.template.sh {params.mode} {params.samDir} mashBC $i BC "
         "{params.ref1} {params.ref2} ;"
         "done > {params.samDir}/batch.assemble.BC.sh\n"
 
