@@ -29,22 +29,29 @@ I've modified `fastp` to speed up the split barcodes process
 **MEGAHIT** -  An ultra-fast and memory-efficient NGS assembler ([github](https://github.com/voutcn/megahit))
 
 > make sure  above commands can be found in the PATH
+## Installation
+I recommend to install above tools in an virtual env via conda.
+1. create and install part of them:
+```bash
+conda create -n metaseq -c bioconda -c conda-forge snakemake pigz megahit blast
+source activate metaseq
+```
+2. install `fastp`, `SPAdes` and `community`, etc. under env `metaseq`
 
-## Usage
-
-**Deploy pipeline**
+3. install `metaSeq` pipeline:
 ```
 cd /path/to/your/dir
 git clone https://github.com/ZeweiSong/metaSeq.git
-
 export PATH="/path/to/your/dir/metaSeq":$PATH
 ```
+
+## Usage
 **Prepare configs**
 ```bash
 cd instance
 metabbq cfg  
 ```
-This command will create a `default.cfg` in your current dir. 
+This command will create a `default.cfg` in your current dir.
 You should modifed it to let the launcher know the required files and parameters
 
 **Initiating a project**
