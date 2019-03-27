@@ -100,8 +100,13 @@ sub verbose{
 
 sub getIdBarcode {
   my $id = shift;
-  $id =~ /[@\/](\d+)_(\d+)_(\d+)\//;
-  my @bcode= ($1,$2,$3);
-  my @bc = ($bcode[0],"$bcode[0]_$bcode[1]_$bcode[2]");
+  my @bc;
+  if($id =~ /[@\/](\d+)_(\d+)_(\d+)\//){
+    my @bcode= ($1,$2,$3);
+    @bc = ($bcode[0],"$bcode[0]_$bcode[1]_$bcode[2]");
+  }else{
+    my $unknown="0000";
+    @bc = ($unknown,"$unknown\_$unknown\_$unknown");
+  }
   return(@bc);
 }
