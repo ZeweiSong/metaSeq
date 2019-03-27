@@ -63,22 +63,6 @@ echo [BC] info: sample directory: $samDir/$ASB/$subDir
 echo [BC] info: REF Database:     $refDB
 
 echo
-echo "[BC] list beads contained in this cluster"
-#mkdir $ASB/$subDir
-if [ $level == "BC" ];
-then
-  awk -v c=$cluster '$1==c{print $0}' $samDir/VSEARCH/read.merge.derep.2T.bc.cluster_Lv$level.main|sort > $samDir/$ASB/$subDir/beads.lst
-elif [ $level == "BI" ];
-then
-  awk -v c=$cluster '$1==c{print $0}' $samDir/VSEARCH/read.individual.beads.list|sort > $samDir/$ASB/$subDir/beads.lst
-else
-  fq="$samDir/$ASB/$subDir/sort.1.fq"
-  metabbq beadsWrite3.pl -x --r1 $fq
-  awk '$1!~/0000/{print ($3-$2+1)/4}' $fq.idx|sort|uniq -c|sort -k2,2nr|awk '{b=b+$1;print $0"\t"b}' > $fq.stat
-fi
-#perl ../src/beadsWrite3.pl --r1 ./clean/fastp.sort.1.fq --r2 ./clean/fastp.sort.2.fq -b $ASB/$subDir/beads.lst -o $ASB/$subDir -p sort -f fq -v
-
-echo
 if [[ -f $scaf && -z $force ]];
 then
   echo "[BC] Assemble results exists. Skiped (add \$6 to force re-run)"
@@ -118,7 +102,7 @@ then
 else
   echo "[BC] Scaffolds BLAST start"
 
-  blastn -num_threads 8 -db $refBT -query $scaf \
+  blastn -num_threads 4 -db $refBT -query $scaf \
   -out $scaf6 -outfmt 6
 
   echo "[BC] Adding taxonomy info for BLAST"
