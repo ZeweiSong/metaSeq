@@ -1,0 +1,157 @@
+#!/usr/bin/env perl
+# (c) 2016 - 2019 Chao IN-HORSE SHARE ONLY
+# ===================================================================
+# Description:       Find the aligned region and formated for circos
+# Author:            Chao | fangchao@genomics.cn
+# Version:           V0.0
+# Last modified:     19 Jan 2019 (since 19 Jan 2019)
+# ===================================================================
+# see detail below
+use strict;
+use Getopt::Long qw(:config no_ignore_case); # For case sensitive
+
+sub usage {
+  my $msg = shift;
+  print <<USAGE;
+$msg
+usage:
+  findRegion -i input -o output -r refID
+  findRegion -s sam -o output
+    -i  blast 6 format alignment file
+    -o  output karyotype format file
+    -r  reference id infomation
+    -v  verbose
+    -h  show help info
+USAGE
+}
+&usage && exit unless @ARGV;
+
+my ($ref,$inf,$sam,$out,$link,$zoom,$ident,$verbose,$help);
+GetOptions(
+  "r:s" => \$ref,
+  "i:s" => \$inf,
+  "s:s" => \$sam,
+  "o:s" => \$out,
+  "L:s" => \$link,
+  "c:i" => \$ident,
+  "x:i" => \$zoom,
+  "v" => \$verbose,
+  "h|help|?" => \$help,
+);
+&usage && exit if $help;
+$zoom ||= 1;
+$ident||=97;
+open OUT, ($out)?">$out":">-" or die $!;
+
+### SAM stat mode
+&verbose("SAM tile stat start!\n");
+if($sam){
+  my (%BB,%CL,%POS);
+  my $stack = -1;
+  open SAM, "< $sam" or die $!;
+  while (<SAM>){
+    if($_ =~ /^\@SQ/){
+      $_ =~ /SN:(\S+)\tLN:(\d+)$/;
+      $POS{$1} = $2;
+      # for(my $i=0;$i<$2;$i++){
+      #   $POS{$1}{$i} = 0;
+      # }
+    }
+    next if $_ =~ /^\@|\*/;
+    my @a =split;
+    my $bb = $1 if $a[0] =~ /\/(\d+_\d+_\d+)$/;
+    unless($BB{$bb}){
+      $stack ++;
+      $CL{$bb} = "spectral-9-div-".($stack%9+1)."\_a5";
+      foreach my $node (sort keys %POS){
+        for(my $i=0;$i<=$POS{$node};$i++){
+          $BB{$bb}{$node}{$i} = 0;
+        }
+      }
+    }
+    #next unless $a[4] > 50 && $a[5] eq "100M";
+    my ($stt,$end) = (0,0);
+    next if $a[8] < 0;
+    $stt = $a[3];
+    $end = $a[3] + $a[8];
+    # if($a[8] >0 ){
+    #   $stt = $a[3];
+    #   $end = $a[3] + $a[8];
+    # }else{
+    #   $stt = $a[3] + 100 - $a[8];
+    #   $end = $a[3] + 100;
+    # }
+    for(my $i=$stt;$i<=$end;$i++){
+      $BB{$bb}{$a[2]}{$i} = 1;
+    }
+
+  }
+  close SAM;
+  &verbose("start writting!\n");
+  foreach my $bb (sort keys %BB){
+    foreach my $node (sort keys %{$BB{$bb}}){
+      my($stt,$end,$prv,$tag) = (0,0,0,0);
+      foreach my $i (sort {$a<=>$b} keys %{$BB{$bb}{$node}}){
+        if($BB{$bb}{$node}{$i} != $prv && $i>1){
+          my $color = ($prv==0)?"black_a5":$CL{$bb};
+          my $id    = ($prv==0)?"empty":$bb;
+          print OUT "$node\t".($zoom * $stt)."\t".($zoom * $end)."\tcolor=$color,id=$id\n";
+          $tag = $BB{$bb}{$node}{$i};
+          $stt = $i;
+        }
+        $end = $i;
+        $prv = $BB{$bb}{$node}{$i};
+      }
+      next if $end == 0;
+      my $color = ($prv==0)?"black_a5":$CL{$bb};
+      my $id    = ($prv==0)?"empty":$bb;
+      print OUT "$node\t".($zoom * $stt)."\t".($zoom * $end)."\tcolor=$color,id=$id\n";
+    }
+  }
+  close OUT;
+  &verbose("done!\n");
+  exit;
+}
+
+&usage("[fatal] Essential ref ID info is missing") && exit unless defined $ref;
+
+open REF, "<$ref" or die $!;
+open INF, ($inf)?"<$inf":"<-" or die $!;
+open LINK, ">$link" or die $! if $link;
+
+&verbose("Start reading alignment info ... ");
+my %HS;
+while(<INF>){
+  chomp;
+  my @a=split;
+  next unless $a[2] >= $ident;
+  if(defined $HS{$a[1]}){
+    $HS{$a[1]}{'5'}=($a[8]<$HS{$a[1]}{'5'})?$a[8]:$HS{$a[1]}{'5'};
+    $HS{$a[1]}{'3'}=($a[9]>$HS{$a[1]}{'3'})?$a[9]:$HS{$a[1]}{'3'};
+  }else{
+    $HS{$a[1]}{'5'}=$a[8];
+    $HS{$a[1]}{'3'}=$a[9];
+  }
+  next unless $link;
+  print LINK "$a[0]\t".($zoom*$a[6])."\t".($zoom*$a[7])."\t$a[1]\t$a[8]\t$a[9]\n";
+}
+close INF;
+close LINK if $link;
+
+&verbose("done!\nRead ref and writing ... ");
+while(<REF>){
+  $_=~/(ITS_|Contig_|NODE_|Scaffold|chromosome |\w+\d+\.)(\d+|\w+|\d+\.\d+)/;
+  my $n=$2;
+  my @a=split("\t");
+  next unless $HS{$a[1]};
+  print OUT "chr - $a[1]\t$a[0]$n\t".($HS{$a[1]}{'5'}-1000)."\t".($HS{$a[1]}{'3'}+1000)."\t$a[0]\n";
+}
+&verbose("done!\n");
+exit;
+
+
+
+sub verbose{
+  my $msg = shift;
+  print STDERR $msg if $verbose;
+}

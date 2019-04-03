@@ -1,0 +1,214 @@
+#!/usr/bin/env perl
+# (c) 2016 - 2019 Chao IN-HORSE SHARE ONLY
+# ===================================================================
+# Description:       Cluster helper by perl
+# Author:            Chao | fangchao@genomics.cn
+# Version:           v0.0
+# Last modified:     03 Jan 2019 (since 03 Jan 2019)
+# ===================================================================
+# see detail below
+use strict;
+use Getopt::Long;
+Getopt::Long::Configure ("bundling"); #Case sensitive for short options
+use Term::ANSIColor; #colored messages
+
+# Head
+my($verbose,$help);
+sub usage {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  clusterHelper <sub> [option]
+  sub:
+    main     pick main clusters
+    asmPick  pick assembly fasta
+
+options:  Defined according to the mode and cmd you chosed.
+USAGE
+}
+
+&usage("Help information") && exit if @ARGV == 0 || $ARGV[0] eq "-h";
+
+my $mode = shift @ARGV unless $ARGV[0] =~/^-/;
+
+# Main start
+&run_main if $mode eq "main";
+&run_asmPick if $mode eq "asmPick";
+# Main end
+exit;
+
+##########################
+# Functions
+##########################
+
+sub verbose{
+  my $msg = shift;
+  print STDERR $msg if $verbose;
+}
+
+##########################
+# PICK MAIN CLUSTERS
+##########################
+# quartile calculate
+#  First argument should be [0,100] (percentage).
+sub qt{
+  my $q = shift;
+  my @ns = @_;
+  @ns = sort {$a <=> $b} @ns;
+  my $qt = sprintf("%.0f",@ns * $q / 100) - 1;
+  $qt = ($qt<0)?0:$qt;
+  return($ns[$qt]);
+}
+
+sub usage4main {
+print <<USAGE;
+usage:
+  $0 main -auto -i input -o output
+  $0 main -rpc -bpc -i input -o output
+    -a  auto discard cluster with reads below outlier (Q1 – 1.5×IQR)
+    -r  specific minimum reads per cluster
+    -b  specific minimum beads per cluster
+    -i  input cluster list
+    -c  input cluster count stat file
+    -s  output name for cluster stat info
+    -o  output cluster filename
+    -v  verbose
+    -h  show help info
+USAGE
+}
+
+sub run_main {
+  &usage4main() && exit unless @ARGV;
+  my $funcName = colored("[main]",'bold blue');
+  my ($inf,$cnt,$cntM,$out,$auto,$rpc,$bpc);
+  GetOptions(
+    "i=s" => \$inf,
+    "c=s" => \$cnt,
+    "s=s" => \$cntM,
+    "o=s" => \$out,
+    "a"   => \$auto,
+    "r:i" => \$rpc,
+    "b:i" => \$bpc,
+    "v"   => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4main() && exit if $help;
+  die colored("[ERR] missing input count file. Check usage for detail.\n",'red') unless defined $cnt;
+
+  open CNT, "sort -k3,3nr $cnt |" or die $!;
+  open CNTO, "> $cntM" or die $!;
+  open INF, ($inf)?"<$inf":"<-" or die $!;
+  open OUT, ($out)?">$out":">-" or die $!;
+
+  &verbose("$funcName sub [main] start ... \n");
+  my (@ids,@rs,$prvRs);
+  my $decRate = 1;
+  while(<CNT>){
+    chomp;
+    my @a=split(/\t/,$_);
+    if($auto){
+      my $decRate = ($prvRs)?sprintf("%.4f",$a[2]/$prvRs):1;
+      my @tmp = (@rs, $decRate);
+      my $outlier = &qt(25,@tmp) - 1.5*(&qt(75,@tmp) - &qt(25,@tmp));
+      &verbose(colored("\tFound c=$a[0]\tr=$a[2]\tdecRate=$decRate\toutlier=$outlier\n",'yellow'));
+      if($decRate < $outlier){
+        &verbose(colored("\tStop here since decRate=$decRate < outlier=$outlier\n",'yellow'));
+        last;
+      }else{
+        push @ids, $a[0];
+        push @rs, $decRate;
+        print CNTO "$_\n";
+      }
+    }else{
+      if($a[1]>$bpc && $a[2]>$rpc){
+        push @ids, $a[0];
+        push @rs, $a[2];
+        print CNTO "$_\n";
+      }else{
+        last;
+      }
+    }
+    $prvRs = $a[2];
+  }
+  close CNT;
+  &verbose("$funcName Writing clusters...\n");
+  @ids = sort {$a<=>$b} @ids;
+  my $tag = shift @ids;
+  while(<INF>){
+    my @a=split /\t/, $_;
+    if($a[0] < $tag){
+      next
+    }elsif($a[0] == $tag){
+      print OUT $_;
+    }else{
+      $tag= shift @ids;
+      print OUT $_ if $a[0] == $tag ;
+    }
+  }
+  close INF;
+  &verbose("$funcName done.\n");
+}
+
+##########################
+# PICK ASM FASTA
+##########################
+sub usage4asmPick {
+print <<USAGE;
+usage:
+  $0 asmPick -l minLen -m minCov -i input -o output
+    -l  minimum length to pick
+    -c  minimum coverage to pick
+    -s  pick single fa from each cluster assembly:
+         Only the longest as well as most coveraged fa will be considered
+    -i  input assembly file
+    -b  bead cluster ID
+    -o  output fasta filename
+    -v  verbose
+    -h  show help info
+USAGE
+}
+
+sub run_asmPick {
+  &usage4asmPick() && exit unless @ARGV;
+  my $funcName = colored("[asmPick]",'bold blue');
+  my ($inf,$mlen,$mcov,$single,$out,$bcid);
+  GetOptions(
+    "i:s" => \$inf,
+    "l:s" => \$mlen,
+    "c:s" => \$mcov,
+    "s:s" => \$single,
+    "o=s" => \$out,
+    "b=s" => \$bcid,
+    "v"   => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4asmPick() && exit if $help;
+  die colored("[ERR] missing bead cluster ID. Check usage for detail.\n",'red') unless $bcid ;
+
+  $mcov||=0;
+  $mlen||=0;
+  open INF, ($inf)?"<$inf":"<-" or die $!;
+  open OUT, ($out)?">$out":">-" or die $!;
+
+  &verbose("$funcName start read ... \n");
+  my (%RC,%RL,%FA);
+  while(<INF>){
+    chomp;
+    $_ =~ /^>(\S+) flag=(\d+) multi=(\d+\.\d+) len=(\d+)/;
+    my($id,$fg,$cov,$len) = ($1,$2,$3,$4);
+    &verbose(colored("\tCaution: duplicate cov=$cov found by $id and $RC{$cov}\n",'yellow')) if $RC{$cov};
+    &verbose(colored("\tCaution: duplicate len=$len found by $id and $RL{$len}\n",'yellow')) if $RL{$len};
+    $RC{$cov} .= $id;
+    $RL{$len} .= $id;
+    chomp($FA{$id} = <INF>);
+  }
+  close INF;
+  &verbose("$funcName start writing ... \n");
+  my $maxCov = (sort {$b <=> $a} keys %RC)[0];
+  my $maxLen = (sort {$b <=> $a} keys %RL)[0];
+  if($RC{$maxCov}=~/$RL{$maxLen}/ && $maxLen >= $mlen && $maxCov >= $mcov){
+    print OUT ">$bcid\_$RC{$maxCov}\_$maxCov\_$maxLen\n$FA{$RC{$maxCov}}\n"
+  }
+  &verbose("$funcName done. \n");
+}

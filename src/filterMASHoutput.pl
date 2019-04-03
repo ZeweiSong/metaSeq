@@ -93,6 +93,9 @@ while(<INF>){
       print OUT "$src\t$dist\t$line[2]\n";
     }
   }
+  if($. % 1000000 == 0){
+    &verbose(sprintf("[log] Processing %10d\n", $.));
+  }
 }
 close INF;
 close OUT;
