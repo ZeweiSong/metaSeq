@@ -231,7 +231,8 @@ class sequence_bytes(object):
 
 
 # Write the content to a fastx file
-def write_seqs(seq_content, filePath, fastx='a', mode='w'):
+def write_seqs(seq_content, filePath, fastx='a', mode='w', gz=True):
+    import gzip
     count = 0
     if fastx == 'a':
         header = '>'
@@ -239,8 +240,12 @@ def write_seqs(seq_content, filePath, fastx='a', mode='w'):
         header = '@'
     else:
         header = '-_-b'
-
-    f = open(filePath, mode, newline='')
+    if gz:
+        if mode == 'w': mode = 'wt'
+        else: mode = 'at'
+        f = gzip.open(filePath, mode, newline='')
+    else:
+        f = open(filePath, mode, newline='')
     for record in seq_content:
         label = header + record[0]
         for line in [label] + list(record[1:]):

@@ -14,6 +14,16 @@ import random
 import statistics
 from itertools import combinations
 
+# Reture a tuple of PCR barcode using for amplicon sequencing
+# This list may be updated in the future for larger pool
+def pcrBarcode():
+    pcrbarcode = ('AACTGC', 'ACGGTT', 'AGCATG', 'AGGACT', 'CAGGAT', 'CAGTTC', 'CCATTG', \
+                  'CGATAC', 'CTAGAG', 'CTCAGT', 'GAATCC', 'GACTTG', 'GATGAC', 'GCGTTA', \
+                  'GTACGA', 'GTCCAT', 'TCCTAG', 'TCGATG', 'TGGCAT', 'TTGAGC', 'AACGAG')
+    #pcrbarcode.sort()
+    return pcrbarcode
+
+
 # Put all alignment into lists
 # Read in multiple alignments (usually two, but more than two is allowed) from the alignment files,
 # and save normalized data based on the minimum depth
