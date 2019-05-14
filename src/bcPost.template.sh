@@ -35,7 +35,7 @@ force=$8
 #   refLSU=$7
 # fi
 
-clusterFmt=`printf "%06d" $cluster`
+clusterFmt=`printf "%08d" $cluster`
 if [ $level -gt 0 ];
 then
   ASB="Assemble_Lv$level"
@@ -48,7 +48,7 @@ rdir=""
 scaf=""
 if [ $mode == "spades" ]; then
   rdir="spades";
-  scaf="$samDir/$ASB/$subDir/scaffolds.fasta"
+  scaf="$samDir/$ASB/$subDir/$rdir/scaffolds.fasta"
 elif [ $mode == "idba" ]; then
   rdir="idba";
   scaf="$samDir/$ASB/$subDir/$rdir/scaffold.fa"
@@ -84,13 +84,14 @@ then
   echo "[BC] Assemble results exists. Skiped (add \$6 to force re-run)"
 else
   if [ $mode == "spades" ]; then
-    spaLog="$samDir/$ASB/$subDir/spades.log"
+    spaLog="$samDir/$ASB/$subDir/spades/spades.log"
+	mkdir -p $samDir/$ASB/$subDir/spades
     if [[ $force || ! -f $spaLog ]];
     then
-      spades.py --meta -t 8 -o $samDir/$ASB/$subDir \
+      spades.py --meta -t 8 -o $samDir/$ASB/$subDir/spades \
       -1 $samDir/$ASB/$subDir/sort.1.fq -2 $samDir/$ASB/$subDir/sort.2.fq
     else
-      spades.py --continue -o $samDir/$ASB/$subDir
+      spades.py --continue -o $samDir/$ASB/$subDir/spades
       #spades.py --meta -t 48 -o $samDir/$ASB/$subDir -1 $samDir/$ASB/$subDir/sort.1.fq -2 $samDir/$ASB/$subDir/sort.2.fq
     fi
   elif [ $mode == "idba" ]; then
@@ -117,7 +118,8 @@ then
   echo "[BC] Scaffolds BLAST results exists. Skiped (add \$6 to force re-run)"
 else
   echo "[BC] Scaffolds BLAST start"
-
+  cmd="blastn -num_threads 8 -db $refBT -query $scaf -out $scaf6 -outfmt 6"
+  echo "[CMD] $cmd"
   blastn -num_threads 8 -db $refBT -query $scaf \
   -out $scaf6 -outfmt 6
 
@@ -126,6 +128,37 @@ else
   metabbq binWrite best -u -m -i $scaf6.anno
 fi
 
+### BLAST REVERSE if ref is short ###
+echo
+bout="$samDir/$ASB/$subDir/$rdir/scaffolds.$mode.BLAST.rev.blast6"
+sdbi="$samDir/$ASB/$subDir/$rdir/scaffolds.$mode.fa"
+
+if [[ -f $bout && -z $force ]];
+then
+  echo "[BC] Reverse BLAST results exists. Skiped (add \$6 to force re-run)"
+else
+  echo "[BC] Reverse BLAST start"
+  mkdb="[CMD] makeblastdb -in $scaf -input_type fasta -dbtype nucl -title Os_protein -parse_seqids -out $scaf"
+  echo $mkdb
+  makeblastdb -in $scaf -input_type fasta -dbtype nucl -title Os_protein -parse_seqids -out $scaf
+
+  cmd="blastn -num_threads 8 -db $scaf -query $refDB -out $bout -outfmt 6"
+  echo "[CMD] $cmd"
+  blastn -num_threads 8 -db $scaf -query $refDB -out $bout -outfmt 6
+fi
+
 echo "[BC] Done!"
-#awk '$4>50' $ASB/$subDir/scaffolds.$mode.tax.blast6| perl ../src/refScore.pl -r \
-# ../REF/ee_its_database.ITSx.anno -o $ASB/$subDir/scaffolds.$mode.tax.stat
+
+#### ITSx ###
+echo
+itsOD="$samDir/$ASB/$subDir/$rdir"
+itsFa="$samDir/$ASB/$subDir/$rdir/scaffolds.$mode.ITSm.fasta"
+if [[ -f $itsFa && -z $force ]];
+then
+  echo "[BC] ITSx results exists. Skiped (add \$6 to force re-run)"
+else
+  echo "[BC] Predicting ITS positions in scaffolds"
+  ITSx -i $scaf -o $itsOD/scaffolds --cpu 8 --save_regions all --detailed_results T
+  cat $itsOD/scaffolds.{SSU,ITS1,5_8S,ITS2,LSU}.fasta | \
+  awk '{if($0~/^>/){id=$0}else{len=length($0);if(len>=50){print id"\n"$0}}}' > $itsFa
+fi

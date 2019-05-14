@@ -129,18 +129,21 @@ system "mkdir -p $dirDB" unless(-d $dirDB);
 system "mkdir -p $dirIN" unless(-d $dirIN);
 
 &verbose("[bb] Prep config.yaml\n");
-open SCFG, ">$out/config.yaml" or die "can not write config.yaml. Please check\n";
-
-&verbose("[bb] Read config\n");
 &readCFG($cfg);
-&writeCFG;
+if($cfg=~/\.yaml$/){
+  system "cp $cfg $out/config.yaml";
+  open SCFG, ">>$out/config.yaml" or die "can not write config.yaml. Please check\n";
+}else{
+  open SCFG, ">$out/config.yaml" or die "can not write config.yaml. Please check\n";
+  &writeCFG;
+  $CFG{'BB_LIST'} = abs_path($CFG{'BB_LIST'});
+  &verbose("[bb] Link required files\n");
+  die "barcodes list not defined. Check again.\n" unless $CFG{'BB_LIST'};
+  system "ln -sf $CFG{'BB_LIST'} $dirDB/barcode.list";
+}
+
 &verbose("[bb] Read input list\n");
 &readInput($inf);
-
-&verbose("[bb] Link required files\n");
-die "barcodes list not defined. Check again.\n" unless $CFG{'BeadBarcodeList'};
-$CFG{'BeadBarcodeList'} = abs_path($CFG{'BeadBarcodeList'});
-system "ln -sf $CFG{'BeadBarcodeList'} $dirDB/barcode.list";
 
 print SCFG "samples:\n";
 foreach my $sam (sort keys %SAM){
@@ -149,11 +152,14 @@ foreach my $sam (sort keys %SAM){
     $fs[$i-1] =~ /.(f(|ast)[aq](|.gz))$/;
     my $sufix = $1;
     system "ln -sf $fs[$i-1] $dirIN/$sam\_$i.$sufix";
+    system "mkdir -p $out/$sam/input";
+    system "ln -sf $fs[$i-1] $out/$sam/input/rawSeq_$i.$sufix";
     print SCFG "  $sam: rawSeq/$sam\n";
   }
 }
 close SCFG;
-system "cp $Bin/Snakefile $out/Snakefile";
+
+#system "cp $Bin/Snakefile $out/Snakefile";
 &verbose("done!\n");
 
 exit;
@@ -170,7 +176,7 @@ sub readCFG {
     open CFG,"$cfg" or die "failed to open configure file $cfg. $!\n";
     while(<CFG>){
       chomp;
-      next if $_ =~ /^#/ || $_ eq "";
+      next if $_ =~ /^\s*(#|$)/;
       $_ =~ /(\S+)\s*=\s*(\S+)/;
       $CFG{$1} = $2;
     }
@@ -191,6 +197,7 @@ sub readInput {
   	$path_i = abs_path($path_i);
   	open IN,"<$path_i" or die "can not open $path_i, $!\n";
   	while (<IN>){
+      next if $_ =~ /^\s*(#|$)/;
   		print PATH $_ ;
   		chomp;
   		my @a = split;
@@ -204,7 +211,7 @@ sub readInput {
 }
 
 sub writeCFG {
-  print SCFG "BeadBarcodeList: ".(($CFG{'BeadBarcodeList'})?"\"$CFG{'BeadBarcodeList'}\"\n\n":"\"unknown\"\n\n");
+  print SCFG "BeadBarcodeList: ".(($CFG{'BB_LIST'})?"\"$CFG{'BB_LIST'}\"\n\n":"\"unknown\"\n\n");
   print SCFG "prefix: ".(($CFG{'prefix'})?"\"$CFG{'prefix'}\"\n\n":"\"default\"\n\n");
   print SCFG "tmp: ".(($CFG{'tmp'})?"\"$CFG{'tmp'}\"\n\n":"\"./tmp\"\n\n");
   print SCFG "threads: ".(($CFG{'threads'})?$CFG{'threads'}:1)."\n\n";

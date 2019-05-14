@@ -41,8 +41,8 @@ rule BB_2_sortR1:
         tmp = config["tmp"]
     threads: config["thread"]["pigz"]
     shell:
-        "pigz -p {threads} -dc {input.r1} | paste - - - - | sort -T {params.tmp} -k2,2 -t \"/\" | "
-        "tr \"\\t\" \"\\n\" |pigz -p {threads} > {output.s1}"
+        "cat {input.r1} | paste - - - - | sort -T {params.tmp} -k2,2 -t \"/\" | "
+        "tr \"\\t\" \"\\n\" > {output.s1}"
 
 rule BB_3_idxR1:
     input:  "{sample}/clean/fastp.sort.1.fq"
@@ -62,8 +62,8 @@ rule BB_2_sortR2:
         tmp = config["tmp"]
     threads: config["thread"]["pigz"]
     shell:
-        "pigz -p {threads} -dc {input.r2} | paste - - - - | sort -T {params.tmp} -k2,2 -t \"/\" | "
-        "tr \"\\t\" \"\\n\" |pigz -p {threads} > {output.s2}"
+        "cat {input.r2} | paste - - - - | sort -T {params.tmp} -k2,2 -t \"/\" | "
+        "tr \"\\t\" \"\\n\" > {output.s2}"
 
 rule BB_4_split:
     input:

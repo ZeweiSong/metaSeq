@@ -194,19 +194,27 @@ rule BCA_9_initASMsh:
 
 outXs = "{sample}/summary." + str(config["method"]["assemble"]["mode"]) + ".contig.tsv"
 outXa= "{sample}/summary." + str(config["method"]["assemble"]["mode"]) + ".contig.fasta"
+outXn= "{sample}/summary." + str(config["method"]["assemble"]["mode"]) + ".contig.anno"
+
 rule BCA_X_summary:
     input: "{sample}/batch.assemble.BC.sh"
     output:
         stat = outXs,
-        fa   = outXa
+        fa   = outXa,
+        anno = outXn
     params:
+        divide = config['divideSH'],
+        dpfx = "{sample}/sp.asm.",
         outDir = "{sample}/Assemble_mashBC",
         mAsm   = config["p_asm_min"],
         mode   = config["method"]["assemble"]["mode"]
     shell:
         """
 # 1. Run assembly one by one
-sh {input}
+dl=$[$(wc -l {input}|tr ' ' '\\n' |head -1) / {params.divide}]
+split -d -l $dl {input} {params.dpfx}
+for i in {params.dpfx}??;do sh $i & done
+wait
 
 # 2. pick robust assemble fasta
 for i in `ls {params.outDir}`;do
@@ -217,4 +225,9 @@ done > {output.fa}
 for i in `ls {params.outDir}`;do
   awk -v bc=$i '/^>/{{print bc"\\t"$0}}' {params.outDir}/$i/{params.mode}/final.contigs.fa | sed 's/>//;s/ flag=/\\t/;s/ multi=/\\t/;s/ len=/\\t/'
 done > {output.stat}
+
+# 4. stat annotation results
+for i in `ls {params.outDir}`;do
+  awk -v bc=$i '{{print bc"\\t"$0}}' {params.outDir}/$i/{params.mode}/scaffolds.megahit.BLAST.tax.blast6.anno.more
+done > {output.anno}
         """
