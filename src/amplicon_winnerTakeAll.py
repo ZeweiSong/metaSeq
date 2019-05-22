@@ -57,7 +57,7 @@ if not greedy:
     mode = 'less greedy'
 print('Released are the {0} capitalists.'.format(mode))
 if not greedy:
-    print("\tI'll spit out some profit to miximize mine.\n")
+    print("\tI'll spit out some profit to maximize mine.\n")
 else:
     print('\tAll profit is mine!\n')
 alnNormalized = amplicon.initAlignment(alnString)

@@ -23,6 +23,20 @@ def pcrBarcode():
     #pcrbarcode.sort()
     return pcrbarcode
 
+# Reture the PCR barcide identified from the read(s)
+# Reads is a tuple of read(s)
+def getPCRBarcode(reads):
+    if len(reads) == 1:
+        barcode = reads[:6]
+        return barcode
+    else:
+        bar1 = reads[0][:6]
+        bar2 = reads[1][:6]
+        if bar1 == bar2:
+            return bar1
+        else:
+            return False
+
 
 # Put all alignment into lists
 # Read in multiple alignments (usually two, but more than two is allowed) from the alignment files,
@@ -163,7 +177,12 @@ def competition(graph, greedy=True, weight='ec'):
             losers.append(ref)
 
     # Get the winner (ref with largest EF)
-    winner = sorted([i for i in refSurvivors.items()], key=lambda x:x[1][0], reverse=True)[0]
+    winner = sorted([i for i in refSurvivors.items()], key=lambda x:x[1][0], reverse=True)
+    if len(winner) > 0:
+        winner = winner[0]
+    else:
+        return graph
+
     winner = list(winner)
     winner[1] = list(winner[1])
     print('{0} is the winner (weight on {3} = {4}), with ave = {1}, stdev = {2}.'.format(winner[0], winner[1][1], winner[1][2], weight, winner[1][0]))
