@@ -181,6 +181,7 @@ def competition(graph, greedy=True, weight='ec'):
     if len(winner) > 0:
         winner = winner[0]
     else:
+        graph.remove_nodes_from(references) # There are nodes left, but none is eligible winner candidate
         return graph
 
     winner = list(winner)
