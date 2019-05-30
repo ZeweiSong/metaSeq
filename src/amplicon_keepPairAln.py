@@ -23,6 +23,7 @@ outputAln = args.output
 #%%
 #inputAln = ['501.r1fw.b6', '501.r2rv.b6']
 queryDict = {}
+print('Parsing Read1 alignment ...')
 with open(inputAln[0], 'r') as f:
     for line in f:
         line = line.strip('\n').split('\t')
@@ -32,8 +33,11 @@ with open(inputAln[0], 'r') as f:
         except KeyError:
             queryDict[line[0]] = {'r1':[], 'r2':[]}
             queryDict[line[0]]['r1'].append(line[1])
+print('Found {0} queries in Read1 alignment.'.format(len(queryDict)))
+print('Parsing Read2 alignment ...')
 
-
+r2inr1 = 0
+r2notinr1 = 0
 with open(inputAln[1], 'r') as f:
     for line in f:
         line = line.strip('\n').split('\t')
@@ -43,6 +47,8 @@ with open(inputAln[1], 'r') as f:
         except KeyError:
             queryDict[line[0]] = {'r1':[], 'r2':[]}
             queryDict[line[0]]['r2'].append(line[1])
+            r2notinr1 += 1
+print('Total queries add to {0}'.format(len(queryDict)))
 #%%
 aln = {}
 for query, alignments in queryDict.items():
@@ -52,6 +58,10 @@ for query, alignments in queryDict.items():
             aln[query] = overlap
     except KeyError:
         pass
+
+print('Found {0} queries in both alignment.'.format(len(aln)))
+print('\t representing {0} alignments.'.format(sum([len(i) for i in aln.values()])))
+print('Found {0} queries ONLY in Read2 alignment.'.format(r2notinr1))
 #%%
 with open(outputAln, 'w') as f:
     for query, alignments in aln.items():
