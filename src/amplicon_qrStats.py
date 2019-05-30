@@ -15,7 +15,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-i', '--input', help='Input alignment')
 parser.add_argument('-o', '--output', help='Output report file')
 args = parser.parse_args()
-args = argparse.Namespace(input ='test.b6', output = 'test.txt' )
+# args = argparse.Namespace(input ='test.b6', output = 'test.txt' )
 inputAln = args.input
 outputReport = args.output
 
@@ -37,6 +37,7 @@ with open(inputAln, 'r') as f:
 
 queryDist = {}
 refDist = {}
+
 
 for key, queryAlnCount in alnDict.items():
     try:
