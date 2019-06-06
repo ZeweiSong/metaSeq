@@ -37,13 +37,10 @@ rule BIA_2_initASMsh:
     params:
         samDir = "{sample}",
         outDir = "{sample}/Assemble_BI",
-        mode   = config["method"]["assemble"]["mode"],
-        ref1   = config["REF_FA"],
-        ref2   = config["REF_FA"]
+        mode   = config["method"]["assemble"]["mode"]
     shell:
         "for i in `sort -k2,2nr {input.bi} | cut -f1`; do "
-        "echo metabbq bcPost.template.sh {params.mode} {params.samDir} BI $i BI "
-        "{params.ref1} {params.ref2} ; done > {output}\n"
+        "echo metabbq RCAasm.sh {params.mode} {params.samDir} BI $i BI ; done > {output}\n"
 
 outXs = "{sample}/summary.BI." + str(config["method"]["assemble"]["mode"]) + ".contig.tsv"
 outXa= "{sample}/summary.BI." + str(config["method"]["assemble"]["mode"]) + ".contig.fasta"
