@@ -68,9 +68,11 @@ echo "[BC] list beads contained in this cluster"
 if [ $level == "BC" ];
 then
   awk -v c=$cluster '$1==c{print $0}' $samDir/VSEARCH/read.merge.derep.2T.bc.cluster_Lv$level.main|sort > $samDir/$ASB/$subDir/beads.lst
+  spadesMode="--meta"
 elif [ $level == "BI" ];
 then
   awk -v c=$cluster '$1==c{print $0}' $samDir/VSEARCH/read.individual.beads.list|sort > $samDir/$ASB/$subDir/beads.lst
+  spadesMode="--sc"
 else
   fq="$samDir/$ASB/$subDir/sort.1.fq"
   metabbq beadsWrite3.pl -x --r1 $fq
@@ -88,7 +90,7 @@ else
 	mkdir -p $samDir/$ASB/$subDir/spades
     if [[ $force || ! -f $spaLog ]];
     then
-      spades.py --meta -t 8 -o $samDir/$ASB/$subDir/spades \
+      spades.py $spadesMode -t 8 -o $samDir/$ASB/$subDir/spades \
       -1 $samDir/$ASB/$subDir/sort.1.fq -2 $samDir/$ASB/$subDir/sort.2.fq
     else
       spades.py --continue -o $samDir/$ASB/$subDir/spades
