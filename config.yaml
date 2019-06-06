@@ -1,4 +1,4 @@
-prefix: "test"
+prefix: "default"
 threads: 48
 tmp: "./tmp"
 
@@ -9,17 +9,15 @@ divideSH: 10
 
 BB_LIST: "REF/barcode.list"
 REF_GEN: "REF/ncbi.5Ref.fasta"
-REF_ITS: "REF/ee_its_database.fasta" #UNITE + 5 fungi used in test
 
 REF_FA: "REF/ncbi.5Ref.fasta"
 REF_ID: "REF/ncbi.5Ref.faID"
 
-samples:
-  APR831: Aprl_83L01
-  APR832: Aprl_83L02
-  APR841: Aprl_84L01
-  APR842: Aprl_84L02
+sampleType: "F" # F(ungi) or B(acteria)
 
+### adapters
+AdFw: "GGTCATTTAGAGGAAGTAA"
+AdRv: "CGTTCTTCATCG"
 
 ### method selection
 method:
@@ -34,17 +32,27 @@ method:
 
 ### params
 
-p_cluster_minR: 2
-p_cluster_maxR: 100
+#### mash dist params
+p_dist_k: 31
+p_dist_s: 1000
+
+p_dist_min: 0.02
+p_dist_max: 0.04
+
+#### cluster cutoff
+p_cluster_minR: 5
+p_cluster_maxR: 1000
 p_cluster_topB: 0
 p_cluster_ranP: 0
 
-p_dist_min: 0
-p_dist_max: 0.1
+#### community level
 p_dist_lv: 1
+
+#reads per bead threashold
+p_rpb_min: 100
 #reads/beads per cluster threashold
 p_rpc_min: 100
-p_bpc_min: 100
+p_bpc_min: 0
 
 #Assembly
 p_asm_min: 2000
@@ -62,3 +70,7 @@ thread:
   fastp: 6
   spades: 8
   vsearch: 16
+
+samples:
+  test1: rawSeq/test1
+  test2: rawSeq/test2
