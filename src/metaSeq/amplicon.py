@@ -68,6 +68,14 @@ def initAlignment(alnString):
     print('All targets normalized to the minimum depth: {0}.'.format(minDepth))
     return alnNormalized
 
+# Count the number of reads in an alignment
+def countAlignment(alnFile):
+    aln = []
+    alnParser = seqIO.alignment(alnFile)
+    for item in alnParser:
+        aln.append(item[0])
+    aln = set(aln)
+    return len(aln)
 #%% Build the alignment graph
     # Node types: 1.reference, 2.forward query, 3.reverse query
     # Node atributes:
