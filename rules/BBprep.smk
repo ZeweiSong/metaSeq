@@ -34,9 +34,26 @@ rule BB_1_stLFR:
         "--disable_trim_poly_g --report_title {params.title} "
         "-w {threads} -V &> {log}\n"
 
+detectedFq1="{sample}/clean/fastp.1.fq"
+detectedFq2="{sample}/clean/fastp.2.fq"
+if config["A_primer_list_to_remove"]:
+    detectedFq1="{sample}/clean/fastp.noAd.1.fq"
+    detectedFq2="{sample}/clean/fastp.noAd.2.fq"
+    rule BB_2_delAd:
+        input:
+            r1 = "{sample}/clean/fastp.1.fq",
+            r2 = "{sample}/clean/fastp.2.fq"
+        output:
+            r1 = detectedFq1,
+            r2 = detectedFq2
+        params:
+            lst = config["A_primer_list_to_remove"]
+        shell:
+            "metabbq delAd.pl {params.lst} {input.r1}  {input.r2} {output.r1} {output.r2}"
+
 rule BB_2_sortR1:
     input:
-        r1 = "{sample}/clean/fastp.1.fq"
+        r1 = detectedFq1
     output:
         s1 = "{sample}/clean/fastp.sort.1.fq"
     params:
@@ -48,7 +65,7 @@ rule BB_2_sortR1:
 
 rule BB_2_sortR2:
     input:
-        r2 = "{sample}/clean/fastp.2.fq"
+        r2 = detectedFq2
     output:
         s2 = "{sample}/clean/fastp.sort.2.fq"
     params:
