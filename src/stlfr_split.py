@@ -61,7 +61,7 @@ parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpForm
                                         ------------------------'''))
 parser.add_argument('-r1', help='Read1 file of the stLFR library.')
 parser.add_argument('-r2', help='Read2 file of the stLFR library.')
-parser.add_argument('-b', default='barcode.list', help='Forward barcode list, this is a text file.')
+# parser.add_argument('-b', default='barcode.list', help='Forward barcode list, this is a text file.')
 parser.add_argument('-o', help='Output base for FASTQ or JSON.')
 parser.add_argument('-fastq', action='store_true', help='Turn on output to FASTQ, suffix will be added for four files.')
 parser.add_argument('-json', action='store_true', help='Turn on output to JSON format, will write to one file with .json extension.')
@@ -70,7 +70,7 @@ parser.add_argument('-bl', default='42', help='Specify the length of barcode str
 args = parser.parse_args()
 r1File = args.r1
 r2File = args.r2
-barcodeFile = args.b
+barcodeFile = 'barcode.file'
 base = args.o
 bl = args.bl
 not_gz = args.not_gz
@@ -120,103 +120,109 @@ def barcode_set(seq, bl, offset):
 
 
 # Return the number barcode set if exist
-def number_set(barcodes, forwardDict, forwardSnpDict, reverseDict):
+#def number_set(barcodes, forwardDict, forwardSnpDict, reverseDict):
+#    number = []
+#    for item in barcodes:
+#        try:
+#            number.append(forwardDict[item])
+#        except:
+#            try:
+#                number.append(forwardSnpDict[item])
+#            except KeyError:
+#                #print('forward: {0}'.format(item))
+#                break
+#    if len(number) == 3: # barcode set (all three barcodes) found in the forward direction)
+#        return '_'.join(number)
+#    else: # Does not found barcode in the forward direction
+#        number = []
+#        for item in barcodes:
+#            try:
+#                number.append(reverseDict[rc(item)])
+#            except KeyError: # At least one barcode not found in reverse direction either
+#                #print('reverse: {0}'.format(item))
+#                return None
+#    return '_'.join(number)
+
+def number_set(barcodes, NoSnpDict, OneSnpDict): # barcodes is a list of three 10 bp string
     number = []
+    # The majority of barcodes should be in the NoSnoDict
     for item in barcodes:
-        try:
-            number.append(forwardDict[item])
-        except:
-            try:
-                number.append(forwardSnpDict[item])
-            except KeyError:
-                #print('forward: {0}'.format(item))
-                break
-    if len(number) == 3: # barcode set (all three barcodes) found in the forward direction)
-        return '_'.join(number)
-    else: # Does not found barcode in the forward direction
-        number = []
-        for item in barcodes:
-            try:
-                number.append(reverseDict[rc(item)])
-            except KeyError: # At least one barcode not found in reverse direction either
-                #print('reverse: {0}'.format(item))
-                return None
-    return '_'.join(number)
-
-''' Dyfunced now, RIP.
-# Iterator for two files
-# It only work for files with ABSOLUTELY corresponding record.
-class sequence_twin(object):
-    def __init__(self, file_r1, file_r2, fastx='a', gz=False):
-        self.fastx = fastx
-        self.gzip = gz
-        if self.gzip:
-            import gzip
-            self.r1 = gzip.open(file_r1, 'rt')
-            self.r2 = gzip.open(file_r2, 'rt')
+        try: 
+            number.append(NoSnpDict[item])
+        except KeyError:
+            pass
+        if len(number) == 3:
+            return '_'.join(number)
         else:
-            self.r1 = open(file_r1, 'r')
-            self.r2 = open(file_r2, 'r')
-        if fastx == 'a': self.n = 2
-        elif fastx == 'q': self.n = 4
-        else:
-            print('Please specify the right format, "a" for FASTA and "q" for FASTQ.')
-            self.n = 1
+            number = []
+            for item in barcodes:
+                try:
+                    number.append(OneSnpDict[item])
+                except KeyError:
+                    return None
+            return '_'.join(number)
+            
+        
 
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        record = [[],[]]
-        for i in range(self.n):
-            line_r1 = self.r1.readline().strip('\n')
-            line_r2 = self.r2.readline().strip('\n')
-            if line_r1:
-                record[0].append(line_r1)
-                record[1].append(line_r2)
-            else:
-                raise StopIteration
-        record[0][0] = record[0][0][1:]
-        record[1][0] = record[1][0][1:]
-        return record[0], record[1]
-'''
 #%% Read in the barcode list
 # Forward and Reverse barcodes are saved in two Dictionaries.
 print('Reading in the barcode list from {0} ...'.format(barcodeFile))
-# Save to a Dict use barcode number as key and barcode sequence as value
+# Get the dict for no snp barcode
 barcodeDictForward = {}
+barcodeDictReverse = {}
+NoSnpDict = {}
 with open(barcodeFile, 'r') as f:
     for line in f:
         line = line.strip('\n').split('\t')
         barcodeDictForward[line[1]] = [line[0]]
+for key, value in barcodeDictForward.items():
+    barcodeDictReverse[key] = rc(value[0])
 
+for key, value in barcodeDictForward.items():
+    for barcode in value:
+        NoSnpDict[barcode] = key
+for key, value in barcodeDictReverse.items():
+    for barcode in value:
+        NoSnpDict[barcode] = key
+
+# Get the dict for 1 snp barcode
+barcodeSnpDictForward = {}
+barcodeSnpDictReverse = {}
+OneSnpDict = {}
+        
 # Add all possible 1 SNP mutations for all barcode
 barcodeSnpDictForward = {}
 for key, value in barcodeDictForward.items():
     barcodeSnpDictForward[key] = snp_list(value[0])
 
 # Create the RC Dict
-barcodeDictReverse = {}
-for key, value in barcodeDictForward.items():
-    rc_seq = rc(value[0]) # The first sequence is the original Forward barcode
-    barcodeDictReverse[key] = [rc_seq] + snp_list(rc_seq)
-
-# Convert number:barcode to barcode:number
-numberDictForward = {}
-numberSnpDictForward = {}
-numberDictReverse = {}
-
-for key, value in barcodeDictForward.items():
-    for barcode in value:
-        numberDictForward[barcode] = key
-for key, value in numberSnpDictForward.items():
-    for barcode in value:
-        numberSnpDictForward[barcode] = key
+barcodeSnpDictReverse = {}
 for key, value in barcodeDictReverse.items():
+    barcodeSnpDictReverse[key] = snp_list(value[0])
+
+for key, value in barcodeSnpDictForward.items():
     for barcode in value:
-        numberDictReverse[barcode] = key
-print('{0} unique barcode possibilities in Forward.'.format(len(numberDictForward)))
-print('{0} unique barcode possibilities in Reverse.'.format(len(numberDictReverse)))
+        OneSnpDict[barcode] = key
+for key, value in barcodeSnpDictReverse.items():
+    for barcode in value:
+        OneSnpDict[barcode] = key
+
+## Convert number:barcode to barcode:number
+#numberDictForward = {}
+#numberSnpDictForward = {}
+#numberDictReverse = {}
+
+#for key, value in barcodeDictForward.items():
+#    for barcode in value:
+#        numberDictForward[barcode] = key
+#for key, value in numberSnpDictForward.items():
+#    for barcode in value:
+#        numberSnpDictForward[barcode] = key
+#for key, value in barcodeDictReverse.items():
+#    for barcode in value:
+#        numberDictReverse[barcode] = key
+#print('{0} unique barcode possibilities in Forward.'.format(len(numberDictForward)))
+#print('{0} unique barcode possibilities in Reverse.'.format(len(numberDictReverse)))
 #with open('split.log.txt', 'w') as f:
 #    f.write('Built barcode dictionary\n')
 
@@ -240,7 +246,7 @@ for r1, r2 in seqs:
             f.write('Processed {0:8.2f} M reads\n'.format(count/1000000))
         #break
     for offset in offsets:
-        bead = number_set(barcode_set(r2[1], bl,offset), numberDictForward, numberSnpDictForward, numberDictReverse)
+        bead = number_set(barcode_set(r2[1], bl,offset), NoSnpDict, OneSnpDict)
         if bead:
             break
 
