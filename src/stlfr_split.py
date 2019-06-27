@@ -150,19 +150,11 @@ def number_set(barcodes, NoSnpDict, OneSnpDict): # barcodes is a list of three 1
         try: 
             number.append(NoSnpDict[item])
         except KeyError:
-            pass
-        if len(number) == 3:
-            return '_'.join(number)
-        else:
-            number = []
-            for item in barcodes:
-                try:
-                    number.append(OneSnpDict[item])
-                except KeyError:
-                    return None
-            return '_'.join(number)
-            
-        
+            try:
+                number.append(OneSnpDict[item])
+            except KeyError:
+                return None
+    return '_'.join(number)
 
 #%% Read in the barcode list
 # Forward and Reverse barcodes are saved in two Dictionaries.
@@ -206,6 +198,9 @@ for key, value in barcodeSnpDictForward.items():
 for key, value in barcodeSnpDictReverse.items():
     for barcode in value:
         OneSnpDict[barcode] = key
+
+print('No SNP dictionary has {0} keys.'.format(len(NoSnpDict)))
+print('One SNP dictonary has {0} keys.'.format(len(OneSnpDict)))
 
 ## Convert number:barcode to barcode:number
 #numberDictForward = {}
