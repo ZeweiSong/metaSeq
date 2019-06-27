@@ -42,6 +42,7 @@ us if you need one.
 from __future__ import print_function
 from __future__ import division
 from metaSeq import io as seqIO
+from metaSeq import barcode as seqBar
 import sys
 import textwrap
 import argparse
@@ -68,13 +69,15 @@ parser.add_argument('-json', action='store_true', help='Turn on output to JSON f
 parser.add_argument('-bl', default='42', help='Specify the length of barcode string, 42 or 54 bp.')
 #parser.add_argument('-not_gz', action='store_false', help='Specify if the input is not a gz file, in most case you do not need it.')
 args = parser.parse_args()
+args = parser.parse_args(['-r1', 'r1.fq.gz', '-r2', 'r2.fq.gz', '-o', 'test', '-json'])
 r1File = args.r1
 r2File = args.r2
 barcodeFile = 'barcode.file'
 base = args.o
 bl = args.bl
-not_gz = args.not_gz
+#not_gz = args.not_gz
 t1 = time.time()
+
 
 if not args.fastq and not args.json:
     print('Please specify at least one output format.\n')
@@ -160,13 +163,13 @@ def number_set(barcodes, NoSnpDict, OneSnpDict): # barcodes is a list of three 1
 # Forward and Reverse barcodes are saved in two Dictionaries.
 print('Reading in the barcode list from {0} ...'.format(barcodeFile))
 # Get the dict for no snp barcode
-barcodeDictForward = {}
+barcodeDictForward = seqBar.stlfrBarcode()
 barcodeDictReverse = {}
 NoSnpDict = {}
-with open(barcodeFile, 'r') as f:
-    for line in f:
-        line = line.strip('\n').split('\t')
-        barcodeDictForward[line[1]] = [line[0]]
+#with open(barcodeFile, 'r') as f:
+#    for line in f:
+#        line = line.strip('\n').split('\t')
+#        barcodeDictForward[line[1]] = [line[0]]
 for key, value in barcodeDictForward.items():
     barcodeDictReverse[key] = rc(value[0])
 
@@ -221,7 +224,6 @@ print('One SNP dictonary has {0} keys.'.format(len(OneSnpDict)))
 #with open('split.log.txt', 'w') as f:
 #    f.write('Built barcode dictionary\n')
 
-
 #%% Read in R1 and R2 file
 # Assign barocde on the fly, and save in memory (This will take up a LARGE trunk of memory)
 # The two number Dictionary contains all possible sequences with 1 base Error
@@ -233,17 +235,13 @@ logFile = base + '.log'
 seqs = seqIO.sequence_twin(r1File, r2File)
 count = 0
 error_count = 0
-offsets = [0,-1,1,-2,2]
 for r1, r2 in seqs:
     count += 1
     if count % 1000000 == 0: # Report per 1 million reads
         with open(logFile, 'w') as f:
             f.write('Processed {0:8.2f} M reads\n'.format(count/1000000))
         #break
-    for offset in offsets:
-        bead = number_set(barcode_set(r2[1], bl,offset), NoSnpDict, OneSnpDict)
-        if bead:
-            break
+    bead = number_set(barcode_set(r2[1], bl, 0), NoSnpDict, OneSnpDict)
 
     if bead:
         r1[0] = r1[0][:-2] + '/' + bead + '/1'
