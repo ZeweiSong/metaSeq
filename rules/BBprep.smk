@@ -63,6 +63,15 @@ rule BB_2_sortR1:
         "cat {input.r1} | paste - - - - | sort -T {params.tmp} -k2,2 -t \"/\" | "
         "tr \"\\t\" \"\\n\" > {output.s1}"
 
+rule BB_3_idxR1:
+    input:  "{sample}/clean/fastp.sort.1.fq"
+    output:
+        idx = "{sample}/clean/fastp.sort.1.fq.idx",
+        stat= "{sample}/clean/BB.stat"
+    shell:
+        "metabbq beadsWrite3.pl -x --r1 {input} -v \n"
+        "awk '$1!~/0000/{{print ($3-$2+1)/4}}' {output.idx}|sort|uniq -c|sort -k2,2nr|awk '{{b=b+$1;print $0\"\\t\"b}}' > {output.stat}"
+
 rule BB_2_sortR2:
     input:
         r2 = detectedFq2

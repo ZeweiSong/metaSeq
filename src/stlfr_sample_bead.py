@@ -21,17 +21,22 @@ parser.add_argument('-n', type=int, help='Number of beads to sample')
 parser.add_argument('-not_gz', action='store_false', help='Specify if the input is not a gz file, in most case you do not need it.')
 args = parser.parse_args()
 
-inputFile = args.i.split(',')
+inputFile = args.i
 outputFile = args.o
 n = args.n
 not_gz = args.not_gz
 
-beadJson = seqIO.fastq2json(inputFile[0], inputFile[1], barcodePosition=-2, gz=not_gz)
-print(len(beadJson))
+beadJson = []
+with open(inputFile, 'r') as f:
+    for line in f:
+        beadJson.append(line)
+
+print('Found {0} beads.'.format(len(beadJson)))
 # print(beadJson[list(beadJson.keys())[0]])
 # Get the n barcode randomly
-randomKeys = random.sample(list(beadJson.keys()), n)
+randomBeads = random.sample(beadJson, n)
 
 with open(outputFile, 'w') as f:
-    for key in randomKeys:
-        f.write('{0}\n'.format(json.dumps({key:beadJson[key]})))
+    for line in randomBeads:
+        f.write('{0}'.format(line))
+print('Randomly sampled {0} beads into {1}.'.format(n, outputFile))

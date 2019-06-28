@@ -19,6 +19,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-i', help='Input JSON bead file.')
 parser.add_argument('-maxee', default=1, type=int, help='Threshold of maxEE.')
 parser.add_argument('-o', help='Output JSON bead file.')
+parser.add_argument('-keepZero', action='store_true', default=False, help='By default 0000 bead will be discarded.')
 args = parser.parse_args()
 
 inputFile = args.i
@@ -28,7 +29,14 @@ outputFile = args.o
 mockRaw = []
 with open(inputFile, 'r') as f:
     for line in f:
-        mockRaw.append(json.loads(line))
+        if args.keepZero:
+            mockRaw.append(json.loads(line))
+        else:
+            currentBead = json.loads(line)
+            barcode = list(currentBead.keys())[0].split('_')
+            if '0000' not in barcode:
+                mockRaw.append(currentBead)
+
 print('Find {0} bead in the file'.format(len(mockRaw)))
 #%% For each bead, remove low quality read and duplicated reads
 # Then write to a new JSON file
