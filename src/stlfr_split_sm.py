@@ -9,11 +9,13 @@ Created on Wed Jun  6 10:47:32 2018
 #%%
 from __future__ import print_function
 from __future__ import division
-#from metaSeq import io as seqIO
+from metaSeq import io as seqIO
+from metaSeq import barcode as seqBar
 import textwrap
 import argparse
-import time
 import os
+import sys
+import time
 parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
                                      epilog=textwrap.dedent('''\
                                         Split raw stLFR data into beads. Open the script to see a detail document.
@@ -27,23 +29,23 @@ parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpForm
                                         ------------------------'''))
 parser.add_argument('-r1', help='Read1 file of the stLFR library.')
 parser.add_argument('-r2', help='Read2 file of the stLFR library.')
-parser.add_argument('-b', default='barcode.list', help='Forward barcode list, this is a text file.')
-parser.add_argument('-o', help='Output file, suffix will be added for four files.')
-parser.add_argument('-s', default=1000000, help='Number of record read in every time, default is 1 million.')
-parser.add_argument('-not_gz', action='store_false', help='Specify if the input is gz file, in most case you do not need it.')
+parser.add_argument('-bl', default='42', help='Length of the barcode tail on R2.')
+parser.add_argument('-o', '--output', default='stlfrSplit', help='Name of the output folder.')
+#parser.add_argument('-o', help='Output file, suffix will be added for four files.')
 args = parser.parse_args()
+#args = parser.parse_args(['-r1', 'r1.fq.gz', '-r2', 'r2.fq.gz', '-bl', '54', '-o', 'stlfrSplit'])
 r1File = args.r1
 r2File = args.r2
-barcodeFile = args.b
-outputFile = args.o
-not_gz = args.not_gz
+bl = int(args.bl)
+outputFolder = args.output
+if os.path.isdir(outputFolder):
+    print('The folder "{0}" exist. Please remove the folder by hand.'.format(outputFolder))
+    sys.exit()
+else:
+    os.mkdir(outputFolder)
 t1 = time.time()
+#outputFile = args.o
 
-size = int(args.s)
-
-#barcodeFile = 'barcode.list'
-#r1File = 'r1.fq'
-#r2File = 'r2.fq'
 #%% Functions
 # Return the Reverse Compliment of a sequence
 def rc(seq):
@@ -73,153 +75,119 @@ def snp_list(seq):
 
 # Detect the three 10 bp barcode in the last 54 bp of Read 2
     # Currently using: 10 + 6 + 10 + 18 + 10 (three sets of 10 base barcode)
-def barcode_set(seq):
-    return [seq[100:110], seq[116:126], seq[144:154]]
+    # Lates barcode is 42bp 10 + 6 + 10 + 6 + 10 (Cuurently used by CNGB)
+    # BAsed on our latest test on 2018-6-15, they may accidentally sequence R2
+    # as 154 bp while using the 42 bp system. If this is the case, use the first
+    # 142 bp.
+def barcode_set(seq, bl=bl, offset=0):
+    if bl == 54:
+        return [seq[100+offset:110+offset], seq[116+offset:126+offset], seq[144+offset:154+offset]]
+    elif bl == 42:
+        return [seq[100+offset:110+offset], seq[116+offset:126+offset], seq[132+offset:142+offset]]
 
 
-# Return the number barcode set if exist
-def number_set(barcodes, forwardDict, reverseDict):
+# Return the number tuple of current read
+def number_tuple(barcodes, NoSnpDict, OneSnpDict, trunkSize = 256): # barcodes is a list of three 10 bp string
     number = []
+    # The majority of barcodes should be in the NoSnoDict
     for item in barcodes:
         try:
-            number.append(forwardDict[item])
+            number.append(NoSnpDict[item])
         except KeyError:
-            #print('forward: {0}'.format(item))
-            break
-    if len(number) == 3: # barcode set (all three barcodes) found in the forward direction)
-        return '_'.join(number)
-    else: # Does not found barcode in the forward direction
-        number = []
-        for item in barcodes:
             try:
-                number.append(reverseDict[rc(item)])
-            except KeyError: # At least one barcode not found in reverse direction either
-                #print('reverse: {0}'.format(item))
+                number.append(OneSnpDict[item])
+            except KeyError:
                 return None
-    return '_'.join(number)
+    return tuple(number)
+    # return tuple((i//(trunkSize+1)+1 for i in number))
 
 
-# Iterator for two files
-# It only work for files with ABSOLUTELY corresponding record.
-class sequence_twin_trunk(object):
-    def __init__(self, file_r1, file_r2, fastx='a', gz=False, trunk_size=1000000):
-        self.fastx = fastx
-        self.gzip = gz
-        if self.gzip:
-            import gzip
-            self.r1 = gzip.open(file_r1, 'rt')
-            self.r2 = gzip.open(file_r2, 'rt')
-        else:
-            self.r1 = open(file_r1, 'r')
-            self.r2 = open(file_r2, 'r')
-        if fastx == 'a': self.n = 2
-        elif fastx == 'q': self.n = 4
-        else:
-            print('Please specify the right format, "a" for FASTA and "q" for FASTQ.')
-            self.n = 1
-        self.trunk_size = trunk_size
+# Convert barcode number to trunk ordination
+def number2ord(number_tuple):
+    return tuple(i//257 + 1 for i in number_tuple)
 
-    def __iter__(self):
-        return self
-    
-    def __next__(self):
-        r1_trunk = []
-        r2_trunk = []
-        for record in range(self.trunk_size):
-            r1 = []
-            r2 = []
-            for i in range(self.n):
-                line_r1 = self.r1.readline().strip('\n')
-                line_r2 = self.r2.readline().strip('\n')
-                if line_r1:
-                    r1.append(line_r1)
-                    r2.append(line_r2)
-                else:
-                    if len(r1_trunk) > 0:
-                        return r1_trunk, r2_trunk
-                    else:
-                        raise StopIteration
-            r1[0] = r1[0][1:]
-            r2[0] = r2[0][1:]
-            r1_trunk.append(r1)
-            r2_trunk.append(r2)
-        return r1_trunk, r2_trunk
-
-tempDict = {}
-for i in range(1536):
-    tempDict[i+1] = str(i+1) + '.temp'
-
-#%% Save to a Dict use barcode number as key and barcode sequence as value
-barcodeDictForward = {}
-with open(barcodeFile, 'r') as f:
-    for line in f:
-        line = line.strip('\n').split('\t')
-        barcodeDictForward[line[1]] = [line[0]]
-
-# Add all possible 1 SNP mutations for all barcode
-for key, value in barcodeDictForward.items():
-    barcodeDictForward[key] += snp_list(value[0])
-
-# Create the RC Dict
+#%% Read in the barcode list
+# Forward and Reverse barcodes are saved in two Dictionaries.
+print('Reading in the barcode list ...')
+# Get the dict for no snp barcode
+barcodeDictForward = seqBar.stlfrBarcode()
 barcodeDictReverse = {}
+NoSnpDict = {}
+
 for key, value in barcodeDictForward.items():
-    rc_seq = rc(value[0]) # The first sequence is the original Forward barcode
-    barcodeDictReverse[key] = [rc_seq] + snp_list(rc_seq)
-
-# Convert number:barcode to barcode:number
-numberDictForward = {}
-numberDictReverse = {}
-
+    barcodeDictReverse[key] = rc(value[0])
 for key, value in barcodeDictForward.items():
     for barcode in value:
-        numberDictForward[barcode] = key
+        NoSnpDict[barcode] = int(key)
 for key, value in barcodeDictReverse.items():
     for barcode in value:
-        numberDictReverse[barcode] = key
+        NoSnpDict[barcode] = int(key)
+
+# Get the dict for 1 snp barcode
+barcodeSnpDictForward = {}
+barcodeSnpDictReverse = {}
+OneSnpDict = {}
+
+# Add all possible 1 SNP mutations for all barcode
+barcodeSnpDictForward = {}
+for key, value in barcodeDictForward.items():
+    barcodeSnpDictForward[key] = snp_list(value[0])
+
+# Create the RC Dict
+barcodeSnpDictReverse = {}
+for key, value in barcodeDictReverse.items():
+    barcodeSnpDictReverse[key] = snp_list(value[0])
+
+for key, value in barcodeSnpDictForward.items():
+    for barcode in value:
+        OneSnpDict[barcode] = int(key)
+for key, value in barcodeSnpDictReverse.items():
+    for barcode in value:
+        OneSnpDict[barcode] = int(key)
+
+print('No SNP dictionary has {0} keys.'.format(len(NoSnpDict)))
+print('One SNP dictonary has {0} keys.'.format(len(OneSnpDict)))
 
 
 #%% Read in R1 and R2 file
 # The two number Dictionary contains all possible sequences with 1 base Error
+print('Start reading {0} and {1} . . .'.format(r1File, r2File))
+print('Splited reads are writing under the folder {0} . . .'.format(outputFolder))
 
-beadError = {'0_0_0':[]}  # This is the dicionary that organizes seqs without barcode
-trunks = sequence_twin_trunk(r1File, r2File, fastx='q', trunk_size = size, gz=not_gz)
-
+# Create the list of output files. There are 6x6x6 files, plus one for error.
+outputFileDict = {(0,0,0): outputFolder + '/' + '0_0_0.fq'}
+for x in range(1,7):
+    for y in range(1,7):
+        for z in range(1,7):
+            outputFileDict[(x,y,z)] = '{3}/{0}_{1}_{2}.gp.fq'.format(x,y,z,outputFolder)
+   
 # Assign read into bins using the first barcode as key
-for t1, t2 in trunks:
-    beadDict = {} # This is the dictionary that organizes seqs by bead (barcode set)
-    for i in range(1536):
-        beadDict[i+1] = []
-    for r1, r2 in zip(t1, t2):
-        bead = number_set(barcode_set(r2[1]), numberDictForward, numberDictReverse)
+with open('stlfr_split_sm.log', 'w') as f1:
+    count = 0
+    error_count = 0
+    seqs = seqIO.sequence_twin(r1File, r2File)
+    for r1, r2 in seqs:
+        count += 1
+        if count // 1000000 >= 1:
+            f1.write('\tProcessed {8.2f} M reads.'.format(count // 1000000))
+        bead = number_tuple(barcode_set(r2[1]), NoSnpDict, OneSnpDict)
         if bead:
-            firstBarcode = int(bead.split('_')[0])
-            beadDict[firstBarcode].append((bead, r1[1], r1[3], r2[1][:100], r2[3][:100]))
+            b = '_'.join([str(i) for i in bead])
+            r1[0] = r1[0][:-2] + '/' + b + '/1'
+            r2[0] = r2[0][:-2] + '/' + b + '/2'
+            r2[1] = r2[1][:100]
+            r2[3] = r2[3][:100]
+            seqIO.write_seqs([r1,r2], outputFileDict[number2ord(bead)], fastx='q', mode='a', gz=False)
         else:
-            beadError['0_0_0'].append((r1[1], r1[3], r2[1][:100], r2[3][:100]))
-
-    # Write to temp file:
-    for key, value in beadDict.items():
-        if len(value) > 0:
-            with open(tempDict[key], 'a') as f:
-                for line in value:
-                    f.write('{0}\n'.format('\t'.join(line)))
-
-#%% Order each temp file by bead, and write to a new file
-#outputFile = 'orderred.fq'
-for key, value in tempDict.items():
-    temp = []
-    try:
-        with open(value, 'r') as f:
-            for line in f:
-                temp.append(line.strip('\n').split('\t'))
-        temp.sort(key=lambda x:x[0])
-        with open(outputFile, 'a') as f:
-            for line in temp:
-                f.write('{0}\n'.format('\t'.join(line)))
-    except FileNotFoundError:
-        pass
-
-#%% Remove temp files
-for key, value in tempDict.items():
-    if os.path.isfile(value):
-        os.remove(value)
+            error_count += 1
+            r1[0] = r1[0][:-2] + '/' + '0_0_0' + '/1'
+            r2[0] = r2[0][:-2] + '/' + '0_0_0' + '/1'
+            r2[1] = r2[1][:100]
+            r2[3] = r2[3][:100]
+            seqIO.write_seqs([r1,r2], outputFileDict[(0,0,0)], fastx='q', mode='a', gz=False)
+t2 = time.time()
+with open('stlfr_split_sm.log', 'a') as f2:
+    f2.write('{0} total seqs, {1:8.2f} M.\n'.format(count, count//1000000))
+    f2.write('{0} seqs do not have eligible barcode.\n'.format(error_count))
+    t2 = time.time()
+    f2.write('Used {0:8.0f} seconds ({1:8.2f} hrs) for processing the reads.\n'.format((t2 - t1), (t2 - t1)/3600))

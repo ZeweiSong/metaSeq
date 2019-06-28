@@ -69,10 +69,9 @@ parser.add_argument('-json', action='store_true', help='Turn on output to JSON f
 parser.add_argument('-bl', default='42', help='Specify the length of barcode string, 42 or 54 bp.')
 #parser.add_argument('-not_gz', action='store_false', help='Specify if the input is not a gz file, in most case you do not need it.')
 args = parser.parse_args()
-args = parser.parse_args(['-r1', 'r1.fq.gz', '-r2', 'r2.fq.gz', '-o', 'test', '-json'])
+# args = parser.parse_args(['-r1', 'r1.fq.gz', '-r2', 'r2.fq.gz', '-o', 'test', '-json'])
 r1File = args.r1
 r2File = args.r2
-barcodeFile = 'barcode.file'
 base = args.o
 bl = args.bl
 #not_gz = args.not_gz
@@ -122,35 +121,11 @@ def barcode_set(seq, bl, offset):
         return [seq[100+offset:110+offset], seq[116+offset:126+offset], seq[132+offset:142+offset]]
 
 
-# Return the number barcode set if exist
-#def number_set(barcodes, forwardDict, forwardSnpDict, reverseDict):
-#    number = []
-#    for item in barcodes:
-#        try:
-#            number.append(forwardDict[item])
-#        except:
-#            try:
-#                number.append(forwardSnpDict[item])
-#            except KeyError:
-#                #print('forward: {0}'.format(item))
-#                break
-#    if len(number) == 3: # barcode set (all three barcodes) found in the forward direction)
-#        return '_'.join(number)
-#    else: # Does not found barcode in the forward direction
-#        number = []
-#        for item in barcodes:
-#            try:
-#                number.append(reverseDict[rc(item)])
-#            except KeyError: # At least one barcode not found in reverse direction either
-#                #print('reverse: {0}'.format(item))
-#                return None
-#    return '_'.join(number)
-
 def number_set(barcodes, NoSnpDict, OneSnpDict): # barcodes is a list of three 10 bp string
     number = []
     # The majority of barcodes should be in the NoSnoDict
     for item in barcodes:
-        try: 
+        try:
             number.append(NoSnpDict[item])
         except KeyError:
             try:
@@ -161,18 +136,14 @@ def number_set(barcodes, NoSnpDict, OneSnpDict): # barcodes is a list of three 1
 
 #%% Read in the barcode list
 # Forward and Reverse barcodes are saved in two Dictionaries.
-print('Reading in the barcode list from {0} ...'.format(barcodeFile))
+print('Reading in the barcode list ...')
 # Get the dict for no snp barcode
 barcodeDictForward = seqBar.stlfrBarcode()
 barcodeDictReverse = {}
 NoSnpDict = {}
-#with open(barcodeFile, 'r') as f:
-#    for line in f:
-#        line = line.strip('\n').split('\t')
-#        barcodeDictForward[line[1]] = [line[0]]
+
 for key, value in barcodeDictForward.items():
     barcodeDictReverse[key] = rc(value[0])
-
 for key, value in barcodeDictForward.items():
     for barcode in value:
         NoSnpDict[barcode] = key
@@ -184,7 +155,7 @@ for key, value in barcodeDictReverse.items():
 barcodeSnpDictForward = {}
 barcodeSnpDictReverse = {}
 OneSnpDict = {}
-        
+
 # Add all possible 1 SNP mutations for all barcode
 barcodeSnpDictForward = {}
 for key, value in barcodeDictForward.items():
