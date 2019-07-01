@@ -360,38 +360,33 @@ def fastq2json(fwdFile, revFile, barcodePosition=-2):
 # Convert the pair end merged files (one assembled, two unassembled) into bead dictionary
 def mergepairs2bead(assemFile, fwdFile, revFile):
     bead = {} # Dictionary for storing bead
-    ft = showMeTheType(assemFile)
+    count = 0
+    # Quality score will be discarded
     for record in sequence(assemFile):
-        if ft[1]:
-            barcode = record[0].split('/')[-2]
-            try:
-                bead[barcode].append([record[1], record[3]])
-            except KeyError:
-                bead[barcode] = [[record[1], record[3]]]
-        else:
-            barcode = record[0].split('/')[-2]
-            try:
-                bead[barcode].append([record[1]])
-            except KeyError:
-                bead[barcode] = [[record[1]]]
+        count += 1
+        if count // 1000000 >= 1 and count % 1000000 == 0:
+            print('Processed {0:8.2f} records.'.format(count // 1000000))
+        barcode = record[0].split('/')[-2]
+        try:
+            bead[barcode].append([record[1]])
+        except KeyError:
+            bead[barcode] = [[record[1]]]
+
     ft1 = showMeTheType(fwdFile)
     ft2 = showMeTheType(revFile)
     if ft1 != ft2:
         print('Inconsistent forward and reverse file, come on, dude!')
     else:
         for r1, r2 in sequence_twin(fwdFile, revFile):
-            if ft1[1]:
-                barcode = r1[0].split('/')[-2]
-                try:
-                    bead[barcode].append([r1[1], r1[3], r2[1], r2[3]])
-                except KeyError:
-                    bead[barcode] = [[r1[1], r1[3], r2[1], r2[3]]]
-            else:
-                try:
-                    bead[barcode].append([r1[1], r2[1]])
-                except KeyError:
-                    bead[barcode] = [[r1[1], r2[1]]]
-        return bead
+            count += 1
+            if count // 1000000 >= 1 and count % 1000000 == 0:
+                print('Processed {0:8.2f} records.'.format(count // 1000000))
+            barcode = r1[0].split('/')[-2]
+            try:
+                bead[barcode].append([r1[1], r2[1]])
+            except KeyError:
+                bead[barcode] = [[r1[1], r2[1]]]
+    return bead
 
 
 # Convert a pair of FASTQ record into list format as [seq1, q1, seq2, q2]
