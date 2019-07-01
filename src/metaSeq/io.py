@@ -377,7 +377,7 @@ def mergepairs2bead(assemFile, fwdFile, revFile):
     ft1 = showMeTheType(fwdFile)
     ft2 = showMeTheType(revFile)
     if ft1 != ft2:
-        print('Inconsisten forward and reverse file, come on, dude!')
+        print('Inconsistent forward and reverse file, come on, dude!')
     else:
         for r1, r2 in sequence_twin(fwdFile, revFile):
             if ft1[1]:
