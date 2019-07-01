@@ -44,7 +44,7 @@ with open(logFile, 'w') as f:
 
 bead = {} # Dictionary for storing bead
 bead = seqIO.mergepairs2bead(assemFile, fwdFile, revFile)
-
+print('Parsed {0} beads, {1:8.2f} M total.'.format(len(bead), len(bead)/1000000))
 with open(logFile, 'a') as f:
     f.write('Writing to JSON file.\n')
 with open(outputFile, 'w') as f:

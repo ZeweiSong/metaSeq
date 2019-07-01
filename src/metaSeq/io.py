@@ -365,7 +365,7 @@ def mergepairs2bead(assemFile, fwdFile, revFile):
     for record in sequence(assemFile):
         count += 1
         if count // 1000000 >= 1 and count % 1000000 == 0:
-            print('Processed {0:8.2f} records.'.format(count // 1000000))
+            print('Processed {0:8.2f} M records.'.format(count / 1000000))
         barcode = record[0].split('/')[-2]
         try:
             bead[barcode].append([record[1]])
@@ -380,7 +380,7 @@ def mergepairs2bead(assemFile, fwdFile, revFile):
         for r1, r2 in sequence_twin(fwdFile, revFile):
             count += 1
             if count // 1000000 >= 1 and count % 1000000 == 0:
-                print('Processed {0:8.2f} records.'.format(count // 1000000))
+                print('Processed {0:8.2f} M records.'.format(count / 1000000))
             barcode = r1[0].split('/')[-2]
             try:
                 bead[barcode].append([r1[1], r2[1]])
