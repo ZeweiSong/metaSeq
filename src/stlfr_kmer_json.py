@@ -17,12 +17,12 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-i', help='Input JSON-Bead file.')
 parser.add_argument('-o', help='Output JSON-Bead-Kmer file.')
 parser.add_argument('-k', default=21, type=int, help='Kmer size')
-parser.add_argument('-report', default='kmerReport.tsv', help='Report file on Kmers.')
+parser.add_argument('-report', default='kmerReport.tsv', help='A report on kmer distribuion on Kmers.')
 args = parser.parse_args()
 
 inputFile = args.i
 outputFile = args.o
-kmerSize = args.k
+k = args.k
 reportFile = args.report
 
 kmerPool = []
@@ -31,7 +31,7 @@ kmerFrag = []
 with open(inputFile, 'r') as f:
     for line in f:
         b = bead.beadSequence(json.loads(line))
-        kmers = kmer.kmerCount(b, kmerSize)
+        kmers = kmer.kmerCount(b, k)
         barcode = b.barcode
         kmerPool.append({barcode:kmers.kmers})
         kmerNumber = len(kmers.kmers)

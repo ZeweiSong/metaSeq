@@ -48,7 +48,7 @@ class beadSequence(object):
             i += 1
         for record in self.unassembled:
             fasta.append((self.barcode + '/1/' + str(i), record[0]))
-            fasta.append((self.barcode + '/2/' + str(i), record[1]))
+            fasta.append((self.barcode + '/2/' + str(i), record[1])) 
             i += 1
         return fasta
 
