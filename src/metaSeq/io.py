@@ -10,6 +10,7 @@ This script contains functions that take a sequence file as input.
 """
 from __future__ import print_function
 from __future__ import division
+import json
 
 # Function for checking the file type (gz, fasta, fastq)
 # Return a tuple with two boolean value (T/F, T/F) --> (gz/not_gz, FASTQ/FASTA)
@@ -81,6 +82,7 @@ class sequence_trunk(object):
             self.n = 4
         else:
             self.n = 2
+        self.trunk_size = trunk_size
 
     def __iter__(self):
         return self
@@ -396,27 +398,47 @@ def fastq2list(r1, r2):
 
 
 # Iterator for Bead from the JSON output
-class bead_json(object):
+class beadJson(object):
     def __init__(self, filePath):
-        import json
         self.file = open(filePath, 'r')
-        self.head = []
-        with open(filePath, 'r') as f:
-            i = 1
-            for line in f:
-                if i <= 10:
-                    i += 1
-                    self.head.append(json.loads(line.strip('\n')))
+
     def __iter__(self):
         return self
 
     def __next__(self):
-        import json
         line = self.file.readline().strip('\n')
         if line:
             return json.loads(line)
         else:
             raise StopIteration
+
+class beadJsonTrunk(object):
+    def __init__(self, filePath, trunk=10):
+        self.file = open(filePath, 'r')
+        self.trunk = trunk
+#        self.head = []
+#        with open(filePath, 'r') as f:
+#            i = 1
+#            for line in f:
+#                if i <= 10:
+#                    i += 1
+#                    self.head.append(json.loads(line.strip('\n')))
+    
+    def __iter__(self):
+        return self
+    
+    def __next__(self):
+        recordTrunk = []
+        for i in range(self.trunk):
+            line = self.file.readline().strip('\n')
+            if line:
+                recordTrunk.append(json.loads(line))
+            else:
+                if len(recordTrunk) > 0:
+                    return recordTrunk
+                else:
+                    raise StopIteration
+        return recordTrunk
 #%%
 # Return reverse compliment of a sequence
 # This part is got from Stakoverflow
