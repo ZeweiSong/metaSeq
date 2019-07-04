@@ -61,9 +61,12 @@ class kmerTable(object):
 
 
 # Return distance of two kmer pool
-# Input is a pair of lists/tuples, containing two kmerTable class.self.set
+# Input is a pair of lists/tuples, from class.self.set, or read in from JSON kmer file
     # This is usually the output of itertools.combinations
 class kmerDistance(object):
+    # Usage
+    # kd = kmerDistance([kmer1, kmer2])
+    # md = kd.mashDistance
     def __init__(self, kmerPools):
         self.poolA = kmerPools[0]
         self.poolB = kmerPools[1]
