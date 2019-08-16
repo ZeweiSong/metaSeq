@@ -24,11 +24,11 @@ rule BCA_0_sketch:
         k   = config["p_dist_k"],
         s   = config["p_dist_s"]
     shell:
-        "export maxC={params.maxR} \n export minC={params.minR}\n"
+        "export maxC={params.maxR}\nexport minC={params.minR}\n"
         "echo choose minc = $minC , maxc = $maxC \n"
         "metabbq binWrite fqpick -x {input.id} -c {params.minR} -m {params.maxR} -b {params.topB} -r {params.ranP} -i {input.x1} -o {params.pfx}.sort.1.fq & \n"
         "metabbq binWrite fqpick -x {input.id} -c {params.minR} -m {params.maxR} -b {params.topB} -r {params.ranP} -i {input.x2} -o {params.pfx}.sort.2.fq & \n"
-        "wait && mash sketch -k {params.k} -s {params.s} -r -B {params.pfx}.sort.1.fq {params.pfx}.sort.2.fq -o {params.pfx}"
+        "wait\nmash sketch -k {params.k} -s {params.s} -r -B {params.pfx}.sort.1.fq {params.pfx}.sort.2.fq -o {params.pfx}"
 
 
 rule BCA_1_distRaw:

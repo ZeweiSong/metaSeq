@@ -20,9 +20,11 @@ samDir=$2
 level=$3
 cluster=$4
 tag=$5
-force=$6
+mem=$6
+cpu=$7
+force=$8
 
-clusterFmt=`printf "%08d" $cluster`
+clusterFmt=`printf "%08.0f" $cluster`
 if [[ $level -gt 0 ]];
 then
   ASB="Assemble_Lv$level"
@@ -53,12 +55,14 @@ echo "[BC] list beads contained in this cluster"
 
 fq1="$samDir/$ASB/$subDir/sort.1.fq"
 fq2="$samDir/$ASB/$subDir/sort.2.fq"
-fo1="$samDir/$ASB/$subDir/noAd.1.fq"
-fo2="$samDir/$ASB/$subDir/noAd.2.fq"
+#fo1="$samDir/$ASB/$subDir/noAd.1.fq"
+#fo2="$samDir/$ASB/$subDir/noAd.2.fq"
+fo1=$fq1
+fo2=$fq2
 
-perl -e 'open R,"<'$fq2'";open O,">'$fo2'";while(<>){
-$i2=<R>;$s2=<R>;<R>;$q2=<R>;$id=$_;$s=<>;
-if($s=~/GCCAGCAACCGCGGTAA|TTACCGCGGTTGCTGGC|GGTCCGTGTTTCAAGACG|CGTCTTGAAACACGGACC/ || $s2=~/GCCAGCAACCGCGGTAA|TTACCGCGGTTGCTGGC|GGTCCGTGTTTCAAGACG|CGTCTTGAAACACGGACC/){<>;<>}else{<>;$q=<>;print "$id"."$s+\n$q";print O "$i2"."$s2+\n$q2"}}' < $fq1 > $fo1
+#perl -e 'open R,"<'$fq2'";open O,">'$fo2'";while(<>){
+#$i2=<R>;$s2=<R>;<R>;$q2=<R>;$id=$_;$s=<>;
+#if($s=~/GCCAGCAACCGCGGTAA|TTACCGCGGTTGCTGGC|GGTCCGTGTTTCAAGACG|CGTCTTGAAACACGGACC/ || $s2=~/GCCAGCAACCGCGGTAA|TTACCGCGGTTGCTGGC|GGTCCGTGTTTCAAGACG|CGTCTTGAAACACGGACC/){<>;<>}else{<>;$q=<>;print "$id"."$s+\n$q";print O "$i2"."$s2+\n$q2"}}' < $fq1 > $fo1
 
 #mkdir $ASB/$subDir
 if [ $level == "BC" ];
@@ -94,12 +98,12 @@ else
     fq2fa --merge --filter $samDir/$ASB/$subDir/sort.1.fq \
     $samDir/$ASB/$subDir/sort.2.fq $samDir/$ASB/$subDir/sort.pair.fa
     cmd="idba_ud -o $samDir/$ASB/$subDir/idba -r $samDir/$ASB/$subDir/sort.pair.fa \
-    --mink 11 --step 22 --maxk 121 --min_contig 999 --num_threads 16"
+    --mink 11 --step 22 --maxk 121 --min_contig 500 --num_threads $cpu"
 	echo $cmd;
 	$cmd
   elif [ $mode == "megahit" ]; then
     echo "[BC] megahit selected."
-    megahit --k-min 21 --k-step 22 --k-max 121  \
+    megahit --k-min 21 --k-step 22 --k-max 121  -m $mem -t $cpu \
     -1 $samDir/$ASB/$subDir/sort.1.fq -2 $samDir/$ASB/$subDir/sort.2.fq \
     -o $samDir/$ASB/$subDir/$rdir
   fi
