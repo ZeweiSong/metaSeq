@@ -38,22 +38,6 @@ options   Defined according to the mode and cmd you chosed.
 USAGE
 }
 
-sub usageBB {
-  my $msg = shift;
-print <<USAGE;
-$msg
-usage:
-  $cmd bb [option]
-options:
-    -i  input dataset list file
-    -o  output dir
-    -c  config file
-    -v  version
-    -V  verbose
-    -h  show help info
-USAGE
-}
-
 &usage($msg) && exit if @ARGV == 0 || $ARGV[0] eq "-h";
 die "version $version\n" if $ARGV[0] eq "-v";
 
@@ -104,9 +88,25 @@ if ($pattern !~ /^(init|cfg|smk|-v|-h)$/){
 
 #################################
 ###    pipeline initiation    ###
-&verbose("[log] BB mode Start");
+sub usageBB {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  $cmd bb [option]
+options:
+    -i  input dataset list file (#1#ID #2#path; R2 followed R1)
+    -o  output dir
+    -c  config file
+    -v  version
+    -V  verbose
+    -h  show help info
+USAGE
+}
+
+&verbose("[init] BBQ Start");
 our(%CFG,%SAM);
-my ($inf,$out,$cfg,$verbose,$help);
+my ($inf,$OUT,$out,$cfg,$verbose,$help);
 GetOptions(
   "i=s" => \$inf,
   "o=s" => \$out,
@@ -119,48 +119,33 @@ GetOptions(
 &usageBB("[fatal] Essential input is missing") && exit unless defined $inf;
 $out ||= ".";
 
-&verbose("[bb] Init workshop\n");
+&verbose("[init] Init workshop\n");
 my($dirDB, $dirIN);
-$out = abs_path($out);
-system "mkdir -p $out" unless(-d $out);
-$dirDB = "$out/database";
-$dirIN = "$out/rawSeq";
-system "mkdir -p $dirDB" unless(-d $dirDB);
-system "mkdir -p $dirIN" unless(-d $dirIN);
+$OUT = abs_path($out);
+system "mkdir -p $OUT" unless(-d $OUT);
 
-&verbose("[bb] Prep config.yaml\n");
+&verbose("[init] Read config.yaml\n");
 &readCFG($cfg);
-if($cfg=~/\.yaml$/){
-  system "cp $cfg $out/config.yaml";
-  open SCFG, ">>$out/config.yaml" or die "can not write config.yaml. Please check\n";
-}else{
-  open SCFG, ">$out/config.yaml" or die "can not write config.yaml. Please check\n";
-  &writeCFG;
-  $CFG{'BB_LIST'} = abs_path($CFG{'BB_LIST'});
-  &verbose("[bb] Link required files\n");
-  die "barcodes list not defined. Check again.\n" unless $CFG{'BB_LIST'};
-  system "ln -sf $CFG{'BB_LIST'} $dirDB/barcode.list";
-}
 
-&verbose("[bb] Read input list\n");
+&verbose("[init] Read input list\n");
 &readInput($inf);
 
-print SCFG "samples:\n";
+unless( defined $CFG{"samples"}){
+  open SCFG,">>$cfg";
+  print SCFG "samples:\n";
+}
 foreach my $sam (sort keys %SAM){
   my @fs = @{$SAM{$sam}};
   for(my $i=1;$i<=@fs;$i++){
     $fs[$i-1] =~ /.(f(|ast)[aq](|.gz))$/;
     my $sufix = $1;
-    system "ln -sf $fs[$i-1] $dirIN/$sam\_$i.$sufix";
-    system "mkdir -p $out/$sam/input";
-    system "ln -sf $fs[$i-1] $out/$sam/input/rawSeq_$i.$sufix";
-    print SCFG "  $sam: rawSeq/$sam\n";
+    system "mkdir -p $OUT/$sam/input";
+    system "ln -sf $fs[$i-1] $OUT/$sam/input/rawSeq_$i.$sufix";
   }
+  print SCFG "  $sam: $out/$sam\n" unless defined $CFG{"samples"};
 }
-close SCFG;
-
-#system "cp $Bin/Snakefile $out/Snakefile";
-&verbose("done!\n");
+close SCFG unless defined $CFG{"samples"};
+&verbose("[init] done!\n");
 
 exit;
 #################################
@@ -170,28 +155,25 @@ sub verbose{
   print STDERR $msg if $verbose;
 }
 
+sub ignoreSam{
+
+}
 sub readCFG {
+  my $ignore = 0;
   my $cfg = shift;
-  if($cfg =~ /\.cfg$/ && -e $cfg ){
-    open CFG,"$cfg" or die "failed to open configure file $cfg. $!\n";
-    while(<CFG>){
-      chomp;
-      next if $_ =~ /^\s*(#|$)/;
-      $_ =~ /(\S+)\s*=\s*(\S+)/;
-      $CFG{$1} = $2;
-    }
-  }else{
-    foreach my $par (split(/,/,$cfg)){
-      my @a = split(/=/,$par);
-      $CFG{$a[0]} = $a[1];
-    }
+  open CFG,"$cfg" or die "failed to open configure file $cfg. $!\n";
+  while(<CFG>){
+    chomp;
+    next if $_ =~ /^\s*(#|$)/;
+    $_ =~ /(\S+)\s*:\s*(\S*)/;
+    $CFG{$1} = $2;
   }
 }
 
 sub readInput {
   my $path_f = shift;
   my @paths = split (',',$path_f);
-  open PATH,"> $out/sam.id.path" or die $!;
+  open PATH,"> $OUT/sam.id.path" or die $!;
   while(@paths>0){
   	my $path_i = shift @paths;
   	$path_i = abs_path($path_i);
@@ -208,13 +190,4 @@ sub readInput {
   	close IN;
   }
   close PATH;
-}
-
-sub writeCFG {
-  print SCFG "BeadBarcodeList: ".(($CFG{'BB_LIST'})?"\"$CFG{'BB_LIST'}\"\n\n":"\"unknown\"\n\n");
-  print SCFG "prefix: ".(($CFG{'prefix'})?"\"$CFG{'prefix'}\"\n\n":"\"default\"\n\n");
-  print SCFG "tmp: ".(($CFG{'tmp'})?"\"$CFG{'tmp'}\"\n\n":"\"./tmp\"\n\n");
-  print SCFG "threads: ".(($CFG{'threads'})?$CFG{'threads'}:1)."\n\n";
-  print SCFG "max_threads_per_script:  ".(($CFG{'max_threads_per_script'})?$CFG{'max_threads_per_script'}:1)."\n\n";
-  print SCFG "divideSH:  ".(($CFG{'divideSH'})?$CFG{'divideSH'}:10)."\n\n";
 }

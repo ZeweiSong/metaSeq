@@ -13,12 +13,16 @@ REF_GEN: "REF/ncbi.5Ref.fasta"
 REF_FA: "REF/ncbi.5Ref.fasta"
 REF_ID: "REF/ncbi.5Ref.faID"
 
+REF_nt: "/REF/blast_nt/nt"
+REF_silva: "REF/silva132/combine/SILVA_132_SSU_LSU_tax_DNA.blast"
+
 sampleType: "F" # F(ungi) or B(acteria)
 
 ### adapters
-AdFw: "GGTCATTTAGAGGAAGTAA"
-AdRv: "CGTTCTTCATCG"
-
+AdFw:
+AdRv:
+A_primer_list_to_remove:
+A_primer_fa_to_find: "REF/primers.fa"
 ### method selection
 method:
   cluster:
@@ -55,8 +59,9 @@ p_rpc_min: 100
 p_bpc_min: 0
 
 #Assembly
-p_asm_min: 2000
-
+p_asm_min: 500
+p_asm_mem: 10000000000
+p_asm_cpu: 4
 #Circos
 p_cc_zoom: 1
 p_cc_cut:  97
@@ -65,12 +70,10 @@ p_cc_cut:  97
 
 ### Thread control
 thread:
-  manualDivide: 10
+  manualDivide: 2
   pigz: 4
-  fastp: 6
-  spades: 8
+  fastp: 4
+  spades: 4
+  megahit: 1
   vsearch: 16
-
-samples:
-  test1: rawSeq/test1
-  test2: rawSeq/test2
+  blastn: 16
