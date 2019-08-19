@@ -2,50 +2,44 @@
 
 This is a sequencing data processing pipeline mainly implemented with *sing-tube Long Fragment Reads (stLFR)* technology.
 
-## Requirment
+### Installation 
+> Note: the [biogit](https://biogit.cn) is an internal website and only accessable from intranet at present.    
 
-**Environment**: `python >= 3.6` `perl >= 5` `R3.4`
+**Prerequisites**  
+- python >= 3.6
+- perl >= 5
+- [metabbq](https://github.com/ZeweiSong/metaSeq) ( [dev repo](https://biogit.cn/Fangchao/metaSeq) ) - "METAgenome Bead Barcode Quantification", which is a launcher to initiate workdir and calling sub functions.
+- ~~cOMG ( [dev repo](https://biogit.cn/Fangchao/Omics_pipeline) )~~ (replaced by fastp)
+- [fastp](https://github.com/OpenGene/fastp) ([dev repo](https://biogit.cn/PUB/fastp) ) - dev version mandatory since I've modified `fastp` a new module to handle the split barcodes process
+- [Mash](https://github.com/marbl/Mash) ([dev repo](https://biogit.cn/PUB/Mash) ) - dev version mandatory since I've modified it to fit stLFR data 
+- [Community](https://sites.google.com/site/findcommunities/) ( [dev repo](https://biogit.cn/PUB/community) ) - Louvain method: Finding communities in large networks
+- [Snakemake](https://bitbucket.org/snakemake/snakemake) - a pythonic workflow system.  
+- [blast](https://blast.ncbi.nlm.nih.gov) - The classic alignment tool finding regions of similarity between biological sequences.
+- **Assemble methods**  
+  - [SPAdes ](https://github.com/ablab/spades) - SPAdes Genome Assembler
+  - [MEGAHIT](https://github.com/voutcn/megahit) - An ultra-fast and memory-efficient NGS assembler
 
-**Requirements**：
-
-> Note: the biogit is an internal site and only accessable from intranet at present.
-
-**metabbq** ( [github](https://github.com/ZeweiSong/metaSeq) | [biogit](https://biogit.cn/Fangchao/metaSeq) )  
-metabbq means "METAgenome Bead Barcode Quantification", which is a launcher to initiate workdir and calling sub functions.
-
-~~**cOMG** ( [biogit](https://biogit.cn/Fangchao/Omics_pipeline) )~~(replaced by fastp)
-
-**fastp** ( [github](https://github.com/OpenGene/fastp) | [biogit](https://biogit.cn/PUB/fastp) )  
-I've modified `fastp` to speed up the split barcodes process
-
-~~**Mash**( [github](https://github.com/marbl/Mash) | [biogit](https://biogit.cn/PUB/Mash) )~~(modified to fit stLFR)
-
-**Community** ([source](https://sites.google.com/site/findcommunities/) | [biogit](https://biogit.cn/PUB/community))
-
-**Snakemake** - a pythonic workflow system ([bitbucket](https://bitbucket.org/snakemake/snakemake))
-
-**SPAdes** - SPAdes Genome Assembler ( [about ](http://cab.spbu.ru/software/spades/)| [github ](https://github.com/ablab/spades) )
-
-**MEGAHIT** -  An ultra-fast and memory-efficient NGS assembler ([github](https://github.com/voutcn/megahit))
-
-> make sure  above commands can be found in the PATH
-## Installation
-I recommend to install above tools in an virtual env via conda.
+I recommend to install above tools in an virtual env via [conda](https://conda.anaconda.org/):
 1. create and install part of them:
 ```bash
 conda create -n metaseq -c bioconda -c conda-forge snakemake pigz megahit blast
 source activate metaseq
 ```
-2. install `fastp`, `SPAdes` and `community`, etc. under env `metaseq`
+2. According to the corresponding documents, install `fastp`, `SPAdes` and `community`, etc. under env `metaseq`
 
-3. install `metaSeq` pipeline:
+Make sure above commands (executables) can be found in the `PATH`. 
+
+**Get the launcher: metabbq**   
+3. Install `metaSeq` pipeline to get `metabbq`:
 ```
 cd /path/to/your/dir
 git clone https://github.com/ZeweiSong/metaSeq.git
 export PATH="/path/to/your/dir/metaSeq":$PATH
 ```
 
-## Usage
+I haven't yet write any testing module to check abve prerequesites. At present you may need to test it yourself.
+
+### Usage
 **Prepare configs**
 ```bash
 cd instance
@@ -55,20 +49,35 @@ This command will create a `default.cfg` in your current dir.
 You should modifed it to let the launcher know the required files and parameters
 
 **Initiating a project**
+Prepare an `input.list` file to describe the sample name and input sequence file path.  
 ```
 metabbq -i input.list -c default.cfg -V
 ```
-By default, the launcher will initate the workshop in current directory.
+By default, the `metabbq` will create a directory with the name of {sample} and a sub-directory named `input` under it.  
 
-**Show pipeline directed acyclic graph(dag)**
-```bash
-snakemake --dag | dot -Tsvg > dag.svg
+#### Run Quality-Contorl module
 ```
-
-**test pipeline**
-
-```
-snakemake -j -np T01/VSEARCH/read.merge.derep.2T.bc.graph.tree
+metabbq smk -j -np {sample}/clean/BB.stat
 # -j make the jobs execuated paralled under suitable cores/threads
 # -n mean dry-run with a preview of "what needs to be run". Remove it to really run the pipeline.
 ```
+
+#### Run precluster-assmble module
+You need to select a assemble tool in the configure file and the corresponding output file name in following:
+```
+metabbq smk -j -np {sample}/summary.BC.megahit.contig.fasta
+metabbq smk -j -np {sample}/summary.BC.idba.contig.fasta
+metabbq smk -j -np {sample}/summary.BC.spades.contig.fasta
+```
+
+#### Run Isolate-Bead-assmble module
+You need to select a assemble tool in the configure file and the corresponding output file name in following:
+```
+metabbq smk -j -np {sample}/summary.BI.megahit.contig.fasta
+metabbq smk -j -np {sample}/summary.BI.idba.contig.fasta
+metabbq smk -j -np {sample}/summary.BI.spades.contig.fasta
+```
+
+### Troubleshooting  
+Feedback are welcome to submit in the issue page.
+

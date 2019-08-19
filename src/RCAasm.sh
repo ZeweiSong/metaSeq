@@ -8,13 +8,11 @@
 #                    cluster level
 #                    cluster ID
 #                    tag
-#                    reference 1
-#                    reference 2
 #                    force run
 #                    ---------------------------
 # Author:            fangchao@genomics.cn
-# Version:           V0.2
-# Last modified:     04 Jan 2019 (since 04 Jan 2019)
+# Version:           V0.0
+# Last modified:     05 Jun 2019 (since 05 Jun 2019)
 # ===================================================================
 #
 mode=$1 #[F|B]
@@ -22,21 +20,12 @@ samDir=$2
 level=$3
 cluster=$4
 tag=$5
-ref1=$6
-ref2=$7
+mem=$6
+cpu=$7
 force=$8
 
-# if [ $mode == "F" ];
-# then
-   refDB=$6
-   refBT=$7
-# else
-#   refSSU=$6
-#   refLSU=$7
-# fi
-
-clusterFmt=`printf "%08d" $cluster`
-if [ $level -gt 0 ];
+clusterFmt=`printf "%08.0f" $cluster`
+if [[ $level -gt 0 ]];
 then
   ASB="Assemble_Lv$level"
 else
@@ -60,18 +49,27 @@ fi
 
 echo [BC] Barcode cluster assembly pipeline start:
 echo [BC] info: sample directory: $samDir/$ASB/$subDir
-echo [BC] info: REF Database:     $refDB
 
 echo
 echo "[BC] list beads contained in this cluster"
+
+fq1="$samDir/$ASB/$subDir/sort.1.fq"
+fq2="$samDir/$ASB/$subDir/sort.2.fq"
+#fo1="$samDir/$ASB/$subDir/noAd.1.fq"
+#fo2="$samDir/$ASB/$subDir/noAd.2.fq"
+fo1=$fq1
+fo2=$fq2
+
+#perl -e 'open R,"<'$fq2'";open O,">'$fo2'";while(<>){
+#$i2=<R>;$s2=<R>;<R>;$q2=<R>;$id=$_;$s=<>;
+#if($s=~/GCCAGCAACCGCGGTAA|TTACCGCGGTTGCTGGC|GGTCCGTGTTTCAAGACG|CGTCTTGAAACACGGACC/ || $s2=~/GCCAGCAACCGCGGTAA|TTACCGCGGTTGCTGGC|GGTCCGTGTTTCAAGACG|CGTCTTGAAACACGGACC/){<>;<>}else{<>;$q=<>;print "$id"."$s+\n$q";print O "$i2"."$s2+\n$q2"}}' < $fq1 > $fo1
+
 #mkdir $ASB/$subDir
 if [ $level == "BC" ];
 then
-  awk -v c=$cluster '$1==c{print $0}' $samDir/VSEARCH/read.merge.derep.2T.bc.cluster_Lv$level.main|sort > $samDir/$ASB/$subDir/beads.lst
   spadesMode="--meta"
 elif [ $level == "BI" ];
 then
-  awk -v c=$cluster '$1==c{print $0}' $samDir/VSEARCH/read.individual.beads.list|sort > $samDir/$ASB/$subDir/beads.lst
   spadesMode="--sc"
 else
   fq="$samDir/$ASB/$subDir/sort.1.fq"
@@ -100,67 +98,13 @@ else
     fq2fa --merge --filter $samDir/$ASB/$subDir/sort.1.fq \
     $samDir/$ASB/$subDir/sort.2.fq $samDir/$ASB/$subDir/sort.pair.fa
     cmd="idba_ud -o $samDir/$ASB/$subDir/idba -r $samDir/$ASB/$subDir/sort.pair.fa \
-    --mink 11 --step 22 --maxk 121 --min_contig 999 --num_threads 16"
+    --mink 11 --step 22 --maxk 121 --min_contig 500 --num_threads $cpu"
 	echo $cmd;
 	$cmd
   elif [ $mode == "megahit" ]; then
     echo "[BC] megahit selected."
-    megahit --k-min 21 --k-step 22 --k-max 121  \
+    megahit --k-min 21 --k-step 22 --k-max 121  -m $mem -t $cpu \
     -1 $samDir/$ASB/$subDir/sort.1.fq -2 $samDir/$ASB/$subDir/sort.2.fq \
     -o $samDir/$ASB/$subDir/$rdir
   fi
-fi
-
-
-### BLAST for scaffolds ###
-echo
-scaf6="$samDir/$ASB/$subDir/$rdir/scaffolds.$mode.BLAST.tax.blast6"
-if [[ -f $scaf6 && -z $force ]];
-then
-  echo "[BC] Scaffolds BLAST results exists. Skiped (add \$6 to force re-run)"
-else
-  echo "[BC] Scaffolds BLAST start"
-  cmd="blastn -num_threads 8 -db $refBT -query $scaf -out $scaf6 -outfmt 6"
-  echo "[CMD] $cmd"
-  blastn -num_threads 8 -db $refBT -query $scaf \
-  -out $scaf6 -outfmt 6
-
-  echo "[BC] Adding taxonomy info for BLAST"
-  metabbq anno.pl $refBT.ids $scaf6 > $scaf6.anno
-  metabbq binWrite best -u -m -i $scaf6.anno
-fi
-
-### BLAST REVERSE if ref is short ###
-echo
-bout="$samDir/$ASB/$subDir/$rdir/scaffolds.$mode.BLAST.rev.blast6"
-sdbi="$samDir/$ASB/$subDir/$rdir/scaffolds.$mode.fa"
-
-if [[ -f $bout && -z $force ]];
-then
-  echo "[BC] Reverse BLAST results exists. Skiped (add \$6 to force re-run)"
-else
-  echo "[BC] Reverse BLAST start"
-  mkdb="[CMD] makeblastdb -in $scaf -input_type fasta -dbtype nucl -title Os_protein -parse_seqids -out $scaf"
-  echo $mkdb
-  makeblastdb -in $scaf -input_type fasta -dbtype nucl -title Os_protein -parse_seqids -out $scaf
-
-  cmd="blastn -num_threads 8 -db $scaf -query $refDB -out $bout -outfmt 6"
-  echo "[CMD] $cmd"
-  blastn -num_threads 8 -db $scaf -query $refDB -out $bout -outfmt 6
-fi
-
-echo "[BC] Done!"
-
-#### ITSx ###
-echo
-itsOD="$samDir/$ASB/$subDir/$rdir"
-itsFa="$samDir/$ASB/$subDir/$rdir/scaffolds.$mode.ITSm.fasta"
-if [[ -f $itsFa && -z $force ]];
-then
-  echo "[BC] ITSx results exists. Skiped (add \$6 to force re-run)"
-else
-  echo "[BC] Predicting ITS positions in scaffolds"
-  ITSx -i $scaf -o $itsOD/scaffolds --cpu 8 --save_regions all --detailed_results T
-  cat $itsOD/scaffolds.{SSU,ITS1,5_8S,ITS2,LSU}.fasta | \
-  awk '{if($0~/^>/){id=$0}else{len=length($0);if(len>=50){print id"\n"$0}}}' > $itsFa
 fi

@@ -192,23 +192,43 @@ sub run_asmPick {
   open OUT, ($out)?">$out":">-" or die $!;
 
   &verbose("$funcName start read ... \n");
-  my (%RC,%RL,%FA);
+  my (%RC,%RL,%FA,$id,$fg,$cov,$len,$read);
   while(<INF>){
-    chomp;
-    $_ =~ /^>(\S+) flag=(\d+) multi=(\d+\.\d+) len=(\d+)/;
-    my($id,$fg,$cov,$len) = ($1,$2,$3,$4);
-    &verbose(colored("\tCaution: duplicate cov=$cov found by $id and $RC{$cov}\n",'yellow')) if $RC{$cov};
-    &verbose(colored("\tCaution: duplicate len=$len found by $id and $RL{$len}\n",'yellow')) if $RL{$len};
-    $RC{$cov} .= $id;
-    $RL{$len} .= $id;
-    chomp($FA{$id} = <INF>);
+    #chomp;
+    if($_ =~ /^>/){ # read header
+      if($_ =~ /^>(\S+) flag=(\d+) multi=(\d+\.\d+) len=(\d+)/){ #megahit
+        ($id,$fg,$cov,$len) = ($1,$2,$3,$4);
+      }elsif($_ =~ /^>(NODE_\d+)\_length\_(\d+)\_cov\_(\S+)/){ #spades
+        ($id,$fg,$cov,$len) = ($1, 0,$3,$2);
+      }
+      &verbose(colored("\tCaution: duplicate cov=$cov found by $id and $RC{$cov}\n",'yellow')) if $RC{$cov};
+      &verbose(colored("\tCaution: duplicate len=$len found by $id and $RL{$len}\n",'yellow')) if $RL{$len};
+      $RC{$cov} .= $id;
+      $RL{$len} .= $id;
+      #print head
+      if(!$single && $len >= $mlen && $cov >= $mcov){
+        print OUT ">$bcid\_$id\_$cov\_$len\n";
+      }
+      $read = <INF>;
+      $FA{$id} .= $read;
+    }else{
+      $read = $_;
+      $FA{$id} .= $read;
+    }
+    #print seq
+    if(!$single && $len >= $mlen && $cov >= $mcov){
+      print OUT "$read";
+    }
   }
   close INF;
   &verbose("$funcName start writing ... \n");
-  my $maxCov = (sort {$b <=> $a} keys %RC)[0];
-  my $maxLen = (sort {$b <=> $a} keys %RL)[0];
-  if($RC{$maxCov}=~/$RL{$maxLen}/ && $maxLen >= $mlen && $maxCov >= $mcov){
-    print OUT ">$bcid\_$RC{$maxCov}\_$maxCov\_$maxLen\n$FA{$RC{$maxCov}}\n"
+  if($single){
+    my $maxCov = (sort {$b <=> $a} keys %RC)[0];
+    my $maxLen = (sort {$b <=> $a} keys %RL)[0];
+    if($RC{$maxCov}=~/$RL{$maxLen}/ && $maxLen >= $mlen && $maxCov >= $mcov){
+      print OUT ">$bcid\_$RC{$maxCov}\_$maxCov\_$maxLen\n$FA{$RC{$maxCov}}\n"
+    }
   }
+
   &verbose("$funcName done. \n");
 }

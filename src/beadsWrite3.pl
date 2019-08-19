@@ -19,7 +19,7 @@ usage: perl beadsWrite.pl  --r1 <single fastq> -L <list> -c <cutoff> -s <sufix> 
 
 default options:
     --r1      single fq file
-    -L        barcode frequency file list
+    -L        barcode frequency list or index
     -c        [int] cutoff
     -s        [1|2] sufix
     -f        format [fq|fa|fq+fa|fq.gz]
@@ -61,6 +61,7 @@ GetOptions(
 );
 $fmt ||= "fq";
 $proc||= 1;
+$cut ||= 0;
 
 my (%FILES,%LIST,%REST,%STAT,%IDX,$idxEnable);
 my $FHcount=0;
@@ -133,7 +134,7 @@ sub specifcBarcode{
       }
     }
     close BC;
-  }else{
+  }elsif($bcode =~/\S+/){
     @{$BCS{0}} = split(",",$bcode);
   }
   if($idvd){
@@ -177,7 +178,7 @@ sub specifcBarcode{
   my @p;
   foreach my $tag (keys %BCS){
     foreach my $cid (sort {$a<=>$b} keys %{$BCS{$tag}}){
-      my $cidName = sprintf("%s%06d",$tag,$cid);
+      my $cidName = sprintf("%s%08d",$tag,$cid);
       unless(defined $pfx){
         my $oDir = "$out/$cidName";
         if (-e "$oDir/sort.1.fq" && $skip){
@@ -193,7 +194,7 @@ sub specifcBarcode{
         my ($S,$E) = ($IDX{$bc}{'S'}-1,$IDX{$bc}{'E'}-1);
         die "[ERR] Can not find $bc in the index. Please check!" if $S < 0;
         $FHcount ++ ;
-        &verbose("Find $tag #$FHcount : $cid => $bc. Writing\n");
+        &verbose("Find #$FHcount : $cidName <= $bc. Writing\n");
 
         for(my $i=$S;$i<=$E;$i+=4){
           if($fmt eq "fq"){
@@ -219,15 +220,17 @@ sub writeAll {
   &verbose("WriteAll mode. Start.\nReading barcode list ... ");
   open LST,"<$list" or die $!;
   my $fns=0;
+  my $rpb=0;
   while(<LST>){
   	chomp;
   	my @str = split;
-  	if($str[1]>=$cut){
-  		$LIST{$str[0]} = $str[1];
+    $rpb=($#str==2)?($str[2]-$str[1]+1)/4:$str[1];
+  	if($rpb>=$cut){
+  		$LIST{$str[0]} = $rpb;
   		$fns++;
   	}else{
-      $REST{$str[0]} = $str[1];
-  		last;
+      $REST{$str[0]} = $rpb;
+  		#last;
   	}
   }
   my $f10 = (int $fns/10);

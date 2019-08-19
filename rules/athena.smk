@@ -13,7 +13,7 @@ rule ATHENA_1_barcodeTag:
     output:  "{sample}/clean/sort_atn_sp.fastq"
     shell:
         """
-        perl -e 'open I1,\"pigz -p 4 -dc $ARGV[0]|\";open I2,\"pigz -p 4 -dc $ARGV[1]|\";
+        perl -e 'open I1,\"< $ARGV[0]\";open I2,\"< $ARGV[1]\";
         while(<I1>){{
           @a = split("/",$_);@b = split("/",<I2>);
           $r1="$a[0]/$a[1] BC:Z:$a[1]-1\\n".<I1>.<I1>.<I1>;

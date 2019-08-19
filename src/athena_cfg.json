@@ -1,0 +1,6 @@
+{
+        "ctgfasta_path" :      "example/Assemble/all/contigs.fasta",
+        "reads_ctg_bam_path" : "example/athena/align-reads.metaspades-contigs.bam",
+        "input_fqs" :          "example/clean/athena.sort.smart.fq"
+}
+
