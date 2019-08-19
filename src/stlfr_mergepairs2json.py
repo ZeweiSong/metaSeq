@@ -28,12 +28,17 @@ parser.add_argument('-a', help='FASTQ file of assembled reads.')
 parser.add_argument('-f', help='Unassembled forward reads.')
 parser.add_argument('-r', help='Unassembled reverse reads.')
 parser.add_argument('-o', help='Output bead file in JSON format.')
+#parser.add_argument('-fasta', action='store_true', default=False)
 args = parser.parse_args()
 assemFile = args.a
 fwdFile = args.f
 revFile = args.r
 outputFile = args.o
 logFile = 'stlfr_mergepairs2json.log'
+#if args.fasta:
+#    fastx = 'a'
+#else:
+#    fastx = 'q'
 with open(logFile, 'w') as f:
     f.write('Reading in the files.\n')
 
@@ -44,4 +49,4 @@ with open(logFile, 'a') as f:
     f.write('Writing to JSON file.\n')
 with open(outputFile, 'w') as f:
     for key, value in bead.items():
-        f.write('%s\n' % json.dumps({key:value})) 
+        f.write('%s\n' % json.dumps({key:value}))

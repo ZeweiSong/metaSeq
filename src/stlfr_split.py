@@ -47,7 +47,7 @@ import textwrap
 import argparse
 import time
 import json
-import gzip
+#import gzip
 parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
                                      epilog=textwrap.dedent('''\
                                         Split raw stLFR data into beads. Open the script to see a detail document.
@@ -66,7 +66,7 @@ parser.add_argument('-o', help='Output base for FASTQ or JSON.')
 parser.add_argument('-fastq', action='store_true', help='Turn on output to FASTQ, suffix will be added for four files.')
 parser.add_argument('-json', action='store_true', help='Turn on output to JSON format, will write to one file with .json extension.')
 parser.add_argument('-bl', default='42', help='Specify the length of barcode string, 42 or 54 bp.')
-parser.add_argument('-not_gz', action='store_false', help='Specify if the input is not a gz file, in most case you do not need it.')
+#parser.add_argument('-not_gz', action='store_false', help='Specify if the input is not a gz file, in most case you do not need it.')
 args = parser.parse_args()
 r1File = args.r1
 r2File = args.r2
@@ -112,22 +112,25 @@ def snp_list(seq):
     # BAsed on our latest test on 2018-6-15, they may accidentally sequence R2
     # as 154 bp while using the 42 bp system. If this is the case, use the first
     # 142 bp.
-def barcode_set(seq, bl):
+def barcode_set(seq, bl, offset):
     if bl == '54':
-        return [seq[100:110], seq[116:126], seq[144:154]]
+        return [seq[100+offset:110+offset], seq[116+offset:126+offset], seq[144+offset:154+offset]]
     elif bl == '42':
-        return [seq[100:110], seq[116:126], seq[132:142]]
+        return [seq[100+offset:110+offset], seq[116+offset:126+offset], seq[132+offset:142+offset]]
 
 
 # Return the number barcode set if exist
-def number_set(barcodes, forwardDict, reverseDict):
+def number_set(barcodes, forwardDict, forwardSnpDict, reverseDict):
     number = []
     for item in barcodes:
         try:
             number.append(forwardDict[item])
-        except KeyError:
-            #print('forward: {0}'.format(item))
-            break
+        except:
+            try:
+                number.append(forwardSnpDict[item])
+            except KeyError:
+                #print('forward: {0}'.format(item))
+                break
     if len(number) == 3: # barcode set (all three barcodes) found in the forward direction)
         return '_'.join(number)
     else: # Does not found barcode in the forward direction
@@ -140,7 +143,7 @@ def number_set(barcodes, forwardDict, reverseDict):
                 return None
     return '_'.join(number)
 
-
+''' Dyfunced now, RIP.
 # Iterator for two files
 # It only work for files with ABSOLUTELY corresponding record.
 class sequence_twin(object):
@@ -176,6 +179,7 @@ class sequence_twin(object):
         record[0][0] = record[0][0][1:]
         record[1][0] = record[1][0][1:]
         return record[0], record[1]
+'''
 #%% Read in the barcode list
 # Forward and Reverse barcodes are saved in two Dictionaries.
 print('Reading in the barcode list from {0} ...'.format(barcodeFile))
@@ -187,8 +191,9 @@ with open(barcodeFile, 'r') as f:
         barcodeDictForward[line[1]] = [line[0]]
 
 # Add all possible 1 SNP mutations for all barcode
+barcodeSnpDictForward = {}
 for key, value in barcodeDictForward.items():
-    barcodeDictForward[key] += snp_list(value[0])
+    barcodeSnpDictForward[key] = snp_list(value[0])
 
 # Create the RC Dict
 barcodeDictReverse = {}
@@ -198,11 +203,15 @@ for key, value in barcodeDictForward.items():
 
 # Convert number:barcode to barcode:number
 numberDictForward = {}
+numberSnpDictForward = {}
 numberDictReverse = {}
 
 for key, value in barcodeDictForward.items():
     for barcode in value:
         numberDictForward[barcode] = key
+for key, value in numberSnpDictForward.items():
+    for barcode in value:
+        numberSnpDictForward[barcode] = key
 for key, value in barcodeDictReverse.items():
     for barcode in value:
         numberDictReverse[barcode] = key
@@ -220,16 +229,21 @@ beadError = {'0_0_0':[]}  # This is the dicionary that organizes seqs without ba
 
 logFile = base + '.log'
 
-seqs = sequence_twin(r1File, r2File, fastx='q', gz=not_gz)
+seqs = seqIO.sequence_twin(r1File, r2File)
 count = 0
 error_count = 0
+offsets = [0,-1,1,-2,2]
 for r1, r2 in seqs:
     count += 1
     if count % 1000000 == 0: # Report per 1 million reads
         with open(logFile, 'w') as f:
             f.write('Processed {0:8.2f} M reads\n'.format(count/1000000))
         #break
-    bead = number_set(barcode_set(r2[1], bl), numberDictForward, numberDictReverse)
+    for offset in offsets:
+        bead = number_set(barcode_set(r2[1], bl,offset), numberDictForward, numberSnpDictForward, numberDictReverse)
+        if bead:
+            break
+
     if bead:
         r1[0] = r1[0][:-2] + '/' + bead + '/1'
         r2[0] = r2[0][:-2] + '/' + bead + '/2'

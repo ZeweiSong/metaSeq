@@ -1,0 +1,193 @@
+#!/usr/bin/env perl
+# (c) 2016 - 2019 CHAO
+# ===================================================================
+my $Description  =  "Metagenome Beads Barcode Quantifictaion launcher";
+# Author:            Chao | fangchao@genomics.cn
+my $version      =  0.1;
+# Last modified:    13 Jan 2019 (since 13 Jan 2019)
+# ===================================================================
+# see detail below
+use warnings;
+use strict;
+use Getopt::Long;
+use File::Basename;
+use FindBin qw($RealBin);
+use Cwd 'abs_path';
+use Getopt::Long qw(:config no_ignore_case); # For case sensitive
+use Term::ANSIColor; #colored messages
+
+my $cwd = abs_path;
+my $Bin = $RealBin;
+my $cmd = basename $0;
+my $msg = $Description;
+
+sub usage {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  $cmd <init|cfg|smk|cmd> [option]
+mode:
+    init  Initiate bead-barcode pipeline
+    cfg   Generata a default config file under current dir
+    smk   Call the Snakefile located in the source dir
+    cmd   List sub functions in src/util directory
+    ***   Call sub functions from the list cmd shows you.
+          e.g: "$cmd OAs1" will run OAs1 without its absolute path.
+options   Defined according to the mode and cmd you chosed.
+USAGE
+}
+
+&usage($msg) && exit if @ARGV == 0 || $ARGV[0] eq "-h";
+die "version $version\n" if $ARGV[0] eq "-v";
+
+#################################
+##########  MAIN BODY  ##########
+my $pattern = $ARGV[0];
+#################################
+####  config calling module  ####
+if($pattern eq "cfg"){
+    `cp $RealBin/config.yaml $cwd/`;
+    exit;
+}
+
+#################################
+###  Snakefile calling module  ###
+if($pattern eq "smk"){
+  shift @ARGV;
+  my $cmd = "snakemake -s $RealBin/Snakefile @ARGV";
+  print STDERR "$cmd\n";
+  system($cmd);
+  exit;
+}
+
+#################################
+###  sub func calling module  ###
+if ($pattern eq "cmd"){
+	print "Available sub commands:\n";
+	system("ls --color $Bin/src");
+	print "Available util commands:\n";
+	system("ls --color $Bin/util");
+	exit;
+}
+if ($pattern !~ /^(init|cfg|smk|-v|-h)$/){
+  my $path = ( -e "$Bin/src/$pattern")?"$Bin/src":
+             ( -e "$Bin/util/$pattern")?"$Bin/util":'';
+  die "[cmd] Can not find sub func '$pattern'. Please check it again.\n" unless $path;
+  my $int = ($pattern=~/\.pl$/)?'perl ':
+            ($pattern=~/\.py$/)?'python ':
+            ($pattern=~/\.sh$/)?'sh ':
+            ($pattern=~/\.[Rr]$/)?'Rscript ':'';
+    print STDERR colored("[cmd] ",'bold blue').colored("$int$path/@ARGV\n",'underline green');
+	if(system("$int$path/@ARGV")){
+		exit(1);
+	}else{
+		exit;
+	}
+}
+
+#################################
+###    pipeline initiation    ###
+sub usageBB {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  $cmd bb [option]
+options:
+    -i  input dataset list file (#1#ID #2#path; R2 followed R1)
+    -o  output dir
+    -c  config file
+    -v  version
+    -V  verbose
+    -h  show help info
+USAGE
+}
+
+&verbose("[init] BBQ Start");
+our(%CFG,%SAM);
+my ($inf,$OUT,$out,$cfg,$verbose,$help);
+GetOptions(
+  "i=s" => \$inf,
+  "o=s" => \$out,
+  "c=s" => \$cfg,
+  "V" => \$verbose,
+  "v" => \$version,
+  "h|help|?" => \$help,
+);
+&usageBB("Initiate bead-barcode pipeline") && exit if $help;
+&usageBB("[fatal] Essential input is missing") && exit unless defined $inf;
+$out ||= ".";
+
+&verbose("[init] Init workshop\n");
+my($dirDB, $dirIN);
+$OUT = abs_path($out);
+system "mkdir -p $OUT" unless(-d $OUT);
+
+&verbose("[init] Read config.yaml\n");
+&readCFG($cfg);
+
+&verbose("[init] Read input list\n");
+&readInput($inf);
+
+unless( defined $CFG{"samples"}){
+  open SCFG,">>$cfg";
+  print SCFG "samples:\n";
+}
+foreach my $sam (sort keys %SAM){
+  my @fs = @{$SAM{$sam}};
+  for(my $i=1;$i<=@fs;$i++){
+    $fs[$i-1] =~ /.(f(|ast)[aq](|.gz))$/;
+    my $sufix = $1;
+    system "mkdir -p $OUT/$sam/input";
+    system "ln -sf $fs[$i-1] $OUT/$sam/input/rawSeq_$i.$sufix";
+  }
+  print SCFG "  $sam: $out/$sam\n" unless defined $CFG{"samples"};
+}
+close SCFG unless defined $CFG{"samples"};
+&verbose("[init] done!\n");
+
+exit;
+#################################
+##########  Sub funcs  ##########
+sub verbose{
+  my $msg = shift;
+  print STDERR $msg if $verbose;
+}
+
+sub ignoreSam{
+
+}
+sub readCFG {
+  my $ignore = 0;
+  my $cfg = shift;
+  open CFG,"$cfg" or die "failed to open configure file $cfg. $!\n";
+  while(<CFG>){
+    chomp;
+    next if $_ =~ /^\s*(#|$)/;
+    $_ =~ /(\S+)\s*:\s*(\S*)/;
+    $CFG{$1} = $2;
+  }
+}
+
+sub readInput {
+  my $path_f = shift;
+  my @paths = split (',',$path_f);
+  open PATH,"> $OUT/sam.id.path" or die $!;
+  while(@paths>0){
+  	my $path_i = shift @paths;
+  	$path_i = abs_path($path_i);
+  	open IN,"<$path_i" or die "can not open $path_i, $!\n";
+  	while (<IN>){
+      next if $_ =~ /^\s*(#|$)/;
+  		print PATH $_ ;
+  		chomp;
+  		my @a = split;
+          $a[1] = abs_path($a[1]);
+  		my ($sam,$path) = @a;
+  		push @{$SAM{$sam}}, $path;
+  	}
+  	close IN;
+  }
+  close PATH;
+}
