@@ -1,0 +1,179 @@
+#!/usr/bin/env perl
+# (c) 2016 - 2019 Chao IN-HORSE SHARE ONLY
+# ===================================================================
+# Description:       Clipping RCA adaptor(s) from contigs (in a stupid way)
+# Author:            Chao | fangchao@genomics.cn
+# Version:           V0.0
+# Last modified:    23 Aug 2019 (since 23 Aug 2019)
+# ===================================================================
+# see detail below
+use strict;
+use Getopt::Long qw(:config no_ignore_case); # For case sensitive
+
+sub usage {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  $0 -a <adaptor> -k [17] -i <input> -o <output>
+    -a  RCA adaptor, default is [AAGTCGGACGCTGATAAGGTCGCCATGCCTCTCAGTACTCCGACTT]
+    -k  kmer length, defult is [11].
+    -i  contig fasta file
+    -o  output filename
+    -v  verbose
+    -h  show help info
+USAGE
+}
+&usage && exit unless @ARGV;
+
+my ($ad,$k,$inf,$out,$verbose,$help);
+GetOptions(
+  "a=s" => \$ad,
+  "k=s" => \$k,
+  "i=s" => \$inf,
+  "o=s" => \$out,
+  "v" => \$verbose,
+  "h|help|?" => \$help,
+);
+&usage && exit if $help;
+&usage("[fatal] Essential input is missing") && exit unless defined $inf;
+
+$ad ||= "AAGTCGGACGCTGATAAGGTCGCCATGCCTCTCAGTACTCCGACTT";
+&verbose("[log] Searching RCA adaptor: [$ad]\n");
+$k  ||= 11;
+&verbose("[log] Using kmer length: [$k]\n");
+open INF, ($inf)?"<$inf":"<-" or die $!;
+open OUT, ($out)?">$out":">-" or die $!;
+my(%SKS,%AKS,$adLen);
+#my @A=(A..Z);
+# Main start
+&verbose("[log] Start ... ");
+## Prep adaptor kmers
+$adLen = length($ad);
+for(my $p=0;$p<=$adLen-$k;$p++){
+  $AKS{$p} = substr($ad,$p,$k);
+}
+
+## Reading input
+$/=">";
+while(<INF>){
+  chomp; next unless $_;
+  my($hit,$thisKmer,$sLen,$pattern,%CLIPS)=(0,);
+  $/="\n";
+  chomp(my $id = <INF>);
+  chomp(my $seq = <INF>);
+  $sLen = length($seq);
+  # Detecting whether the first kmer is a partial of adaptor
+  $thisKmer = substr($seq,0,$k);
+  $SKS{0} = $thisKmer;
+  for(my $p=0;$p<=$adLen-$k;$p++){
+    if($thisKmer eq $AKS{$p} && substr($ad,$p,$adLen-$p) eq substr($seq,0,$adLen-$p)){
+      $hit =1;
+      $CLIPS{$hit}{'s'} = $adLen-$p;
+      $pattern = "A".$hit;
+      #@pHead = ($adLen-$p, $sLen-$adLen+$p);
+      #@pTail = (0,0);
+      #$pRCA = -$p;
+      last;
+    }
+  }
+  $pattern ="0" if $hit eq 0;
+  # Generate kmers and determine the position of RCA(s)
+  for(my $p=1;$p<$sLen-$k;$p++){
+    $thisKmer = substr($seq,$p,$k);
+    $SKS{$p} = $thisKmer;
+    if($thisKmer eq $AKS{0} && substr($seq,$p,$adLen) eq $ad){
+      $CLIPS{$hit}{'e'} = $p;
+      $hit ++;
+      $CLIPS{$hit}{'s'} = $p + $adLen;
+      $pattern .="A".$hit;
+      #@pHead = ($p+$adLen, $sLen-$p-$adLen);
+      #@pTail = ($hit>1)?($pRCA+$adLen, $p-$pRCA-$adLen):(0,$p);
+      #$pRCA = $p;
+    }
+  }
+  # Detecting whether the last kmer is a partial of adaptor
+  $thisKmer = substr($ad,0,$k);
+  for(my $p=$k;$p<=$adLen;$p++){
+    if($thisKmer eq $SKS{$sLen-$p} && substr($ad,0,$adLen-$p) eq substr($seq,$sLen-$p,$adLen-$p)){
+      $CLIPS{$hit}{'e'} = $sLen-$p;
+      $pattern .="A";
+      #$hit ++;
+      last;
+      #@pHead = ($adLen-$p, $sLen-$adLen+$p);
+      #@pTail = (0,0);
+      #$pRCA = -$p;
+    }
+  }
+  #$CLIPS{$hit}{'e'} ||= $sLen-1;
+  #
+  if($hit==0){
+    print OUT ">$id|".length($seq)."|0:0\n$seq\n";
+  }else{
+    for(my $h=1;$h<$hit;$h++){
+      my $cLen = $CLIPS{$h}{'e'}-$CLIPS{$h}{'s'};
+      print OUT ">$id|$cLen|$pattern:$h($CLIPS{$h}{'s'},$CLIPS{$h}{'e'})\n".substr($seq,$CLIPS{$h}{'s'},$cLen)."\n";
+    }
+    if(defined $CLIPS{0}{'e'} && not defined $CLIPS{$hit}{'e'}){
+      # Determine whether it's a circle contig
+      for(my $p=$CLIPS{$hit}{'s'};$p<=$sLen-$k;$p++){
+        if($SKS{$p} eq $SKS{0} && substr($seq,$p,$sLen-$p) eq substr($seq,0,$sLen-$p)){
+          my $seq0 = substr($seq,$CLIPS{$hit}{'s'},$p-$CLIPS{$hit}{'s'}).substr($seq,0,$CLIPS{0}{'e'});
+          print OUT ">$id|".length($seq0)."|$pattern:$hit"."0($CLIPS{$hit}{'s'},$p,0,$CLIPS{0}{'e'})\n$seq0\n";
+          last;
+        }
+      }
+    }else{
+      $CLIPS{$hit}{'e'} ||= $sLen;
+      my $cLen = $CLIPS{$hit}{'e'}-$CLIPS{$hit}{'s'};
+      print OUT ">$id|$cLen|$pattern:$hit($CLIPS{$hit}{'s'},$CLIPS{$hit}{'e'})\n".substr($seq,$CLIPS{$hit}{'s'},$cLen)."\n";
+    }
+  }
+
+=pod
+  if($hit>1){
+    $pattern = "AxA=>x";
+    $seq = substr($seq,$pTail[0],$pTail[1]);
+    print OUT ">$id|$pattern\n$seq\n";
+  }elsif($hit==1){
+    for(my $pH=$pHead[0];$pH<=$pHead[0]+$pHead[1]-$k;$pH++){
+      if($SKS{$pH} eq $SKS{0} && substr($seq,$pH,$sLen-$pH) eq substr($seq,0,$sLen-$pH)){
+        $pClip = $pH;
+        $pattern = "yzAxy=>xyz";
+        $seq = substr($seq,$pHead[0],$pH-$pHead[0]).substr($seq,$pTail[0],$pTail[1]);
+        last;
+      }
+    }
+    # output
+    if($pClip){
+      print OUT ">$id|$pattern\n$seq\n";
+    }else{
+      # If no overlap found:
+      if($pTail[1]>199){
+        print OUT ">$id|zAx=>z\n".substr($seq,$pTail[0],$pTail[1])."\n";
+      }
+      if($pHead[1]>199){
+        print OUT ">$id|zAx=>x\n".substr($seq,$pHead[0],$pHead[1])."\n";
+      }
+    }
+  }else{
+    $pattern = "x";
+    print OUT ">$id|$pattern\n$seq\n";
+  }
+=cut
+  #prep for next loop
+  $/=">";
+}
+
+close INF;
+close OUT;
+# Main end
+
+&verbose("done!\n");
+
+exit;
+
+sub verbose{
+  my $msg = shift;
+  print STDERR $msg if $verbose;
+}
