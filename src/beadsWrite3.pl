@@ -31,11 +31,9 @@ default options:
     -o        output dir
     -v        verbose mode
 extract specific barcodes:
-    --r2        read2 fq file
+    --r2      read2 fq file
     -b        barcode id
     -d        individual barcode id
-
-
 USAGE
   exit;
 };
@@ -263,11 +261,11 @@ sub writeAll {
   while(<IN>){
     # Read one sequence info
     chomp;
+    my @bc = &getIdBcode($_);
     my $id = &exchange($_);
     my $seq = <IN>;
     my $qua = <IN>.<IN>;
     # Detect barcode
-    my @bc = &getIdBcode($id);
 
     if (defined $LIST{$bc[1]}){
       if($bc[1] ne $p[1]){
