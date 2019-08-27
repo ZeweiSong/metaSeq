@@ -18,6 +18,7 @@ usage:
   $0 -a <adaptor> -k [17] -i <input> -o <output>
     -a  RCA adaptor, default is [AAGTCGGACGCTGATAAGGTCGCCATGCCTCTCAGTACTCCGACTT]
     -k  kmer length, defult is [11].
+    -m  minimal output sequence length. default is [100].
     -i  contig fasta file
     -o  output filename
     -v  verbose
@@ -26,10 +27,11 @@ USAGE
 }
 &usage && exit unless @ARGV;
 
-my ($ad,$k,$inf,$out,$verbose,$help);
+my ($ad,$k,$minLen,$inf,$out,$verbose,$help);
 GetOptions(
   "a=s" => \$ad,
   "k=s" => \$k,
+  "m=s" => \$minLen,
   "i=s" => \$inf,
   "o=s" => \$out,
   "v" => \$verbose,
@@ -41,130 +43,115 @@ GetOptions(
 $ad ||= "AAGTCGGACGCTGATAAGGTCGCCATGCCTCTCAGTACTCCGACTT";
 &verbose("[log] Searching RCA adaptor: [$ad]\n");
 $k  ||= 11;
+$minLen||=100;
 &verbose("[log] Using kmer length: [$k]\n");
 open INF, ($inf)?"<$inf":"<-" or die $!;
 open OUT, ($out)?">$out":">-" or die $!;
-my(%SKS,%AKS,$adLen);
-#my @A=(A..Z);
+`mkdir -p $out.tmp`;
 # Main start
-&verbose("[log] Start ... ");
-## Prep adaptor kmers
-$adLen = length($ad);
-for(my $p=0;$p<=$adLen-$k;$p++){
-  $AKS{$p} = substr($ad,$p,$k);
+## find RCA
+open TMP,"> $out.tmp/flank10.m6";
+open RCA,">$out.tmp/RCA.fa" or die $!;
+print RCA ">RCA\n$ad";
+close RCA;
+system("makeblastdb -in $out.tmp/RCA.fa -dbtype nucl &>$out.tmp/blast.log");
+system("blastn -db $out.tmp/RCA.fa -query $inf -outfmt 6 -out $out.tmp/contig2RCA.m6 &>>$out.tmp/blast.log");
+open RCA,"< $out.tmp/contig2RCA.m6" or die $!;
+my (%RCAS,@tmp);
+while(<RCA>){
+  chomp;
+  my @a = split;
+  my @p = sort {$a<=>$b} ($a[6],$a[7]);
+  unless(defined $RCAS{$a[0]}){
+    $RCAS{$a[0]}{$p[0]} = $p[1];
+    @tmp = @p;
+  }else{
+    my $keep=1;
+    for(my $i=$p[0];$i<=$p[1];$i++){
+      if(grep /$i/, @tmp){$keep=0;last};
+    }
+    if($keep){
+      $RCAS{$a[0]}{$p[0]} = $p[1];
+      push @tmp, @p;
+    }
+  }
 }
-
+&verbose("[log] Start ... ");
 ## Reading input
 $/=">";
 while(<INF>){
-  chomp; next unless $_;
+  chomp;
   my($hit,$thisKmer,$sLen,$pattern,%CLIPS)=(0,);
-  $/="\n";
-  chomp(my $id = <INF>);
-  chomp(my $seq = <INF>);
+  #$/="\n";
+  my @a = split(/\n/,$_);
+  my $id = shift @a;
+  my $seq = join('',@a);
+  next if $id eq "";
   $sLen = length($seq);
-  # Detecting whether the first kmer is a partial of adaptor
-  $thisKmer = substr($seq,0,$k);
-  $SKS{0} = $thisKmer;
-  for(my $p=0;$p<=$adLen-$k;$p++){
-    if($thisKmer eq $AKS{$p} && substr($ad,$p,$adLen-$p) eq substr($seq,0,$adLen-$p)){
-      $hit =1;
-      $CLIPS{$hit}{'s'} = $adLen-$p;
-      $pattern = "A".$hit;
-      #@pHead = ($adLen-$p, $sLen-$adLen+$p);
-      #@pTail = (0,0);
-      #$pRCA = -$p;
-      last;
-    }
-  }
-  $pattern ="0" if $hit eq 0;
-  # Generate kmers and determine the position of RCA(s)
-  for(my $p=1;$p<$sLen-$k;$p++){
-    $thisKmer = substr($seq,$p,$k);
-    $SKS{$p} = $thisKmer;
-    if($thisKmer eq $AKS{0} && substr($seq,$p,$adLen) eq $ad){
-      $CLIPS{$hit}{'e'} = $p;
-      $hit ++;
-      $CLIPS{$hit}{'s'} = $p + $adLen;
-      $pattern .="A".$hit;
-      #@pHead = ($p+$adLen, $sLen-$p-$adLen);
-      #@pTail = ($hit>1)?($pRCA+$adLen, $p-$pRCA-$adLen):(0,$p);
-      #$pRCA = $p;
-    }
-  }
-  # Detecting whether the last kmer is a partial of adaptor
-  $thisKmer = substr($ad,0,$k);
-  for(my $p=$k;$p<=$adLen;$p++){
-    if($thisKmer eq $SKS{$sLen-$p} && substr($ad,0,$adLen-$p) eq substr($seq,$sLen-$p,$adLen-$p)){
-      $CLIPS{$hit}{'e'} = $sLen-$p;
-      $pattern .="A";
-      #$hit ++;
-      last;
-      #@pHead = ($adLen-$p, $sLen-$adLen+$p);
-      #@pTail = (0,0);
-      #$pRCA = -$p;
-    }
-  }
-  #$CLIPS{$hit}{'e'} ||= $sLen-1;
-  #
-  if($hit==0){
-    print OUT ">$id|".length($seq)."|0:0\n$seq\n";
+  my @a = split(/\t|\s/,$id);
+  my @ks = (sort {$a<=>$b} keys %{$RCAS{$a[0]}});
+  if(@ks == 0){
+    print OUT ">$id CLIP=0 len=$sLen\n$seq\n";
   }else{
-    for(my $h=1;$h<$hit;$h++){
-      my $cLen = $CLIPS{$h}{'e'}-$CLIPS{$h}{'s'};
-      print OUT ">$id|$cLen|$pattern:$h($CLIPS{$h}{'s'},$CLIPS{$h}{'e'})\n".substr($seq,$CLIPS{$h}{'s'},$cLen)."\n";
+    #pick flank left side of the first RCA adaptor:
+    my $fl0 = $ks[0];
+    my $flank0 = substr($seq,0,$ks[0]);
+    # print middle-region segments:
+    for(my $i=0;$i<$#ks;$i++){
+      my $fLen = $ks[$i+1] - $RCAS{$a[0]}{$ks[$i]};
+      my $flank = substr($seq,$RCAS{$a[0]}{$ks[$i]},$fLen);
+      print OUT ">$id CLIP=".($i+1)." len=$fLen\n$flank\n" if $fLen >= $minLen;
     }
-    if(defined $CLIPS{0}{'e'} && not defined $CLIPS{$hit}{'e'}){
-      # Determine whether it's a circle contig
-      for(my $p=$CLIPS{$hit}{'s'};$p<=$sLen-$k;$p++){
-        if($SKS{$p} eq $SKS{0} && substr($seq,$p,$sLen-$p) eq substr($seq,0,$sLen-$p)){
-          my $seq0 = substr($seq,$CLIPS{$hit}{'s'},$p-$CLIPS{$hit}{'s'}).substr($seq,0,$CLIPS{0}{'e'});
-          print OUT ">$id|".length($seq0)."|$pattern:$hit"."0($CLIPS{$hit}{'s'},$p,0,$CLIPS{0}{'e'})\n$seq0\n";
-          last;
+    #pick flank right side of the last RCA adaptor:
+    my $fl1 = $sLen - $RCAS{$a[0]}{$ks[$#ks]};
+    my $flank1 = substr($seq,$RCAS{$a[0]}{$ks[$#ks]},$fl1);
+    # join if flank0 and flank1 are ovelaped.
+    if($fl1>0 && $fl2>0){
+      my $cmd;
+      $cmd = "echo -e \">$a[0]\.0_$fl0\n$flank0\" > $out.tmp/tmp.0.fa";
+      #print $cmd;
+      system($cmd);
+      $cmd = "echo -e \">$a[0]\.1_$fl1\n$flank1\" > $out.tmp/tmp.1.fa";
+      #print $cmd;
+      system($cmd);
+      $cmd = "makeblastdb -in $out.tmp/tmp.0.fa -dbtype nucl &>> $out.tmp/blast.log";
+      #print $cmd;
+      system($cmd);
+      #$cmd = "blastn -db $out.tmp/tmp.0.fa -query $out.tmp/tmp.1.fa -outfmt 6 -out $out.tmp/$a[0]\.m6 &>$out.tmp/blast.log";
+      $cmd = "blastn -db $out.tmp/tmp.0.fa -query $out.tmp/tmp.1.fa -outfmt 6 2>>$out.tmp/blast.log";
+      #print $cmd;
+      my $res = `$cmd`;
+      my $join ="";
+      if($res){
+        print TMP $res;
+        my @a = split(/\t/,$res);
+        my @p1 = sort {$a<=>$b} ($a[6],$a[7]);
+        my @p0 = sort {$a<=>$b} ($a[8],$a[9]);
+        if ( @p1[1] > 0.5 * $fl1 && @p0[0] < 0.5 * $fl0 && $a[6] < $a[7] && $a[8] < $a[9]) {
+          $join = substr($flank1,0,$p1[0]-1).substr($flank0,$p0[0]-1,$fl0-$p0[0]+1);
         }
       }
+    }
+    if($join){
+      print OUT ">$id CLIP=".($#ks+1)."0 len=".length($join)."\n$join\n";
     }else{
-      $CLIPS{$hit}{'e'} ||= $sLen;
-      my $cLen = $CLIPS{$hit}{'e'}-$CLIPS{$hit}{'s'};
-      print OUT ">$id|$cLen|$pattern:$hit($CLIPS{$hit}{'s'},$CLIPS{$hit}{'e'})\n".substr($seq,$CLIPS{$hit}{'s'},$cLen)."\n";
+      if($fl1 >= $minLen){
+        print OUT ">$id CLIP=".($#ks+1)." len=$fl1\n$flank1\n";
+      }else{
+        &verbose("$id CLIP=".($#ks+1)." len=$fl1 #skip due to length limitation\n")
+      }
+      if($fl0 >= $minLen){
+        print OUT ">$id CLIP=0 len=$fl0\n$flank0\n";
+      }else{
+        &verbose("$id CLIP=0 len=$fl0 #skip due to length limitation\n")
+      }
     }
   }
-
-=pod
-  if($hit>1){
-    $pattern = "AxA=>x";
-    $seq = substr($seq,$pTail[0],$pTail[1]);
-    print OUT ">$id|$pattern\n$seq\n";
-  }elsif($hit==1){
-    for(my $pH=$pHead[0];$pH<=$pHead[0]+$pHead[1]-$k;$pH++){
-      if($SKS{$pH} eq $SKS{0} && substr($seq,$pH,$sLen-$pH) eq substr($seq,0,$sLen-$pH)){
-        $pClip = $pH;
-        $pattern = "yzAxy=>xyz";
-        $seq = substr($seq,$pHead[0],$pH-$pHead[0]).substr($seq,$pTail[0],$pTail[1]);
-        last;
-      }
-    }
-    # output
-    if($pClip){
-      print OUT ">$id|$pattern\n$seq\n";
-    }else{
-      # If no overlap found:
-      if($pTail[1]>199){
-        print OUT ">$id|zAx=>z\n".substr($seq,$pTail[0],$pTail[1])."\n";
-      }
-      if($pHead[1]>199){
-        print OUT ">$id|zAx=>x\n".substr($seq,$pHead[0],$pHead[1])."\n";
-      }
-    }
-  }else{
-    $pattern = "x";
-    print OUT ">$id|$pattern\n$seq\n";
-  }
-=cut
   #prep for next loop
-  $/=">";
+  #$/=">";
 }
 
+close TMP;
 close INF;
 close OUT;
 # Main end
