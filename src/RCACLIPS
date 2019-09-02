@@ -3,8 +3,8 @@
 # ===================================================================
 # Description:       Clipping RCA adaptor(s) from contigs (in a stupid way)
 # Author:            Chao | fangchao@genomics.cn
-# Version:           V0.0
-# Last modified:    23 Aug 2019 (since 23 Aug 2019)
+# Version:           V0.1
+# Last modified:    31 Aug 2019 (since 23 Aug 2019)
 # ===================================================================
 # see detail below
 use strict;
@@ -16,21 +16,23 @@ print <<USAGE;
 $msg
 usage:
   $0 -a <adaptor> -k [17] -i <input> -o <output>
-    -a  RCA adaptor, default is [AAGTCGGACGCTGATAAGGTCGCCATGCCTCTCAGTACTCCGACTT]
-    -k  kmer length, defult is [11].
-    -m  minimal output sequence length. default is [100].
-    -i  contig fasta file
-    -o  output filename
-    -v  verbose
-    -h  show help info
+    -a   RCA adaptor, default is [AAGTCGGACGCTGATAAGGTCGCCATGCCTCTCAGTACTCCGACTT]
+    -fwd (optional) forward primer sequence, default is SSU515Fngs [GCCAGCAACCGCGGTAA]
+    -rev (optional) reverse primer sequence, default is TW13 [GGTCCGTGTTTCAAGACG]
+    -m   minimal output sequence length. default is [100].
+    -i   contig fasta file
+    -o   output filename
+    -v   verbose
+    -h   show help info
 USAGE
 }
-&usage && exit unless @ARGV;
+&usage("Show usage page due to none argument specificed:") && exit unless @ARGV;
 
-my ($ad,$k,$minLen,$inf,$out,$verbose,$help);
+my ($ad,$fwd,$rev,$minLen,$inf,$out,$verbose,$help);
 GetOptions(
   "a=s" => \$ad,
-  "k=s" => \$k,
+  "fwd=s"=>\$fwd,
+  "rev=s"=>\$rev,
   "m=s" => \$minLen,
   "i=s" => \$inf,
   "o=s" => \$out,
@@ -42,41 +44,54 @@ GetOptions(
 
 $ad ||= "AAGTCGGACGCTGATAAGGTCGCCATGCCTCTCAGTACTCCGACTT";
 &verbose("[log] Searching RCA adaptor: [$ad]\n");
-$k  ||= 11;
+$fwd ||= "GCCAGCAACCGCGGTAA";
+&verbose("[log] Searching FWD primer: [$fwd]\n");
+$rev ||= "GGTCCGTGTTTCAAGACG";
+&verbose("[log] Searching REV primer: [$rev]\n");
+
 $minLen||=100;
-&verbose("[log] Using kmer length: [$k]\n");
 open INF, ($inf)?"<$inf":"<-" or die $!;
 open OUT, ($out)?">$out":">-" or die $!;
 `mkdir -p $out.tmp`;
 # Main start
 ## find RCA
+&verbose("[log] Preparing adaptor and primers database ... ");
 open TMP,"> $out.tmp/flank10.m6";
-open RCA,">$out.tmp/RCA.fa" or die $!;
-print RCA ">RCA\n$ad";
-close RCA;
-system("makeblastdb -in $out.tmp/RCA.fa -dbtype nucl &>$out.tmp/blast.log");
-system("blastn -db $out.tmp/RCA.fa -query $inf -outfmt 6 -out $out.tmp/contig2RCA.m6 &>>$out.tmp/blast.log");
-open RCA,"< $out.tmp/contig2RCA.m6" or die $!;
-my (%RCAS,@tmp);
-while(<RCA>){
+open ADP,">$out.tmp/adaptor.fa" or die $!;
+print ADP ">RCA\n$ad\n";
+print ADP ">FWD\n".&formatPrimers($fwd)."\n" if $fwd;
+print ADP ">REV\n".&formatPrimers($rev)."\n" if $rev;
+close ADP;
+system("makeblastdb -in $out.tmp/adaptor.fa -dbtype nucl &>$out.tmp/adaptor.log");
+my $cmd = "blastn -word_size 15 -evalue 10 -db $out.tmp/adaptor.fa -query $inf -outfmt 6 -out $out.tmp/contig2adaptor.m6 &>>$out.tmp/adaptor.log";
+&verbose("Done.\n[log] Blast contigs to adapters:\n[cmd] [$cmd] ...");
+system($cmd);
+&verbose("Done.\n[log] Loading blast resutls ... ");
+open ADP,"< $out.tmp/contig2adaptor.m6" or die $!;
+my (%ADP,@tmp);
+while(<ADP>){
   chomp;
   my @a = split;
-  my @p = sort {$a<=>$b} ($a[6],$a[7]);
-  unless(defined $RCAS{$a[0]}){
-    $RCAS{$a[0]}{$p[0]} = $p[1];
-    @tmp = @p;
+  my $d = ($a[8]<$a[9])?"FWD":"REV";
+  unless(defined $ADP{$a[0]}){
+    $ADP{$a[0]}{$a[6]}{N} = $a[1];
+    $ADP{$a[0]}{$a[6]}{D} = $d;
+    $ADP{$a[0]}{$a[6]}{E} = $a[7];
+    @tmp = ($a[6],$a[7]);
   }else{
     my $keep=1;
-    for(my $i=$p[0];$i<=$p[1];$i++){
-      if(grep /$i/, @tmp){$keep=0;last};
+    for(my $i=$a[6];$i<=$a[7];$i++){
+      if(grep { $_ eq $i } @tmp){$keep=0;last};
     }
     if($keep){
-      $RCAS{$a[0]}{$p[0]} = $p[1];
-      push @tmp, @p;
+      $ADP{$a[0]}{$a[6]}{N} = $a[1];
+      $ADP{$a[0]}{$a[6]}{D} = $d;
+      $ADP{$a[0]}{$a[6]}{E} = $a[7];
+      push @tmp, ($a[6],$a[7]);
     }
   }
 }
-&verbose("[log] Start ... ");
+&verbose("Done.\n[log] Now Cliping.\n");
 ## Reading input
 $/=">";
 while(<INF>){
@@ -89,24 +104,32 @@ while(<INF>){
   next if $id eq "";
   $sLen = length($seq);
   my @a = split(/\t|\s/,$id);
-  my @ks = (sort {$a<=>$b} keys %{$RCAS{$a[0]}});
+  my @ks = ();
+  foreach my $p (sort {$a<=>$b} keys %{$ADP{$a[0]}}){
+    push @ks, $p if $ADP{$a[0]}{$p}{N} eq "RCA";
+  }
   if(@ks == 0){
-    print OUT ">$id CLIP=0 len=$sLen\n$seq\n";
+    my ($mode,$SEQ,$msg) = &dealAdaptor($a[0],1,$sLen,$seq);
+    $sLen = length($SEQ);
+    &verbose("[CLIP] $a[0]\_C-\_$mode\_$sLen\t$msg\n");
+    print OUT ">$a[0]\_C-\_$mode\_$sLen\n$SEQ\n";
   }else{
     #pick flank left side of the first RCA adaptor:
-    my $fl0 = $ks[0];
-    my $flank0 = substr($seq,0,$ks[0]);
+    my ($mode0,$flank0,$msg0) = &dealAdaptor($a[0],1,$ks[0],$seq);
+    my $fl0 = length($flank0);
     # print middle-region segments:
     for(my $i=0;$i<$#ks;$i++){
-      my $fLen = $ks[$i+1] - $RCAS{$a[0]}{$ks[$i]};
-      my $flank = substr($seq,$RCAS{$a[0]}{$ks[$i]},$fLen);
-      print OUT ">$id CLIP=".($i+1)." len=$fLen\n$flank\n" if $fLen >= $minLen;
+      my ($mode,$flank,$msg) = &dealAdaptor($a[0],$ADP{$a[0]}{$ks[$i]}{E},$ks[$i+1],$seq);
+      my $fLen = length($flank);
+      print OUT ">$a[0]\_C".($i+1)."\_$mode\_$fLen\n$flank\n" if $fLen >= $minLen;
+      &verbose("[CLIP] $a[0]\_C".($i+1)."\_$mode\_$fLen\t$msg\n");
     }
     #pick flank right side of the last RCA adaptor:
-    my $fl1 = $sLen - $RCAS{$a[0]}{$ks[$#ks]};
-    my $flank1 = substr($seq,$RCAS{$a[0]}{$ks[$#ks]},$fl1);
+    my ($mode1,$flank1,$msg1) = &dealAdaptor($a[0],$ADP{$a[0]}{$ks[$#ks]}{E},$sLen,$seq);
+    my $fl1 = length($flank1);
     # join if flank0 and flank1 are ovelaped.
-    if($fl1>0 && $fl2>0){
+    my $join ="";
+    if($fl0>0 && $fl1>0){
       my $cmd;
       $cmd = "echo -e \">$a[0]\.0_$fl0\n$flank0\" > $out.tmp/tmp.0.fa";
       #print $cmd;
@@ -121,7 +144,6 @@ while(<INF>){
       $cmd = "blastn -db $out.tmp/tmp.0.fa -query $out.tmp/tmp.1.fa -outfmt 6 2>>$out.tmp/blast.log";
       #print $cmd;
       my $res = `$cmd`;
-      my $join ="";
       if($res){
         print TMP $res;
         my @a = split(/\t/,$res);
@@ -133,17 +155,20 @@ while(<INF>){
       }
     }
     if($join){
-      print OUT ">$id CLIP=".($#ks+1)."0 len=".length($join)."\n$join\n";
+      print OUT ">$a[0]\_C".($#ks+1)."0\_$mode1&$mode0\_".length($join)."\n$join\n";
+      &verbose("[CLIP] $a[0]\_C".($#ks+1)."0\_$mode1&$mode0\_".length($join)."\t$msg1&$msg0\n");
     }else{
       if($fl1 >= $minLen){
-        print OUT ">$id CLIP=".($#ks+1)." len=$fl1\n$flank1\n";
+        print OUT ">$a[0]\_C".($#ks+1)."\_$mode1\_$fl1\n$flank1\n";
+        &verbose("[CLIP] $a[0]\_C".($#ks+1)."\_$mode1\_$fl1\t$msg1\n");
       }else{
-        &verbose("$id CLIP=".($#ks+1)." len=$fl1 #skip due to length limitation\n")
+        &verbose("[CLIP] $a[0]\_C".($#ks+1)."\_$mode0\_$fl1\t#skip(<$minLen)\n")
       }
       if($fl0 >= $minLen){
-        print OUT ">$id CLIP=0 len=$fl0\n$flank0\n";
+        print OUT ">$a[0]\_C0\_$mode0\_$fl0\n$flank0\n";
+        &verbose("[CLIP] $a[0]\_C0\_$mode0\_$fl1\t$msg0\n");
       }else{
-        &verbose("$id CLIP=0 len=$fl0 #skip due to length limitation\n")
+        &verbose("[CLIP] $a[0]\_C0\_$mode0\_$fl0\t#skip(<$minLen)\n")
       }
     }
   }
@@ -163,4 +188,58 @@ exit;
 sub verbose{
   my $msg = shift;
   print STDERR $msg if $verbose;
+}
+
+sub formatPrimers{
+  my $seq = shift;
+  my $len = length($seq);
+  my $NNN = "NNNNNNNNNNNNNNNNNNNN";
+  if($len<20){
+    $seq = $seq.substr($NNN,0,20-$len);
+  }
+  return($seq);
+}
+
+sub dealAdaptor{
+  my ($id, $s, $e, $seq) = @_;
+  #ForwardStrand, ReverseComplement, foward primer position, reverse primer position
+  my ($FS,$RC,$fp,$rp,$fn,$rn,$mode,$msg) = (0,0,$s,$e,'','','(','');
+  foreach my $k(sort {$a<=>$b} keys %{$ADP{$id}}){
+    next if $k < $s;
+    last if $k > $e;
+    $msg = "FindRCA" && last if $ADP{$id}{$k}{N} eq "RCA";
+    if($ADP{$id}{$k}{D} eq $ADP{$id}{$k}{N}){ $FS++ }else{ $RC++ };
+    my $sign = ($ADP{$id}{$k}{D} eq "FWD")?"+":"-";
+    $mode .= ()."$ADP{$id}{$k}{N}$sign";
+    if($fn eq '' && $fn < $rp*0.5){
+      $fp = $k;
+      $fn = $ADP{$id}{$k}{N};
+    }else{
+    #if($ADP{$id}{$k}{N} ne $fn){
+      $rp = $ADP{$id}{$k}{E};
+      $rn = $ADP{$id}{$k}{N};
+    }
+  }
+  $seq = substr($seq,$fp-1,$rp-$fp+1);
+  if($FS>0 && $RC>0){
+    $msg = "+&-";
+  }elsif($RC > 0){
+    $msg = "RC";
+    $seq = &ReverseComplement($seq);
+  }else{
+    $msg = "Normal"
+  }
+  $mode = "NA" if $mode eq '';
+  return($mode,$seq,$msg);
+}
+
+sub ReverseComplement{
+  my $seq = shift;
+  my %RC = ('A','T','T','A','G','C','C','G','N',"N");
+  my $len = length($seq);
+  my $RCseq = "";
+  for(my $i=$len-1;$i>=0;$i--){
+    $RCseq .= $RC{substr($seq,$i,1)};
+  }
+  return($RCseq);
 }
