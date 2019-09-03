@@ -77,3 +77,4 @@ thread:
   megahit: 1
   vsearch: 16
   blastn: 16
+  athena: 24
