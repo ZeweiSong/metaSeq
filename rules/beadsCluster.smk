@@ -28,15 +28,16 @@ rule BCA_0_sketch:
         "echo choose minc = $minC , maxc = $maxC \n"
         "metabbq binWrite fqpick -x {input.id} -c {params.minR} -m {params.maxR} -b {params.topB} -r {params.ranP} -i {input.x1} -o {params.pfx}.sort.1.fq & \n"
         "metabbq binWrite fqpick -x {input.id} -c {params.minR} -m {params.maxR} -b {params.topB} -r {params.ranP} -i {input.x2} -o {params.pfx}.sort.2.fq & \n"
-        "wait\nmash sketch -k {params.k} -s {params.s} -r -B {params.pfx}.sort.1.fq {params.pfx}.sort.2.fq -o {params.pfx}"
+        "wait\nmash sketch -p 6 -k {params.k} -s {params.s} -r -B {params.pfx}.sort.1.fq {params.pfx}.sort.2.fq -o {params.pfx}"
 
 
 rule BCA_1_distRaw:
     input:  "{sample}/mash/bMin2.msh"
     output: "{sample}/mash/bMin2.raw.dist"
     params:
-        max = config["p_dist_max"]
-    shell:  "mash dist -p 36 -d {params.max} {input} {input}  > {output}"
+        max = config["p_dist_max"],
+    threads: 2
+    shell:  "mash dist -p {threads} -d {params.max} {input} {input}  > {output}"
 
 rule stat_1_beadAnno:
     input:
@@ -173,8 +174,7 @@ rule BCA_8_write:
         bc = "{sample}/mash/bMin2.bc.tree.target.cluster.main"
     output: "{sample}/Assemble_mashBC.log"
     params:
-        outDir = "{sample}/Assemble_mashBC",
-        threads = config["threads"]
+        outDir = "{sample}/Assemble_mashBC"
     shell:
         "metabbq beadsWrite3.pl -b {input.bc} -f fq -t 4 -o {params.outDir} -v "
         "--r1 {input.s1}  --r2 {input.s2} > {output}\n"
@@ -200,38 +200,54 @@ outXs = "{sample}/summary.BC." + str(config["method"]["assemble"]["mode"]) + ".c
 outXa= "{sample}/summary.BC." + str(config["method"]["assemble"]["mode"]) + ".contig.fasta"
 outXn= "{sample}/summary.BC." + str(config["method"]["assemble"]["mode"]) + ".contig.anno"
 
-rule BCA_X_summary:
-    input: "{sample}/batch.assemble.BC.sh"
-    output:
-        stat = outXs,
-        fa   = outXa,
-        anno = outXn
+rule BCA_X_assemble:
+    input: "{sample}/batch.assemble.BI.sh"
+    output: "{sample}/log/batch.assemble.BC.done"
     params:
         divide = config['divideSH'],
-        dpfx = "{sample}/sp.asm.",
-        outDir = "{sample}/Assemble_mashBC",
+        dpfx = "{sample}/sp.BC.",
+        dir  = "{sample}"
+    shell:
+        """
+# 0. Run assembly one by one
+dl=$[$(wc -l {input}|tr ' ' '\\n' |head -1) / {params.divide}]
+split -d -l $dl {input} {params.dpfx}
+for i in {params.dpfx}??;do sh $i & done > {params.dir}/running.BC.asm.log && wait
+mv {params.dir}/running.BC.asm.log {params.dir}/log/batch.assemble.BC.done
+        """
+
+rule BCA_X_summary1:
+    input: "{sample}/log/batch.assemble.BI.done"
+    output:
+        fa   = outXa
+    params:
+        divide = config['divideSH'],
+        dpfx = "{sample}/sp.BC.",
+        outDir = "{sample}/Assemble_BC",
         mAsm   = config["p_asm_min"],
         mode   = config["method"]["assemble"]["mode"]
     shell:
         """
-# 1. Run assembly one by one
-dl=$[$(wc -l {input}|tr ' ' '\\n' |head -1) / {params.divide}]
-split -d -l $dl {input} {params.dpfx}
-for i in {params.dpfx}??;do sh $i & done
-wait
-
-# 2. pick robust assemble fasta
-for i in `ls {params.outDir}`;do
+# 1. pick robust assemble fasta
+for i in `ls {params.outDir}|grep BC`;do
   metabbq clusterHelper asmPick -l {params.mAsm} -b $i -i {params.outDir}/$i/{params.mode}/final.contigs.fa
 done > {output.fa}
+        """
 
-# 3. stat assemble results
-for i in `ls {params.outDir}`;do
+rule BCA_X_summary2:
+    input: outXa
+    output:
+        stat = outXs
+    params:
+        divide = config['divideSH'],
+        dpfx = "{sample}/sp.BI.",
+        outDir = "{sample}/Assemble_BI",
+        mAsm   = config["p_asm_min"],
+        mode   = config["method"]["assemble"]["mode"]
+    shell:
+        """
+# 2. stat assemble results
+for i in `ls {params.outDir}|grep BC`;do
   awk -v bc=$i '/^>/{{print bc"\\t"$0}}' {params.outDir}/$i/{params.mode}/final.contigs.fa | sed 's/>//;s/ flag=/\\t/;s/ multi=/\\t/;s/ len=/\\t/'
 done > {output.stat}
-
-# 4. stat annotation results
-for i in `ls {params.outDir}`;do
-  awk -v bc=$i '{{print bc"\\t"$0}}' {params.outDir}/$i/{params.mode}/scaffolds.megahit.BLAST.tax.blast6.anno.more
-done > {output.anno}
         """
