@@ -229,7 +229,7 @@ sub dealAdaptor{
   }else{
     $msg = "Normal"
   }
-  $mode = "NA" if $mode eq '';
+  $mode .= ')';
   return($mode,$seq,$msg);
 }
 
