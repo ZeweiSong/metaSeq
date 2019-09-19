@@ -14,9 +14,10 @@ from __future__ import division
 import argparse
 from biom.table import Table
 import json
+import sys
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-i', '--input', type=argparse.FileType('r'), nargs='+', help='profile list separated by space')
+parser.add_argument('-i', '--input', type=argparse.FileType('r'), nargs='+', default=sys.stdin, help='profile list separated by space')
 parser.add_argument('-biom_out', default='combined.biom', help='Output biom file name')
 args = parser.parse_args()
 
