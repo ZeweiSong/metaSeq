@@ -19,8 +19,11 @@ rule all:
 # Module #01: Beadbarcods detection
 include: "rules/BBprep.smk"
 
-# Module #02: cluster beads assembly solution
+# Module #02a: cluster beads assembly solution
 include: "rules/beadsCluster.smk"
+
+# Module #02b: isolate beads assembly solution
+include: "rules/beadsIsolate.smk"
 
 # Module #03: Assemble Draft
 #include: src + "/rules/assemble.smk"
