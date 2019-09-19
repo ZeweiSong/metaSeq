@@ -20,10 +20,11 @@ parser.add_argument('-i', '--input', help='JSON kmer file.')
 parser.add_argument('-o', '--output', help='Output file.')
 parser.add_argument('-r', '--range', help='A range for sampling kmer by kmer number, use "[]" to include margin, and "()" to exclude margin.')
 args = parser.parse_args()
-args = parser.parse_args(['-i', 'kmer.json', '-o', 'kmer.sample.json', '-r', '[2300, 10000]'])
+# args = parser.parse_args(['-i', 'kmer.json', '-o', 'kmer.sample.json', '-r', '[2300, 10000]'])
 inputFile = args.input
 outputFile = args.output
 rang = args.range
+print('Sampling range is {0}'.format(rang))
 left = int(rang[1:-1].split(',')[0])
 right = int(rang[1:-1].split(',')[1])
 if rang[0] == '[':
