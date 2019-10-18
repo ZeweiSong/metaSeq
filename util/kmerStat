@@ -1,0 +1,100 @@
+#!/usr/bin/env perl
+# (c) 2016 - 2019 Chao IN-HORSE SHARE ONLY
+# ===================================================================
+# Description:       Assess kmer frequency on both end of each sequence
+# Author:            Chao | fangchao@genomics.cn
+# Version:           V0.1
+# Last modified:    15 Oct 2019 (since 15 Oct 2019)
+# ===================================================================
+# see detail below
+use strict;
+use Getopt::Long qw(:config no_ignore_case); # For case sensitive
+
+sub usage {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  $0 -n [10] -k [11] -i <input> -o <output>
+    -n   number of bases on each end to assess.
+    -k   kmer lenth to obtain.
+    -i   fasta file
+    -o   output filename
+    -v   verbose
+    -h   show help info
+USAGE
+}
+&usage("Show usage page due to none argument specificed:") && exit unless @ARGV;
+
+my ($num,$ksize,$inf,$out,$verbose,$help);
+GetOptions(
+  "n=i" => \$num,
+	"k=i" => \$ksize,
+  "i=s" => \$inf,
+  "o=s" => \$out,
+  "v" => \$verbose,
+  "h|help|?" => \$help,
+);
+
+&usage && exit if $help;
+&usage("[fatal] Essential input is missing") && exit unless defined $inf;
+
+$num ||= 10;
+&verbose("[log] Searching [$num] kmers for both ends\n");
+$ksize ||= 11;
+&verbose("[log] Searching kmer length: [$ksize]\n");
+
+open INF, ($inf)?"<$inf":"<-" or die $!;
+open OUT, ($out)?">$out":">-" or die $!;
+
+our (%KASH,%KSUM);
+while(<INF>){
+	next if $_ =~ /^>/;
+	chomp;
+	&kmerStat(        $_ , $num, $ksize,\%KASH,\%KSUM);
+	&kmerStat(&revStr($_), $num, $ksize,\%KASH,\%KSUM);
+}
+close INF;
+#stat
+my $records = 0;
+foreach my $k (sort {$KSUM{$b} <=> $KSUM{$a}} keys %KSUM ){
+	$records ++;
+	print OUT "$k\t$KSUM{$k}";
+	for(my $i=0;$i<$num;$i++){
+		$KASH{$k}{$i}||=0;
+		print OUT "\t$KASH{$k}{$i}"
+	}
+	print OUT "\n";
+	last if $records eq 100;
+}
+close OUT;
+exit;
+
+
+####################
+# sub fucntion
+####################
+sub revStr{
+	my $str = shift;
+	my %BASE = ("A","T","T","A","C","G","G","C","N","N");
+	my $len = length($str);
+	my $res = "";
+	for(my $i =1;$i<=$ksize+$num;$i++){
+		$res .=$BASE{substr($str,-$i,1)};
+	}
+	return($res);
+}
+
+sub kmerStat {
+	my ($str,$n,$s,$A,$S) = @_;
+	for(my $i =0;$i<$n;$i++){
+		my $kmer = substr($str,$i,$s);
+		$$A{$kmer}{$i} ++;
+		$$S{$kmer} ++;
+	}
+}
+
+sub verbose{
+  my $msg = shift;
+  print STDERR $msg if $verbose;
+}
