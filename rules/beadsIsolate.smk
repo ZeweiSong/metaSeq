@@ -101,39 +101,86 @@ done > {output.stat}
         """
 
 
-outXd= "{sample}/blast/summary.BI." + str(config["method"]["assemble"]["mode"]) + ".contig.fasta"
-outXb= "{sample}/blast/summary.BI." + str(config["method"]["assemble"]["mode"]) + ".contig.b6"
-rule BIA_5_primerBlast:
+outXd= "{sample}/summary.BI." + str(config["method"]["assemble"]["mode"]) + ".contig.fasta"
+outXc= "{sample}/summary.BI." + str(config["method"]["assemble"]["mode"]) + ".clip.fasta"
+rule BIA_5_RCACLIP:
     input: outXa
-    output: outXb
+    output: outXc
     params:
-        dbPfx   = outXd,
-        primer  = config["A_primer_fa_to_find"],
-        threads = config["thread"]["spades"]
+        A = config['AdRCA'],
+        F = config['pmrFwd'],
+        R = config['pmrRev']
     shell:
-        "makeblastdb -in {input} -input_type fasta -dbtype nucl "
-        "-title BI.contig -parse_seqids -out {params.dbPfx}\n"
-        "blastn -num_threads {params.threads} -query {params.primer} -db {params.dbPfx} "
-        "-out {output} -outfmt 6 -word_size 7 -evalue 10"
+        "metabbq RCACLIPS -a {params.A} -fwd {params.F} -rev {params.R} -i {input} -o {output} -v 2> {output}.log"
 
-outXnt= "{sample}/blast/summary.BI." + str(config["method"]["assemble"]["mode"]) + ".contig.nt.b6"
-rule BIA_5_ntBlast:
-    input: outXa
-    output: outXnt
-    params:
-        dbPfx   = config["REF_nt"],
-        threads = config["thread"]["spades"]
+rule VSEARCH_1_Dereplicate:
+    input: outXc
+    output:
+        fa="{sample}/VSEARCH/contig.derep.full.fasta",
+        uc="{sample}/VSEARCH/contig.derep.full.uc"
+    threads: config['thread']['vsearch']
     shell:
-        "blastn -num_threads {params.threads} -query {input} -db {params.dbPfx} "
-        "-out {output} -outfmt '6 std staxid ssciname'"
+        "vsearch --threads {threads} --derep_fulllength {input} "
+        "--output {output.fa} -uc {output.uc} --fasta_width 0"
 
-outXsilva= "{sample}/blast/summary.BI." + str(config["method"]["assemble"]["mode"]) + ".contig.silva.b6"
-rule BIA_6_silvaBlast:
-    input: outXa
-    output: outXsilva
+rule VSEARCH_2_Precluster:
+    input: "{sample}/VSEARCH/contig.derep.full.fasta"
+    output:
+        fa="{sample}/VSEARCH/contig.preclust.fasta",
+        uc="{sample}/VSEARCH/contig.preclust.uc"
     params:
-        dbPfx   = config["REF_silva"],
-        threads = config["thread"]["blastn"]
+        pct = config['p_VS_preClust']
+    threads: config['thread']['vsearch']
     shell:
-        "blastn -num_threads {params.threads} -query {input} -db {params.dbPfx} "
-        "-out {output} -outfmt 6"
+        "vsearch --threads {threads} --cluster_fast {input} "
+        "--id {params.pct} --strand both --fasta_width 0 --minuniquesize 1 "
+        "--centroids {output.fa} -uc {output.uc}"
+
+rule VSEARCH_3_chimeraDetection:
+    input: "{sample}/VSEARCH/contig.preclust.fasta"
+    output:"{sample}/VSEARCH/contig.nonchimeras.fasta"
+    threads: config['thread']['vsearch']
+    shell:
+        "vsearch --threads {threads} --uchime_denovo {input} "
+        "--fasta_width 0 --nonchimeras {output}"
+
+rule VSEARCH_4_postCluster:
+    input: "{sample}/VSEARCH/contig.nonchimeras.fasta"
+    output:
+        fa="{sample}/VSEARCH/contig.LFRs.fasta",
+        uc="{sample}/VSEARCH/contig.LFRs.uc"
+    params:
+        pct = config['p_VS_postClust']
+    threads: config['thread']['vsearch']
+    shell:
+        "vsearch --threads {threads} --cluster_fast {input} "
+        "--id {params.pct} --strand both --fasta_width 0 --minuniquesize 1 "
+        "--relabel LFR_ --relabel_keep "
+        "--centroids {output.fa} -uc {output.uc}"
+
+rule CloseRef_1_makeIndex:
+    input: "{sample}/VSEARCH/contig.LFRs.fasta"
+    output:"{sample}/VSEARCH/contig.LFRs.fasta.bwt"
+    shell: "bwa index {input}"
+
+rule CloseRef_2_mapping:
+    input:
+        R1 = "{sample}/clean/fastp.sort.1.fq",
+        R2 = "{sample}/clean/fastp.sort.2.fq",
+        db = "{sample}/VSEARCH/contig.LFRs.fasta.bwt"
+    output: "{sample}/VSEARCH/contig.LFRs.bwa"
+    params: "{sample}/VSEARCH/contig.LFRs.fasta"
+    threads: config['thread']['blastn']
+    shell:
+        "bwa mem -t {threads} {params} {input.R1} {input.R2} > {output}"
+
+rule Quatification:
+    input: "{sample}/VSEARCH/contig.LFRs.bwa"
+    output:
+        stat = "{sample}/VSEARCH/contig.LFRs.bwa.stat",
+        sbb1 = "{sample}/VSEARCH/contig.LFRs.bwa.sbb1",
+        prop = "{sample}/VSEARCH/contig.LFRs.bwa.prop"
+    shell:
+        "metabbq beadStat sam -i {input} -o {output.stat} -v\n"
+        "metabbq beadStat sam2b -i {output.stat} -o {output.sbb1} -v\n"
+        "awk '$6>$9&&$6/$2>0.5{{print $5}}' {output.sbb1}|sort|uniq -c > {output.prop}\n"

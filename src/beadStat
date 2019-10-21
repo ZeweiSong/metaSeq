@@ -23,6 +23,7 @@ usage:
     bc     output best anno with specified cutoffs
     bin    filter fq files with beads above a threashold
     RBS    Reads supports from Beads to Scaffolds
+    sam    stat beads mapping proportion from bwa alignment result
 
 options:  Defined according to the mode and cmd you chosed.
 USAGE
@@ -37,6 +38,8 @@ my $mode = shift @ARGV unless $ARGV[0] =~/^-/;
 &run_merge if $mode eq "merge";
 &run_BCent if $mode eq "bc";
 &run_rbs   if $mode eq "RBS";
+&run_sam   if $mode eq "sam";
+&run_sam2b if $mode eq "sam2b";
 # Main end
 
 &verbose("[log] All done!\n");
@@ -397,4 +400,151 @@ sub run_rbs {
     }
   }
   &verbose("[RBS] Mode done!\n");
+}
+
+sub usage4sam {
+  my $msg = shift;
+  print <<USAGE;
+$msg
+usage [v0.1] :
+  beadStat SAM -i <sam file> -o output
+    -i  input sam file
+    -o  output
+    -v  verbose
+    -h  show help info
+USAGE
+}
+
+sub run_sam {
+  &usage4sam("stat beads number to each reference") && exit unless @ARGV;
+  my ($inf,$out);
+  GetOptions(
+    "i=s" => \$inf,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4sam("stat beads number to each reference") && exit if $help;
+  &verbose("[SAM] Mode start ... \n");
+  #Init
+  open INF,"<$inf" or die "Cannot open alignment file: $inf.\n";
+  open OUT,">$out" or die "Cannot open output file: $out.\n";
+  my (%B2R,$pBB,$count);
+  while(<INF>){
+    chomp;
+    next if $_ =~ /^@/;
+    my @r=split (/\t/);
+    $r[0] =~ /\/(\d+_\d+_\d+)$/;
+    my $bb = ($1 =~ /0000/)?"0000_0000_0000":$1;
+    if ($pBB ne $bb){
+      &samout($pBB,\%B2R,$count);
+      %B2R = ();
+      $count = 0;
+    }
+    $count ++;
+    next if $r[6] ne "=";
+    my %HS;
+    $HS{$r[2]} ++; #if $r[5] eq "100M";
+    my $alter1 = ($_ =~ /XA:Z:(\S+)$/)?$1:"";
+    $_ = <INF>; @r=split (/\t/);
+    $HS{$r[2]} ++; #if $r[5] eq "100M";
+    my $alter2 = ($_ =~ /XA:Z:(\S+)$/)?$1:"";
+    my @a = (split(/;/,$alter1), split(/;/,$alter2));
+    while(@a){
+      my $xa = shift @a;
+      $xa =~ /(\S+),[+-]\d+,(\S+),(\S+)/;
+      $HS{$1} ++; #if $2 eq "100M";
+    }
+    my @alts = ();
+    foreach my $H (keys %HS){
+      push @alts, $H if $HS{$H} >1;
+    }
+    my $hitType = (@alts>1)?"MULT":"UNIQ";
+
+    while(@alts){
+      my $hit = shift @alts;
+      $B2R{$hit}{$hitType} ++;
+    }
+    $pBB = $bb;
+    #verbose
+    if($. % 1000000 == 0 ){
+      &verbose(sprintf("\r[SAM] $. lines read. Last BB is [%s]",$bb));
+    }
+  }
+  &verbose("\n");
+  close INF;
+  &samout($pBB,\%B2R,$count);
+  close OUT;
+  &verbose("[SAM] Mode done!\n");
+}
+
+sub samout {
+  my $B  = shift;
+  my $HS = shift;
+  my $ct = shift;
+    foreach my $H (sort keys %$HS){
+      $$HS{$H}{UNIQ} ||=0;
+      $$HS{$H}{MULT} ||=0;
+      print OUT "$B\t$H\t$$HS{$H}{UNIQ}\t$$HS{$H}{MULT}\t$ct\n";
+  }
+}
+
+sub run_sam2b {
+  &usage4sam("stat beads stat to beads represent") && exit unless @ARGV;
+  my ($inf,$out);
+  GetOptions(
+    "i=s" => \$inf,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4sam("stat beads number to each reference") && exit if $help;
+  &verbose("[SAM] Mode start ... \n");
+  #Init
+  open INF,"<$inf" or die "Cannot open alignment file: $inf.\n";
+  open OUT,">$out" or die "Cannot open output file: $out.\n";
+  my (%B2B,%HS,$uSum,$mSum,$pBB,$count);
+  while(<INF>){
+    chomp;
+    next if $_ =~ /^@/;
+    my @r=split (/\t/);
+    my $bb = $r[0]; $bb = "0000_0000_0000" if $bb =~ /0000/;
+    if ($pBB ne $bb){
+      &sambout($pBB,\%B2B,$count);
+      ($count,%B2B,$uSum,$mSum) = (0,);
+    }
+    $B2B{$r[1]}{UNIQ} = $r[2];
+    $B2B{$r[1]}{MULT} = $r[3];
+    $count = $r[4];
+    $pBB = $bb;
+    #verbose
+    if($. % 1000000 == 0 ){
+      &verbose(sprintf("\r[SAM] $. lines read. Last BB is [%s]",$bb));
+    }
+  }
+  &verbose("\n");
+  close INF;
+  &sambout($pBB,\%B2B,$count);
+  close OUT;
+  &verbose("[SAM] Mode done!\n");
+}
+
+sub sambout{
+  my $B = shift;
+  my $HS = shift;
+  my $ct = shift;
+  return unless $B;
+  my ($k1, $k2,$CT,$US,$MS) = ("MISS","MISS",0,0,0);
+  foreach my $H (keys %$HS){
+    $CT ++;
+    $US += $$HS{$H}{UNIQ};
+    $MS += $$HS{$H}{MULT};
+    if($$HS{$H}{UNIQ}>($$HS{$k1}{UNIQ}||=0)){
+      $k2 = $k1; $k1 = $H;
+    }elsif($$HS{$H}{UNIQ}>($$HS{$k2}{UNIQ}||=0)){
+      $k2 = $H;
+    }
+  }
+  print OUT sprintf("%s\t%d\t%d\t%d\t%s\t%d\t%d\t%s\t%d\t%d\n", $B,$ct,$US,$MS,
+  $k1,$$HS{$k1}{UNIQ},$$HS{$k1}{MULT}, $k2,$$HS{$k2}{UNIQ},$$HS{$k2}{MULT});
 }

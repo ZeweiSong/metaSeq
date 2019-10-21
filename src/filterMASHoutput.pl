@@ -74,7 +74,7 @@ while(<INF>){
   my @line = split /\t/;
   if($line[0] ne $line[1] && $line[2] > 0 && $line[2] <= $cut){
     my($src,$dist,$s_p,$d_p) = ();
-    if($pair eq "b"){
+    if($pair eq "p"){
       $line[0] =~ /(\d\d\d\d_\d\d\d\d_\d\d\d\d.\d)/;
       $src = $1;
       $line[1] =~ /(\d\d\d\d_\d\d\d\d_\d\d\d\d.\d)/;

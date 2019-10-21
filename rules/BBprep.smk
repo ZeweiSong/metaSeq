@@ -28,7 +28,7 @@ if config["AdFw"] and config["AdRv"]:
         threads: config["thread"]["fastp"]
         shell:
             "fastp --stLFR_barcode_file {input.bfile} --stLFR_pos3 132 "
-            "--in1 {input.r1} --in2 {input.r2} "
+            "-A -L --in1 {input.r1} --in2 {input.r2} "
             "--adapter_sequence {params.AdF} --adapter_sequence_r2 {params.AdR} "
             "--out1 {output.r1} --out2 {output.r2} --json {output.json} --html {output.html} "
             "--disable_trim_poly_g --report_title {params.title} "
@@ -52,7 +52,7 @@ else:
             "benchmarks/{sample}.fp.benchmark.txt"
         threads: config["thread"]["fastp"]
         shell:
-            "fastp --stLFR_barcode_file {input.bfile} --stLFR_pos3 132 "
+            "fastp -A --stLFR_barcode_file {input.bfile} --stLFR_pos3 132 "
             "--in1 {input.r1} --in2 {input.r2} "
             "--out1 {output.r1} --out2 {output.r2} --json {output.json} --html {output.html} "
             "--disable_trim_poly_g --report_title {params.title} "
