@@ -40,6 +40,7 @@ my $mode = shift @ARGV unless $ARGV[0] =~/^-/;
 &run_rbs   if $mode eq "RBS";
 &run_sam   if $mode eq "sam";
 &run_sam2b if $mode eq "sam2b";
+&run_sam2c if $mode eq "sam2c";
 # Main end
 
 &verbose("[log] All done!\n");
@@ -429,50 +430,62 @@ sub run_sam {
   #Init
   open INF,"<$inf" or die "Cannot open alignment file: $inf.\n";
   open OUT,">$out" or die "Cannot open output file: $out.\n";
-  my (%B2R,$pBB,$count);
+  my (@XA,%HS,%B2R,$pRd,$pBB,$count);
   while(<INF>){
     chomp;
     next if $_ =~ /^@/;
-    my @r=split (/\t/);
-    $r[0] =~ /\/(\d+_\d+_\d+)$/;
-    my $bb = ($1 =~ /0000/)?"0000_0000_0000":$1;
+    my @s=split (/\t/);
+    $s[0] =~ /^(\S+)\/(\d+_\d+_\d+)$/;
+    my $rd = $1;
+    my $bb = ($2 =~ /0000/)?"0000_0000_0000":$2;
+    #summary when a paired read all read:
+    if($pRd ne $rd){
+      $count ++;
+      while(@XA){
+        my $xa = shift @XA;
+        #XA:Z:chr,pos,CIGAR,NM
+        $xa =~ /(\S+),([+-]\d+),(\S+),(\S+)/;
+        $HS{$1} += $4;
+      }
+      my $hitType = ((keys %HS)>1)?"MULT":"UNIQ";
+      # count once per paired-read:
+      foreach my $H (keys %HS){
+        $B2R{$H}{$hitType} ++;
+        $B2R{$H}{'NM'} += $HS{$H};
+      }
+      %HS = ();
+    }
+    #summary when a bead all read:
     if ($pBB ne $bb){
       &samout($pBB,\%B2R,$count);
-      %B2R = ();
-      $count = 0;
+      %B2R = (); $count = 0;
     }
-    $count ++;
-    next if $r[6] ne "=";
-    my %HS;
-    $HS{$r[2]} ++; #if $r[5] eq "100M";
-    my $alter1 = ($_ =~ /XA:Z:(\S+)$/)?$1:"";
-    $_ = <INF>; @r=split (/\t/);
-    $HS{$r[2]} ++; #if $r[5] eq "100M";
-    my $alter2 = ($_ =~ /XA:Z:(\S+)$/)?$1:"";
-    my @a = (split(/;/,$alter1), split(/;/,$alter2));
-    while(@a){
-      my $xa = shift @a;
-      $xa =~ /(\S+),[+-]\d+,(\S+),(\S+)/;
-      $HS{$1} ++; #if $2 eq "100M";
-    }
-    my @alts = ();
-    foreach my $H (keys %HS){
-      push @alts, $H if $HS{$H} >1;
-    }
-    my $hitType = (@alts>1)?"MULT":"UNIQ";
+    # Adding a new read:
+    my $NM = ($_ =~ /NM:i:(\d+)/)?$1:0;
+    $HS{$s[2]} += $NM;
+    my $alter = ($_ =~ /XA:Z:(\S+);$/)?$1:"";
+    push @XA, split(/;/,$alter);
 
-    while(@alts){
-      my $hit = shift @alts;
-      $B2R{$hit}{$hitType} ++;
-    }
-    $pBB = $bb;
+    $pRd = $rd; $pBB = $bb;
     #verbose
     if($. % 1000000 == 0 ){
       &verbose(sprintf("\r[SAM] $. lines read. Last BB is [%s]",$bb));
     }
+    # Next loop
   }
   &verbose("\n");
   close INF;
+  # count last read:
+  $count ++;
+  while(@XA){
+    my $xa = shift @XA;
+    $xa =~ /(\S+),[+-]\d+,(\S+),(\S+)/;
+    $HS{$1} ++;
+  }
+  my $hitType = ((keys %HS)>1)?"MULT":"UNIQ";
+  # count once per paired-read:
+  foreach my $H (keys %HS){ $B2R{$H}{$hitType} ++; };
+  # count last bead:
   &samout($pBB,\%B2R,$count);
   close OUT;
   &verbose("[SAM] Mode done!\n");
@@ -483,9 +496,8 @@ sub samout {
   my $HS = shift;
   my $ct = shift;
     foreach my $H (sort keys %$HS){
-      $$HS{$H}{UNIQ} ||=0;
-      $$HS{$H}{MULT} ||=0;
-      print OUT "$B\t$H\t$$HS{$H}{UNIQ}\t$$HS{$H}{MULT}\t$ct\n";
+      $$HS{$H}{UNIQ} ||=0; $$HS{$H}{MULT} ||=0; $$HS{$H}{NM} ||=0;
+      print OUT "$B\t$H\t$$HS{$H}{UNIQ}\t$$HS{$H}{MULT}\t$ct\t$$HS{$H}{NM}\n";
   }
 }
 
@@ -503,12 +515,12 @@ sub run_sam2b {
   #Init
   open INF,"<$inf" or die "Cannot open alignment file: $inf.\n";
   open OUT,">$out" or die "Cannot open output file: $out.\n";
-  my (%B2B,%HS,$uSum,$mSum,$pBB,$count);
+  my ($bb,%B2B,%HS,$uSum,$mSum,$pBB,$count);
   while(<INF>){
     chomp;
     next if $_ =~ /^@/;
-    my @r=split (/\t/);
-    my $bb = $r[0]; $bb = "0000_0000_0000" if $bb =~ /0000/;
+    my @r = split (/\t/);
+    $bb = $r[0]; $bb = "0000_0000_0000" if $bb =~ /0000/;
     if ($pBB ne $bb){
       &sambout($pBB,\%B2B,$count);
       ($count,%B2B,$uSum,$mSum) = (0,);
@@ -516,13 +528,14 @@ sub run_sam2b {
     $B2B{$r[1]}{UNIQ} = $r[2];
     $B2B{$r[1]}{MULT} = $r[3];
     $count = $r[4];
+    $B2B{$r[1]}{NM} = $r[5];
     $pBB = $bb;
     #verbose
     if($. % 1000000 == 0 ){
       &verbose(sprintf("\r[SAM] $. lines read. Last BB is [%s]",$bb));
     }
   }
-  &verbose("\n");
+  &verbose(sprintf("\r[SAM] $. lines read. Last BB is [%s]\n",$bb));
   close INF;
   &sambout($pBB,\%B2B,$count);
   close OUT;
@@ -534,17 +547,125 @@ sub sambout{
   my $HS = shift;
   my $ct = shift;
   return unless $B;
-  my ($k1, $k2,$CT,$US,$MS) = ("MISS","MISS",0,0,0);
+  my ($k1, $k2,$US,$MS) = ("MISS","MISS",0,0);
+  $$HS{"MISS"}{UNIQ} = 0; $$HS{"MISS"}{MULT} = 0; $$HS{"MISS"}{NM} = $ct * 3000;
   foreach my $H (keys %$HS){
-    $CT ++;
     $US += $$HS{$H}{UNIQ};
     $MS += $$HS{$H}{MULT};
-    if($$HS{$H}{UNIQ}>($$HS{$k1}{UNIQ}||=0)){
+    next if $H eq "*";
+    if($$HS{$H}{UNIQ}>$$HS{$k1}{UNIQ}){
       $k2 = $k1; $k1 = $H;
-    }elsif($$HS{$H}{UNIQ}>($$HS{$k2}{UNIQ}||=0)){
+    }elsif($$HS{$H}{UNIQ}==$$HS{$k1}{UNIQ}){
+      if($$HS{$H}{MULT}>$$HS{$k1}{MULT}){
+        $k2 = $k1; $k1 = $H;
+      }elsif($$HS{$H}{MULT}==$$HS{$k1}{MULT}){
+        if($$HS{$H}{NM}<$$HS{$k1}{NM}){
+          $k2 = $k1; $k1 = $H;
+        }
+      }
+    }elsif($$HS{$H}{UNIQ}>$$HS{$k2}{UNIQ}){
       $k2 = $H;
+    }elsif($$HS{$H}{UNIQ}==$$HS{$k2}{UNIQ}){
+      if($$HS{$H}{MULT}>$$HS{$k2}{MULT}){
+        $k2 = $H;
+      }elsif($$HS{$H}{MULT}==$$HS{$k2}{MULT}){
+        if($$HS{$H}{NM}<$$HS{$k2}{NM}){
+          $k2 = $H;
+        }
+      }
+    }
+    # loop end
+  }
+  if($k1 eq "MISS"){
+    $k1 = "*";
+  }elsif($k2 eq "MISS"){
+    $k2 = "*";
+  }
+  $$HS{"MISS"}{NM} = 0 ;
+  print OUT sprintf("%s\t%d\t%d\t%d\t%s\t%d\t%d\t%d\t%s\t%d\t%d\t%d\n", $B,$ct,$US,$MS,
+  $k1,$$HS{$k1}{UNIQ},$$HS{$k1}{MULT}, $$HS{$k1}{NM},
+  $k2,$$HS{$k2}{UNIQ},$$HS{$k2}{MULT}, $$HS{$k2}{NM});
+}
+
+################################################################################
+#
+sub run_sam2c {
+  &usage4sam("stat beads stat to beads linkage") && exit unless @ARGV;
+  my ($inf,$out);
+  GetOptions(
+    "i=s" => \$inf,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4sam("stat beads number to each reference") && exit if $help;
+  &verbose("[SAM] Mode start ... \n");
+  #Init
+  open INF,"<$inf" or die "Cannot open alignment file: $inf.\n";
+  open OUT,">$out" or die "Cannot open output file: $out.\n";
+  #open OUT,">$out.ID"  or die "Cannot open output file: $out.ID\n";
+  my ($bb, %B2B,%B2C,%HS,$uSum,$mSum,$pBB,$count);
+  while(<INF>){
+    chomp;
+    next if $_ =~ /^@/;
+    my @r = split (/\t/);
+    $bb = $r[0];
+    next if $bb =~ /0000/;
+    if ($pBB ne $bb){
+      my @h = sort keys %B2B;
+      if(@h>1){
+        for (my $i=0;$i<@h-1;$i++){
+          for (my $j=$i+1;$j<@h;$j++){
+            $B2C{$h[$i]}{$h[$j]}{'C'} += $B2B{$h[$i]}{MULT};
+            $B2C{$h[$i]}{$h[$j]}{'T'} += $count;
+            $B2C{$h[$i]}{$h[$j]}{'B'} ++;
+            $B2C{$h[$i]}{$h[$j]}{'U'} ++ if $B2B{$h[$i]}{UNIQ} && $B2B{$h[$j]}{UNIQ};
+          }
+        }
+      }
+      ($count,%B2B,$uSum,$mSum) = (0,);
+    }
+    if ($r[1] ne "*"){
+      $B2B{$r[1]}{UNIQ} = $r[2];
+      $B2B{$r[1]}{MULT} = $r[3];
+    }
+    $count = $r[4];
+    $pBB = $bb;
+    #verbose
+    if($. % 1000000 == 0 ){
+      &verbose(sprintf("\r[SAM] $. lines read. Last BB is [%s]",$bb));
     }
   }
-  print OUT sprintf("%s\t%d\t%d\t%d\t%s\t%d\t%d\t%s\t%d\t%d\n", $B,$ct,$US,$MS,
-  $k1,$$HS{$k1}{UNIQ},$$HS{$k1}{MULT}, $k2,$$HS{$k2}{UNIQ},$$HS{$k2}{MULT});
+  &verbose(sprintf("\r[SAM] $. lines read. Last BB is [%s]\n",$bb));
+  close INF;
+  my @h1 = sort keys %B2C;
+  for(my $i=0;$i<@h1;$i++){
+    next if $h1[$i] eq ("*" or "");
+    my @h2 = sort keys %{$B2C{$h1[$i]}};
+    for(my $j=0;$j<@h2;$j++){
+      next if $h2[$j] =~ /\*|\s+/;
+      $B2C{$h1[$i]}{$h2[$j]}{'U'}||=0;
+      my $score = ($B2C{$h1[$i]}{$h2[$j]}{'B'} == 0)?1: 1- ($B2C{$h1[$i]}{$h2[$j]}{'U'} / $B2C{$h1[$i]}{$h2[$j]}{'B'});
+      print OUT "$h1[$i]\t$h2[$j]\t$score\t$B2C{$h1[$i]}{$h2[$j]}{'U'}\t$B2C{$h1[$i]}{$h2[$j]}{'B'}\t$B2C{$h1[$i]}{$h2[$j]}{'C'}\t$B2C{$h1[$i]}{$h2[$j]}{'T'}\n";
+    }
+  }
+  close OUT;
+  &verbose("[SAM] Mode done!\n");
+}
+
+sub samc{
+  my $B = shift;
+  my $HS = shift;
+  my $ct = shift;
+  my $b2c = shift;
+  return unless $B;
+  my ($k1, $k2,$US,$MS) = ("MISS","MISS",0,0);
+  $$HS{"MISS"}{UNIQ} = 0; $$HS{"MISS"}{MULT} = 0; $$HS{"MISS"}{NM} = $ct * 3000;
+  my @h = sort keys %$HS;
+  for (my $i=0;$i<@h-1;$i++){
+    for (my $j=$i+1;$j<@h;$j++){
+      $$b2c{$h[0]}{$h[1]}{'C'} += $$HS{$h[0]}{MULT} + $$HS{$h[1]}{MULT};
+      $$b2c{$h[0]}{$h[1]}{'T'} += $ct * 2;
+    }
+  }
 }

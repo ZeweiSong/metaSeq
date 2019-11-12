@@ -100,7 +100,7 @@ for i in `ls {params.outDir}|grep BI`;do
 done > {output.stat}
         """
 
-
+outPfx="{sample}/summary.BI." + str(config["method"]["assemble"]["mode"])
 outXd= "{sample}/summary.BI." + str(config["method"]["assemble"]["mode"]) + ".contig.fasta"
 outXc= "{sample}/summary.BI." + str(config["method"]["assemble"]["mode"]) + ".clip.fasta"
 rule BIA_5_RCACLIP:
@@ -113,74 +113,112 @@ rule BIA_5_RCACLIP:
     shell:
         "metabbq RCACLIPS -a {params.A} -fwd {params.F} -rev {params.R} -i {input} -o {output} -v 2> {output}.log"
 
-rule VSEARCH_1_Dereplicate:
+outRc= "{sample}/summary.BI." + str(config["method"]["assemble"]["mode"]) + ".rRNA.fasta"
+if config["sampleType"] == "F":
+    kingdom="euk"
+    LSU="28S"
+    SSU="18S"
+else:
+    kingdom="bac"
+    LSU="23S"
+    SSU="16S"
+
+rule BIA_6_rrnadetect:
     input: outXc
-    output:
-        fa="{sample}/VSEARCH/contig.derep.full.fasta",
-        uc="{sample}/VSEARCH/contig.derep.full.uc"
+    output: outRc
+    log: outRc + ".barrnap"
+    params:
+        k = kingdom,
     threads: config['thread']['vsearch']
     shell:
-        "vsearch --threads {threads} --derep_fulllength {input} "
-        "--output {output.fa} -uc {output.uc} --fasta_width 0"
+        "barrnap --kingdom {params.k} --threads {threads} --reject 0.1 {input} --outseq {output} &> {log}"
 
-rule VSEARCH_2_Precluster:
-    input: "{sample}/VSEARCH/contig.derep.full.fasta"
+rule BIA_7_cut_LSU_and_SSU:
+    input: outRc
     output:
-        fa="{sample}/VSEARCH/contig.preclust.fasta",
-        uc="{sample}/VSEARCH/contig.preclust.uc"
+        S= "{sample}/VSEARCH/barrnap.SSU.fasta",
+        L= "{sample}/VSEARCH/barrnap.LSU.fasta"
     params:
-        pct = config['p_VS_preClust']
+        S = SSU,
+        L = LSU
+    threads: 2
+    shell:
+        "grep -A1 {params.S} {input} > {output.S} & "
+        "grep -A1 {params.L} {input} > {output.L} & "
+        "wait"
+
+rule VSEARCH_1_SSU_cluster:
+    input: "{sample}/VSEARCH/barrnap.SSU.fasta"
+    output:
+        fa1="{sample}/VSEARCH/barrnap.preclustS.fasta",
+        uc1="{sample}/VSEARCH/barrnap.preclustS.uc",
+        fa2="{sample}/VSEARCH/barrnap.cdhitS.fasta",
+        uc2="{sample}/VSEARCH/barrnap.cdhitS.fasta.uc"
+    params:
+        pct = config['p_VS_clust_Sid'],
     threads: config['thread']['vsearch']
     shell:
         "vsearch --threads {threads} --cluster_fast {input} "
         "--id {params.pct} --strand both --fasta_width 0 --minuniquesize 1 "
-        "--centroids {output.fa} -uc {output.uc}"
+        "--centroids {output.fa1} -uc {output.uc1}\n"
+        "vsearch --threads {threads} --cluster_fast {output.fa1} "
+        "--iddef 0 --id {params.pct} --strand both --fasta_width 0 --minuniquesize 1 "
+        "--relabel SSU_ --relabel_keep "
+        "--centroids {output.fa2} -uc {output.uc2}"
 
-rule VSEARCH_3_chimeraDetection:
-    input: "{sample}/VSEARCH/contig.preclust.fasta"
-    output:"{sample}/VSEARCH/contig.nonchimeras.fasta"
-    threads: config['thread']['vsearch']
-    shell:
-        "vsearch --threads {threads} --uchime_denovo {input} "
-        "--fasta_width 0 --nonchimeras {output}"
-
-rule VSEARCH_4_postCluster:
-    input: "{sample}/VSEARCH/contig.nonchimeras.fasta"
+rule VSEARCH_1_LSU_cluster:
+    input: "{sample}/VSEARCH/barrnap.LSU.fasta"
     output:
-        fa="{sample}/VSEARCH/contig.LFRs.fasta",
-        uc="{sample}/VSEARCH/contig.LFRs.uc"
+        fa1="{sample}/VSEARCH/barrnap.preclustL.fasta",
+        uc1="{sample}/VSEARCH/barrnap.preclustL.uc",
+        fa2="{sample}/VSEARCH/barrnap.cdhitL.fasta",
+        uc2="{sample}/VSEARCH/barrnap.cdhitL.fasta.uc"
     params:
-        pct = config['p_VS_postClust']
+        pct = config['p_VS_clust_Lid']
     threads: config['thread']['vsearch']
     shell:
         "vsearch --threads {threads} --cluster_fast {input} "
         "--id {params.pct} --strand both --fasta_width 0 --minuniquesize 1 "
-        "--relabel LFR_ --relabel_keep "
-        "--centroids {output.fa} -uc {output.uc}"
+        "--centroids {output.fa1} -uc {output.uc1}\n"
+        "vsearch --threads {threads} --cluster_fast {output.fa1} "
+        "--iddef 0 --id {params.pct} --strand both --fasta_width 0 --minuniquesize 1 "
+        "--relabel LSU_ --relabel_keep "
+        "--centroids {output.fa2} -uc {output.uc2}"
+
+rule VSEARCH_2_merge:
+    input:
+        S = "{sample}/VSEARCH/barrnap.cdhitS.fasta",
+        L = "{sample}/VSEARCH/barrnap.cdhitL.fasta"
+    output:
+        "{sample}/VSEARCH/barrnap.LFRs.fasta"
+    shell:
+        "cat {input.S} {input.L} > {output}"
 
 rule CloseRef_1_makeIndex:
-    input: "{sample}/VSEARCH/contig.LFRs.fasta"
-    output:"{sample}/VSEARCH/contig.LFRs.fasta.bwt"
-    shell: "bwa index {input}"
+    input: "{sample}/VSEARCH/barrnap.LFRs.fasta"
+    output:"{sample}/VSEARCH/contig.LFRs.fasta.index.sa"
+    params:"{sample}/VSEARCH/contig.LFRs.fasta.index"
+    shell: "bwa index {input} -p {params}"
 
 rule CloseRef_2_mapping:
     input:
         R1 = "{sample}/clean/fastp.sort.1.fq",
         R2 = "{sample}/clean/fastp.sort.2.fq",
-        db = "{sample}/VSEARCH/contig.LFRs.fasta.bwt"
-    output: "{sample}/VSEARCH/contig.LFRs.bwa"
-    params: "{sample}/VSEARCH/contig.LFRs.fasta"
+        db = "{sample}/VSEARCH/contig.LFRs.fasta.index.sa"
+    output: "{sample}/VSEARCH/contig.LFRs.bwa.bam"
+    params: "{sample}/VSEARCH/contig.LFRs.fasta.index"
     threads: config['thread']['blastn']
     shell:
-        "bwa mem -t {threads} {params} {input.R1} {input.R2} > {output}"
+        "bwa mem -t {threads} {params} {input.R1} {input.R2} "
+        "| samtools view -b -@ {threads} > {output}"
 
 rule Quatification:
-    input: "{sample}/VSEARCH/contig.LFRs.bwa"
+    input: "{sample}/VSEARCH/contig.LFRs.bwa.bam"
     output:
         stat = "{sample}/VSEARCH/contig.LFRs.bwa.stat",
         sbb1 = "{sample}/VSEARCH/contig.LFRs.bwa.sbb1",
         prop = "{sample}/VSEARCH/contig.LFRs.bwa.prop"
     shell:
-        "metabbq beadStat sam -i {input} -o {output.stat} -v\n"
+        "samtools view {input} | metabbq beadStat sam -i - -o {output.stat} -v\n"
         "metabbq beadStat sam2b -i {output.stat} -o {output.sbb1} -v\n"
-        "awk '$6>$9&&$6/$2>0.5{{print $5}}' {output.sbb1}|sort|uniq -c > {output.prop}\n"
+        "awk 'FNR>1{{print $5}}' {output.sbb1}|sort|uniq -c > {output.prop}\n"

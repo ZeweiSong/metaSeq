@@ -1,8 +1,16 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
+# (c) 2019 - 2019 Chao IN-HORSE SHARE ONLY
+# ===================================================================
+# Description:       Annotate and stat reads mapped to references.
+# Author:            Chao | fangchao@genomics.cn
+# Version:           V0.1
+# Last modified:    31 May 2019 (since 31 May 2019)
+# ===================================================================
+# see detail below
 use strict;
 
 unless (@ARGV){
-  print "Usage: perl anno.pl <ID annotation> <blast6 or sam>\n";
+  print "Usage: perl anno.pl <ID annotation file> > <blast6 or sam file>\n";
   exit;
 }
 
@@ -15,11 +23,15 @@ my %HASH;
 while(<ANN>){
 	chomp;
 	my @a= split(/\t/,$_);
-	$HASH{$a[1]} = $_;
+  if($anno =~ /silva/){
+    $HASH{"$a[0].$a[1].$a[2]"} = "$a[4]\t$a[3]";
+  }else{
+    $HASH{$a[0]} = $_;
+  }
 }
 close ANN;
 
-if($align =~/.blast6$/){
+if($align =~/.(blast6|m6)$/){
   while(<ALN>){
   	chomp;
   	my @a= split(/\t/,$_);
