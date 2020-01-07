@@ -66,6 +66,25 @@ class sequence(object):
         record[0] = record[0][1:]
         return record
 
+# This is for FASTA with multilpe lines
+        # Sequences are read in as a tuple of tuples
+def sequence_multiline_fasta(filePath):
+    fileType = showMeTheType(filePath)
+    if fileType[0]:
+        import gzip
+        file = gzip.open(filePath, 'rt')
+    else:
+        file = open(filePath, 'r')    
+    
+    content = file.readlines() # Read in all lines
+    content = [i.strip('\n') for i in content] # Remove EOF symbol
+    fasta = []
+    pos = [index for index, item in enumerate(content) if item[0] == ">"] # Get the position of all headers
+    fasta = [(content[i][1:], ''.join(content[i+1:pos[index+1]])) for index, i in enumerate(pos[:-1])] # Get the sequence except for the last one
+    fasta.append((content[pos[-1]][1:], ''.join(content[pos[-1]+1:]))) # Add the last one
+    file.close()
+    return fasta
+
 
 # Same iterator but read in multiple record into memory at once
 # By testing, read in file in trunk does not boost the reading speed.
