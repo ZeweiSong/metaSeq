@@ -1,13 +1,38 @@
 #!/usr/bin/env snakemake
 # (c) 2016 - 2019 Chao IN-HORSE SHARE ONLY
 # ===================================================================
-# Description:       Beads Cluster Assembly Solution
-# Call from:         ../Snakefile
-# Author:            Chao | fangchao@genomics.cn
+# Description:    Beads Cluster Assembly Solution
+# Call from:      ../Snakefile
+# Author:         Chao | fangchao@genomics.cn
 # ===================================================================
 
 configfile: "config.yaml"
 
+#for not merge
+rule BCN_0_sketch:
+	input:
+		id = "{sample}/clean/fastp.sort.1.fq.idx",
+		x1 = "{sample}/clean/fastp.sort.1.fq",
+		x2 = "{sample}/clean/fastp.sort.2.fq",
+		bb = "{sample}/clean/BB.stat"
+	output:  "{sample}/mash/bMin2.msh"
+	params:
+		pfx = "{sample}/mash/bMin2",
+		minR= config['p_cluster_minR'],
+		maxR= config['p_cluster_maxR'],
+		topB= config['p_cluster_topB'],
+		ranP= config['p_cluster_ranP'],
+		k   = config["p_dist_k"],
+		s   = config["p_dist_s"]
+	shell:
+		"export maxC={params.maxR}\nexport minC={params.minR}\n"
+		"echo choose minc = $minC , maxc = $maxC \n"
+		"metabbq binWrite fqpick -x {input.id} -c {params.minR} -m {params.maxR} -b {params.topB} -r {params.ranP} -i {input.x1} -o {params.pfx}.sort.1.fq & \n"
+		"metabbq binWrite fqpick -x {input.id} -c {params.minR} -m {params.maxR} -b {params.topB} -r {params.ranP} -i {input.x2} -o {params.pfx}.sort.2.fq & \n"
+		"wait\nmash sketch -p 6 -k {params.k} -s {params.s} -r -B {params.pfx}.sort.1.fq {params.pfx}.sort.2.fq -o {params.pfx}"
+
+
+#for merge
 rule BCA_0_merge:
 	input:
 		x1 = "{sample}/clean/fastp.sort.1.fq",
@@ -15,12 +40,13 @@ rule BCA_0_merge:
 	output:
 		fq = "{sample}/clean/fastp.sort.merged.fq",
 		u1 = "{sample}/clean/fastp.sort.unmerged.F.fq",
-		u2 = "{sample}/clean/fastp.sort.unmerged.R.fq"
+		u2 = "{sample}/clean/fastp.sort.unmerged.R.fq",
+		log ="{sample}/clean/fastp.sort.merged.log"
 	threads: 4
 	shell:
-		"vsearch --threads {threads} --fastq_mergepairs {input.x1} "
-		"--reverse {input.x2} --fastqout {output.fq} --fasta_width 0 "
-		"--fastqout_notmerged_fwd {output.u1} --fastqout_notmerged_rev {output.u2}"
+		"vsearch --threads {threads} --fastq_mergepairs {input.x1} --reverse {input.x2} "
+		"--fastqout_notmerged_fwd {output.u1} --fastqout_notmerged_rev {output.u2} "
+		"--fastqout {output.fq} --fasta_width 0 &> {output.log}"
 
 rule BCA_0_mergeStat:
 	input: "{sample}/clean/fastp.sort.merged.fq"
