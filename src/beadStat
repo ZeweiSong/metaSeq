@@ -24,6 +24,7 @@ usage:
     bin    filter fq files with beads above a threashold
     RBS    Reads supports from Beads to Scaffolds
     sam    stat beads mapping proportion from bwa alignment result
+    mfreq  stat sketch bins numbers and top frequency in each bead from mash
 
 options:  Defined according to the mode and cmd you chosed.
 USAGE
@@ -41,9 +42,11 @@ my $mode = shift @ARGV unless $ARGV[0] =~/^-/;
 &run_sam   if $mode eq "sam";
 &run_sam2b if $mode eq "sam2b";
 &run_sam2c if $mode eq "sam2c";
+&run_mfreq if $mode eq "mfreq";
+
 # Main end
 
-&verbose("[log] All done!\n");
+&verbose(" [All done!]\n");
 
 exit;
 
@@ -668,4 +671,75 @@ sub samc{
       $$b2c{$h[0]}{$h[1]}{'T'} += $ct * 2;
     }
   }
+}
+
+################################################################################
+# mash sketch frequency of bins
+################################################################################
+sub usage4mfreq {
+  my $msg = shift;
+  print <<USAGE;
+$msg
+usage [v0.1] :
+  beadStat freq -i <freq> -o <tsv>
+    -i  msh sketch frequcney file
+    -t  msh sketch tabluar file
+    -o  output, tsv format
+    -v  verbose
+    -h  show help info
+USAGE
+}
+
+sub run_mfreq {
+  &usage4mfreq("Stat sketch bins numbers and top frequency in each bead from mash") && exit unless @ARGV;
+  my ($msh,$tab,$out);
+  GetOptions(
+    "i=s" => \$msh,
+    "t=s" => \$tab,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4mfreq("stat sketch bins numbers and top frequency in each bead from mash") && exit if $help;
+  &verbose("[mfreq] Mode start ... \r");
+  #Init
+  open MSH,"<$msh" or die "Cannot open alignment file: $msh.\n";
+  open TAB,"<$tab" or die "Cannot open alignment file: $tab.\n";
+  open OUT,">$out" or die "Cannot open output file: $out.\n";
+  my ($binsCount,$freqCount,$preBB,%BINS,$line);
+  while(<MSH>){
+    chomp;
+    my @s = split;
+    next if $s[0] =~ /^#|0000/;
+    if($s[0] ne $preBB && $preBB ne ""){
+      &freqWrite($preBB,$binsCount,$freqCount,\%BINS);
+      ($freqCount,$binsCount,%BINS) = (0,0,());
+    }
+    $BINS{$s[1]} = $s[2];
+    $freqCount += $s[2];
+    $binsCount ++;
+    $preBB = $s[0];
+    $line ++;
+    #verbose
+    if($line % 100000 == 0 ){
+      &verbose(sprintf("[mfreq] Processing | line: %9d | BB: %14s ...\r", $line, $preBB));
+    }
+  }
+  &verbose(sprintf("[mfreq] Processed  | line: %9d | BB: %14s ", $line, $preBB));
+  &freqWrite($preBB,$binsCount,$freqCount,\%BINS);
+  close MSH; close TAB;
+  close OUT;
+  &verbose("[DONE]");
+}
+
+sub freqWrite{
+  my $i = shift; my $c = shift; my $f = shift; my $H = shift;
+  my @k = sort { $b <=> $a } values %$H;
+
+  my @s = ("",0,0);
+  while($s[0] ne $i){
+    chomp(my $t = <TAB>);
+    @s = split /\t+|\s+/, $t ;
+  }
+  print OUT "$i\t$s[1]\t$s[2]\t$c\t$f\t$k[0]\t$k[1]\n";
 }
