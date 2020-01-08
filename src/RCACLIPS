@@ -103,7 +103,8 @@ while(<INF>){
   my $seq = join('',@a);
   next if $id eq "";
   $sLen = length($seq);
-  my @a = split(/\t|\s/,$id);
+  my @a = split(/\t|\s+/,$id);
+  (my $id2 = $id) =~ s/\s+/_/g;
   my @ks = ();
   foreach my $p (sort {$a<=>$b} keys %{$ADP{$a[0]}}){
     push @ks, $p if $ADP{$a[0]}{$p}{N} eq "RCA";
@@ -111,8 +112,8 @@ while(<INF>){
   if(@ks == 0){
     my ($mode,$SEQ,$msg) = &dealAdaptor($a[0],1,$sLen,$seq);
     $sLen = length($SEQ);
-    &verbose("[CLIP] $a[0]\_C-\_$mode\_$sLen\t$msg\n");
-    print OUT ">$a[0]\_C-\_$mode\_$sLen\n$SEQ\n";
+    &verbose("[CLIP] $id2\_C-\_$mode\_$sLen\t$msg\n");
+    print OUT ">$id2\_C-\_$mode\_$sLen\n$SEQ\n";
   }else{
     #pick flank left side of the first RCA adaptor:
     my ($mode0,$flank0,$msg0) = &dealAdaptor($a[0],1,$ks[0],$seq);
@@ -121,8 +122,8 @@ while(<INF>){
     for(my $i=0;$i<$#ks;$i++){
       my ($mode,$flank,$msg) = &dealAdaptor($a[0],$ADP{$a[0]}{$ks[$i]}{E},$ks[$i+1],$seq);
       my $fLen = length($flank);
-      print OUT ">$a[0]\_C".($i+1)."\_$mode\_$fLen\n$flank\n" if $fLen >= $minLen;
-      &verbose("[CLIP] $a[0]\_C".($i+1)."\_$mode\_$fLen\t$msg\n");
+      print OUT ">$id2\_C".($i+1)."\_$mode\_$fLen\n$flank\n" if $fLen >= $minLen;
+      &verbose("[CLIP] $id2\_C".($i+1)."\_$mode\_$fLen\t$msg\n");
     }
     #pick flank right side of the last RCA adaptor:
     my ($mode1,$flank1,$msg1) = &dealAdaptor($a[0],$ADP{$a[0]}{$ks[$#ks]}{E},$sLen,$seq);
@@ -155,20 +156,20 @@ while(<INF>){
       }
     }
     if($join){
-      print OUT ">$a[0]\_C".($#ks+1)."0\_$mode1&$mode0\_".length($join)."\n$join\n";
-      &verbose("[CLIP] $a[0]\_C".($#ks+1)."0\_$mode1&$mode0\_".length($join)."\t$msg1&$msg0\n");
+      print OUT ">$id2\_C".($#ks+1)."0\_$mode1&$mode0\_".length($join)."\n$join\n";
+      &verbose("[CLIP] $id2\_C".($#ks+1)."0\_$mode1&$mode0\_".length($join)."\t$msg1&$msg0\n");
     }else{
       if($fl1 >= $minLen){
-        print OUT ">$a[0]\_C".($#ks+1)."\_$mode1\_$fl1\n$flank1\n";
-        &verbose("[CLIP] $a[0]\_C".($#ks+1)."\_$mode1\_$fl1\t$msg1\n");
+        print OUT ">$id2\_C".($#ks+1)."\_$mode1\_$fl1\n$flank1\n";
+        &verbose("[CLIP] $id2\_C".($#ks+1)."\_$mode1\_$fl1\t$msg1\n");
       }else{
-        &verbose("[CLIP] $a[0]\_C".($#ks+1)."\_$mode0\_$fl1\t#skip(<$minLen)\n")
+        &verbose("[CLIP] $id2\_C".($#ks+1)."\_$mode0\_$fl1\t#skip(<$minLen)\n")
       }
       if($fl0 >= $minLen){
-        print OUT ">$a[0]\_C0\_$mode0\_$fl0\n$flank0\n";
-        &verbose("[CLIP] $a[0]\_C0\_$mode0\_$fl1\t$msg0\n");
+        print OUT ">$id2\_C0\_$mode0\_$fl0\n$flank0\n";
+        &verbose("[CLIP] $id2\_C0\_$mode0\_$fl1\t$msg0\n");
       }else{
-        &verbose("[CLIP] $a[0]\_C0\_$mode0\_$fl0\t#skip(<$minLen)\n")
+        &verbose("[CLIP] $id2\_C0\_$mode0\_$fl0\t#skip(<$minLen)\n")
       }
     }
   }
