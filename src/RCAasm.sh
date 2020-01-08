@@ -45,7 +45,7 @@ elif [ $mode == "megahit" ]; then
   rdir="megahit";
   scaf="$samDir/$ASB/$subDir/$rdir/final.contigs.fa"
 fi
-
+clip="$samDir/$ASB/$subDir/$rdir/RCAclip.fa"
 
 echo [BC] Barcode cluster assembly pipeline start:
 echo [BC] info: sample directory: $samDir/$ASB/$subDir
@@ -105,6 +105,13 @@ else
     echo "[BC] megahit selected."
     megahit --k-min 21 --k-step 22 --k-max 121  -m $mem -t $cpu \
     -1 $samDir/$ASB/$subDir/sort.1.fq -2 $samDir/$ASB/$subDir/sort.2.fq \
-    -o $samDir/$ASB/$subDir/$rdir
+    -o $samDir/$ASB/$subDir/$rdir &> $samDir/$ASB/$subDir/megahit.log
   fi
 fi
+
+echo
+echo "Run RCACLIP"
+cmd="metabbq RCACLIPS -i $scaf -o $clip -v 2> ${clip/fa/log}"
+echo "exec: $cmd"
+$cmd
+echo "DONE"
