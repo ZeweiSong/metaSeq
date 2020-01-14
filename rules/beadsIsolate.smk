@@ -8,13 +8,92 @@
 
 configfile: "config.yaml"
 
-rule BIA_0_cutoff:
-    input: "{sample}/clean/fastp.sort.1.fq.idx"
-    output: "{sample}/Assemble_BI/ID.lst"
+rule BIA_0_cutoffOLD:
+    input:
+        idx = "{sample}/clean/fastp.sort.1.fq.idx",
+        bbs = "{sample}/clean/BB.stat"
+    output: "{sample}/Assemble_BI/ID.lst.old"
     params:
         p_rpb  = config["p_rpb_min"]
     shell:
-        "awk '(!/0000/&&(($3-$2+1)/4)>{params.p_rpb}){{print FNR\"\\t\"$1\"\\t\"($3-$2+1)/4}}' {input} > {output}"
+        "rpb3k=`awk '($3>3000){{print $2;exit}}' {input.bbs}`\n"
+        "awk -v p3=$rpb3k 'BEGIN{{if(p3<{params.p_rpb}){{rpb=p3}}else{{rpb={params.p_rpb}}}}}(!/0000/&&(($3-$2+1)/4)>rpb){{print FNR\"\\t\"$1\"\\t\"($3-$2+1)/4}}' {input.idx} > {output}"
+
+rule BIA_0_sketchOLD:
+    input:
+        id = "{sample}/clean/fastp.sort.1.fq.idx",
+        x1 = "{sample}/clean/fastp.sort.1.fq",
+        x2 = "{sample}/clean/fastp.sort.2.fq",
+        bb = "{sample}/clean/BB.stat"
+    output:  "{sample}/mash/allBeads.msh"
+    params:
+        pfx = "{sample}/mash/allBeads",
+        k   = config["p_dist_k"],
+        s   = config["p_dist_s"]
+    resources:
+        mem_mb=120000
+    threads: 6
+    shell:
+        "mash sketch -p {threads} -k {params.k} -s {params.s} -r -B {input.x1} {input.x2} -o {params.pfx}"
+
+rule BIA_0_cutoff:
+	input:
+		id = "{sample}/clean/fastp.sort.1.fq.idx",
+		x1 = "{sample}/clean/fastp.sort.1.fq",
+		x2 = "{sample}/clean/fastp.sort.2.fq",
+		bb = "{sample}/clean/BB.stat"
+	output:
+		x1 = "{sample}/mash/BI.1.fq",
+		x2 = "{sample}/mash/BI.2.fq"
+	params:
+		pfx = "{sample}/mash/BI",
+		minR= config['p_cluster_minR'],
+		maxR= config['p_cluster_maxR'],
+		topB= config['p_cluster_topB'],
+		ranP= config['p_cluster_ranP'],
+		k   = config["p_dist_k"],
+		s   = config["p_dist_s"]
+	threads: 2
+	shell:
+		"export maxC={params.maxR}\nexport minC={params.minR}\n"
+		"echo choose minc = $minC , maxc = $maxC \n"
+		"metabbq binWrite fqpick -x {input.id} -c {params.minR} -m {params.maxR} -b {params.topB} -r {params.ranP} -i {input.x1} -o {output.x1} & \n"
+		"metabbq binWrite fqpick -x {input.id} -c {params.minR} -m {params.maxR} -b {params.topB} -r {params.ranP} -i {input.x2} -o {output.x2} && wait\n"
+
+rule BIA_0_sketch:
+	input:
+		x1 = "{sample}/mash/BI.1.fq",
+		x2 = "{sample}/mash/BI.2.fq",
+	output:  "{sample}/mash/BI.msh"
+	params:
+		pfx = "{sample}/mash/BI",
+		k   = config["p_dist_k"],
+		s   = config["p_dist_s"]
+	resources:
+		mem_mb=120000
+	threads: 36
+	shell:
+		"mash sketch -p 8 -k {params.k} -s {params.s} -r -B {input.x1} {input.x2} -o {params.pfx}"
+
+rule BIA_1_mashstat:
+    input: "{sample}/mash/BI.msh"
+    output: "{sample}/mash/BI.msh.tsv"
+    resources:
+        mem_mb=80000
+    threads: 36
+    shell:
+        "mash info -t {input}| perl -ne 'if($_=~/\d+\\t(\d+)\\t(\S+)\\t\[(\d+) /){{print \"$2\\t$3\\t$1\\n\"}}' > {output}\n"
+
+rule BIA_1_getBIs:
+    input: "{sample}/mash/BI.msh.tsv"
+    output: "{sample}/Assemble_BI/ID.lst"
+    params:
+        k   = config["p_asm_minKmers"],
+        n   = (config["i_rdLen"] - config["p_dist_k"] + 1) * config["i_seqPair"],
+        c   = config["p_asm_minKmerCoverage"]
+    shell:
+        "awk '$1!~/0000/&&$3>{params.k}&&$2*{params.n}/$3>{params.c}{{print FNR\"\\t\"$0}}' {input} > {output}"
+
 
 rule BIA_1_write:
     input:
@@ -23,10 +102,10 @@ rule BIA_1_write:
         bi = "{sample}/Assemble_BI/ID.lst"
     output: "{sample}/Assemble_BI/log"
     params:
-        outDir = "{sample}/Assemble_BI",
-        threads = config["threads"]
+        outDir = "{sample}/Assemble_BI"
+    threads: 2
     shell:
-        "metabbq beadsWrite3.pl -d {input.bi} -f fq -t 4 -o {params.outDir} -v "
+        "metabbq beadsWrite.pl -d {input.bi} -f fq -t {threads} -o {params.outDir} -v "
         "--r1 {input.s1}  --r2 {input.s2} &> {output}\n"
 
 rule BIA_2_initASMsh:
@@ -41,12 +120,14 @@ rule BIA_2_initASMsh:
         mem    = config["p_asm_mem"],
         cpu    = config["p_asm_cpu"]
     shell:
-        "for i in `sort -k2,2nr {input.bi} | cut -f1`; do "
+        "for i in `cut -f1 {input.bi}`; do "
         "echo metabbq RCAasm.sh {params.mode} {params.samDir} BI $i BI {params.mem} {params.cpu} ; done > {output}\n"
 
-outXs = "{sample}/summary.BI." + str(config["method"]["assemble"]["mode"]) + ".contig.tsv"
+outPfx="{sample}/summary.BI." + str(config["method"]["assemble"]["mode"])
 outXa= "{sample}/summary.BI." + str(config["method"]["assemble"]["mode"]) + ".contig.fasta"
 outXn= "{sample}/summary.BI." + str(config["method"]["assemble"]["mode"]) + ".contig.anno"
+
+outXc= outPfx + ".clip.fasta"
 
 rule BIA_3_assemble:
     input: "{sample}/batch.assemble.BI.sh"
@@ -55,6 +136,7 @@ rule BIA_3_assemble:
         divide = config['divideSH'],
         dpfx = "{sample}/sp.BI.",
         dir  = "{sample}"
+    threads: config['divideSH'] * config["p_asm_cpu"]
     shell:
         """
 # 0. Run assembly one by one
@@ -78,12 +160,14 @@ rule BIA_4_summary1:
         """
 # 1. pick robust assemble fasta
 for i in `ls {params.outDir}|grep BI`;do
-  metabbq clusterHelper asmPick -l {params.mAsm} -b $i -i {params.outDir}/$i/{params.mode}/final.contigs.fa
+  if [ -s {params.outDir}/$i/{params.mode}/final.contigs.fa ]; then
+    metabbq clusterHelper asmPick -l {params.mAsm} -b $i -i {params.outDir}/$i/{params.mode}/final.contigs.fa
+  fi
 done > {output.fa}
         """
-
+outXs = "{sample}/summary.BI." + str(config["method"]["assemble"]["mode"]) + ".contig.tsv"
 rule BIA_4_summary2:
-    input: outXa
+    input: "{sample}/log/batch.assemble.BI.done"
     output:
         stat = outXs
     params:
@@ -96,22 +180,33 @@ rule BIA_4_summary2:
         """
 # 2. stat assemble results
 for i in `ls {params.outDir}|grep BI`;do
-  awk -v bc=$i '/^>/{{print bc"\\t"$0}}' {params.outDir}/$i/{params.mode}/final.contigs.fa | sed 's/>//;s/ flag=/\\t/;s/ multi=/\\t/;s/ len=/\\t/'
+  if [ -s {params.outDir}/$i/{params.mode}/final.contigs.fa ]; then
+    awk -v bc=$i '/^>/{{print bc"\\t"$0}}' {params.outDir}/$i/{params.mode}/final.contigs.fa | sed 's/>//;s/ flag=/\\t/;s/ multi=/\\t/;s/ len=/\\t/'
+  fi
 done > {output.stat}
         """
 
-outPfx="{sample}/summary.BI." + str(config["method"]["assemble"]["mode"])
-outXd= "{sample}/summary.BI." + str(config["method"]["assemble"]["mode"]) + ".contig.fasta"
-outXc= "{sample}/summary.BI." + str(config["method"]["assemble"]["mode"]) + ".clip.fasta"
-rule BIA_5_RCACLIP:
-    input: outXa
-    output: outXc
+
+rule BIA_4_summary3:
+    input: "{sample}/log/batch.assemble.BI.done"
+    output:
+        fa   = outXc
     params:
-        A = config['AdRCA'],
-        F = config['pmrFwd'],
-        R = config['pmrRev']
+        divide = config['divideSH'],
+        dpfx = "{sample}/sp.BI.",
+        outDir = "{sample}/Assemble_BI",
+        mAsm   = config["p_asm_min"],
+        mode   = config["method"]["assemble"]["mode"]
     shell:
-        "metabbq RCACLIPS -a {params.A} -fwd {params.F} -rev {params.R} -i {input} -o {output} -v 2> {output}.log"
+        """
+# 3. pick RCA clip fasta
+for i in `ls {params.outDir}|grep BI`;do
+  if [ -s {params.outDir}/$i/{params.mode}/RCAclip.fa ]; then
+    #metabbq clusterHelper clipPick -l {params.mAsm} -b $i -i {params.outDir}/$i/{params.mode}/RCAclip.fa
+    awk -v b=$i 'FNR%2==1{{sub(">",">"b"_",$0);id=$0}}FNR%2==0{{if(length($0)>={params.mAsm}){{print id"\\n"$0}}}}' {params.outDir}/$i/{params.mode}/RCAclip.fa
+  fi
+done > {output.fa}
+        """
 
 outRc= "{sample}/summary.BI." + str(config["method"]["assemble"]["mode"]) + ".rRNA.fasta"
 if config["sampleType"] == "F":
