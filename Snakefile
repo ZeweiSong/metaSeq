@@ -30,3 +30,6 @@ include: "rules/beadsIsolate.smk"
 
 # Module #04: binning method
 include: "rules/athena.smk"
+
+# Module testing
+include: "rules/testing.smk"
