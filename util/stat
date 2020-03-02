@@ -1,0 +1,394 @@
+#!/usr/bin/env perl
+# (c) 2016 - 2019 Chao IN-HORSE SHARE ONLY
+# ===================================================================
+# Description:       stat from results.
+# Author:            Chao | fangchao@genomics.cn
+# Version:           v0.1
+# Last modified:     07 Feb 2020 (since 07 Feb 2020)
+# ===================================================================
+# see detail below
+use strict;
+use Getopt::Long;
+my($verbose,$help);
+sub usage {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  beadStat <mode> [option]
+  command:
+    RSU     grep info from robosome subunit sequence file
+
+options:  Defined according to the mode and cmd you chosed.
+USAGE
+}
+
+&usage("stat from results") && exit if @ARGV == 0 || $ARGV[0] eq "-h";
+
+my $cmd = shift @ARGV unless $ARGV[0] =~/^-/;
+
+# Main start
+&run_rsu    if $cmd eq "RSU";
+&run_basic  if $cmd eq "basic";
+&run_slv    if $cmd eq "slv";
+# Main end
+
+&verbose(" [All done!]\n");
+
+exit;
+
+################################################################################
+# Sub functions
+################################################################################
+sub verbose{
+  my $msg = shift;
+  print STDERR $msg if $verbose;
+}
+
+sub usage4basic {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  $0 basic -p path/to/output [-n sample_name] [-o output_file]
+    -p  path to output directory.
+    -n  sample name. Use directory name if not specified.
+    -o  output YAML format file. STDOUT if ignored.
+    -v  verbose
+    -h  show help info
+USAGE
+
+}
+
+sub run_basic {
+  use File::Basename;
+  &usage4basic("Grep basic information.") && exit unless @ARGV;
+  my ($dir,$sam,$out,$verbose,$help);
+  GetOptions(
+    "p=s" => \$dir,
+    "n=s" => \$sam,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4basic("Grep basic information.") && exit if $help;
+  my (%INFO,$get);
+  $sam ||= basename($dir);
+  open OUT, ($out)?">$out":">-" or die $!;
+
+  &verbose(" [basic] start ... \n");
+  $get = "$dir/clean/fastp.sort.1.fq.idx";
+  if(-e $get ){
+    $_ = `tail -n1 $get`;
+    my @s = split;
+    my $count = $s[2]/4;
+    $INFO{'QC'}{'reads'} = $count;
+  };
+  $get = "$dir/clean/BB.stat";
+  if(-e $get){
+    $_ = `tail -n1 $get`;
+    my @s = split;
+    $INFO{'BB'}{'reads'} = $s[2];
+    $INFO{'BB'}{'singleton'} = $s[0];
+  };
+  $get = "$dir/Assemble_BI/ID.lst";
+  if(-e $get){
+    $_ = `wc -l $get`;
+    my @s = split;
+    $INFO{'ASM'}{'beads'} = $s[0];
+  };
+  $get = "$dir/summary.BI.megahit.clip.fasta";
+  if(-e $get){
+    $_ = `grep "^>" $get|wc -l`;
+    my @s = split;
+    $INFO{'ASM'}{'clips'} = $s[0];
+  };
+
+}
+
+
+sub usage4rsu {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  $0 RSU -l LSU.fa -s SSU.fa [-o output_file]
+    -l  LSU fasta file
+    -s  SSU fasta file
+    -o  output file. STDOUT if ignored.
+    -v  verbose
+    -h  show help info
+USAGE
+}
+
+sub run_rsu {
+  &usage4rsu("Grep info from robosome subunit sequence files.") && exit unless @ARGV;
+  my (%CLUST);
+  my ($inL,$inS,$out,$verbose,$help);
+  GetOptions(
+    "l=s" => \$inL,
+    "s=s" => \$inS,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4rsu("Grep info from robosome subunit sequence files.") && exit if $help;
+  open OUT, ($out)?"|sort -k1 -nk2 >$out":"|sort -k1 -nk2 >-" or die $!;
+
+  &verbose(" [RSU] start ... \n");
+  #Here is the shorts for each column. Find more detail in VSEARCH manual.
+  ##   0         1       2            3            4  5  6      7     8        9##
+  ##Type  #Cluster  length  similarity%  orientation  *  *  CIGAR query centroid##
+  open INF, "grep --no-filename '^>' $inL $inS|" or die $!;
+  while(<INF>){
+    #$_ =~ /^>(\S+)_rRNA::(BI\d+)_(k\d+)_(\d+)_flag=([123])_multi=(\f+)_len=(\d+)_(C\S+)_\((\S+)\)_(\d+):(\d+)-(\d+)\(([+-])\)/;
+    $_ =~ /^>(\S+)_rRNA::(BI\d+)_(k\d+)_(\d+)_flag=([123])_multi=(\S+)_len=(\d+)_(C\S+)_(\S+)_(\d+):(\d+)-(\d+)\(([+-])\)$/;
+    print OUT "$2\t$4\t$1\t$3\t$5\t$6\t$7\t$8\t$9\t$10\t$11\t$12\t$13\n";
+  }
+  close INF;
+  &verbose(" [RSU] Done! \n");
+  close OUT;
+}
+
+sub usage4slv {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  $0 RSU -l LSU.m6.more -s SSU.m6.more [-o output_file]
+    -l  sorted LSU blast m6 format file
+    -s  sorted SSU blast m6 format file
+    -o  output file. STDOUT if ignored.
+    -v  verbose
+    -h  show help info
+USAGE
+}
+
+sub run_slv {
+  &usage4slv("Combine annotation from robosome subunit to SILVA blast results.") && exit unless @ARGV;
+  my ($inL,$inS,$out,$log);
+  GetOptions(
+    "l=s" => \$inL,
+    "s=s" => \$inS,
+    "o=s" => \$out,
+    "g=s" => \$log,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4slv("Combine annotation from robosome subunit to SILVA blast results.") && exit if $help;
+  #set cutoff for a valid unit hit:
+  our ($UNIT_LEN,$UNIT_IDENT) = (400,95);
+
+  open OUT, ($out)?"> $out":">-" or die $!;
+  open LOG, "> $log" or die $!;
+  &verbose(" [SLV] start ... \n");
+  # Here is the shorts for each column. Find more detail in blastn manual.
+  ##      0       1      2      3        4       5      6    7      8    9     10       11   12   13   14##
+  ##qaccver saccver pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen name path##
+  open INL, "< $inL" or die $!;
+  open INS, "< $inS" or die $!;
+
+  my ($runS, $runL, $pNS, $pNL, $pBS, $pBL) = (1,1,,,,);
+  my ($countS, $countL, $pCS, $pCL) = (0,0,0,0);
+  my ($cCount,$cBPathLv,@pBB, $cBPath, $cName)=(1,0,,);
+  my $rdS=<INS>; my ($BS, $NS, @iS) = &getSlvInfo($rdS); $pNS = $NS;
+  my $rdL=<INL>; my ($BL, $NL, @iL) = &getSlvInfo($rdL); $pNL = $NL;
+  #start looping:
+  while($runS && $runL){
+    while($runS && $NS lt $NL){
+      $countS ++; my @ranks = split(";",$iS[16]);
+      my $mlv;  for($mlv=0;$mlv<@ranks;$mlv++){if($ranks[$mlv] eq ""){last}}; $mlv--;
+      my $trustRSU = ($iS[2]>$UNIT_IDENT&&$iS[3]>$UNIT_LEN)?"SSU":"NONE";
+      print OUT "$NS\t$trustRSU\t$iS[2]\tNA\t$iS[12]\t$mlv\t$ranks[$mlv]\t$iS[0]";
+      for(my $i=1;$i<=16;$i++){print OUT "\t$iS[$i]"};
+      for(my $i=1;$i<=16;$i++){print OUT "\tNA"};
+      print OUT "\n";
+      #summary for each BI
+      if($trustRSU eq "SSU"){
+        ($pBS,$cCount,$cBPathLv,$cBPath, $cName) = &compareBS($BS,$pBS,$cCount,$cBPathLv,$cBPath,$iS[16],$cName);
+      }
+
+      #read a new line:
+      while($NS eq $pNS){($BS, $NS, @iS) = &getSlvInfo($rdS=<INS>);}
+      $runS = 0 && close INS if $rdS eq <EOF>; $pNS = $NS;
+    }
+    while($NS eq $NL && $NS ne <EOF>){
+      $countS ++; $countL ++;
+      my ($trustRSU, $maxIdent, $delta, $range, $consistLv, $consistPath, $cName2) = &compareNS(\@iS,\@iL);
+      print OUT "$NS\t$trustRSU\t$maxIdent\t$delta\t$range\t$consistLv\t$cName2\t$iS[0]";
+      for(my $i=1;$i<=16;$i++){print OUT "\t$iS[$i]"};
+      for(my $i=1;$i<=16;$i++){print OUT "\t$iL[$i]"};
+      print OUT "\n";
+      #summary for each BI
+      unless($trustRSU eq "NONE"){
+        my $p;
+        if($trustRSU =~ /Both|Either|UNK/){
+          (my $lv, $p, my $cn) = &comparePath($iS[16],$iL[16]);
+        }elsif($trustRSU eq "SSU"){
+          $p = $iS[16];
+        }elsif($trustRSU eq "LSU"){
+          $p = $iL[16];
+        }
+        ($pBS,$cCount,$cBPathLv,$cBPath, $cName) = &compareBS($BS,$pBS,$cCount,$cBPathLv,$cBPath,$p, $cName);
+      }
+      #read a new line:
+      while($NS eq $pNS){($BS, $NS, @iS) = &getSlvInfo($rdS=<INS>);}
+      $pNS = $NS; $runS = 0 && close INS if $rdS eq <EOF>;
+      while($NL eq $pNL){($BL, $NL, @iL) = &getSlvInfo($rdL=<INL>);}
+      $pNL = $NL; $runL = 0 && close INL if $rdL eq <EOF>;
+    }
+    while($runL && $NS gt $NL){
+      $countL ++; my @ranks = split(";",$iL[16]);
+      my $mlv;  for($mlv=0;$mlv<@ranks;$mlv++){if($ranks[$mlv] eq ""){last}}; $mlv--;
+      my $trustRSU = ($iL[2]>$UNIT_IDENT&&$iL[3]>$UNIT_LEN)?"LSU":"NONE";
+      print OUT "$NL\t$trustRSU\t$iL[2]\tNA\t$iL[12]\t$mlv\t$ranks[$mlv]\t$iL[0]";
+      for(my $i=1;$i<=16;$i++){print OUT "\tNA"};
+      for(my $i=1;$i<=16;$i++){print OUT "\t$iL[$i]"};
+      print OUT "\n";
+      #summary for each BI
+      if($trustRSU eq "LSU"){
+        ($pBS,$cCount,$cBPathLv,$cBPath, $cName) = &compareBS($BS,$pBS,$cCount,$cBPathLv,$cBPath,$iL[16], $cName);
+      }
+      #read a new line:
+      while($NL eq $pNL){($BL, $NL, @iL) = &getSlvInfo($rdL=<INL>);}
+      $pNL = $NL; $runL = 0 && close INL if $rdL eq <EOF>;
+    }
+
+    if(int($countS/1000) > $pCS || int($countL/1000) > $pCL){
+      &verbose(sprintf(" [SLV] Processing | SSU: %6d | LSU: %6d \r", $countS, $countL));
+      ($pCS,$pCL) = (int($countS/1000),int($countL/1000));
+    }
+  }
+  # When only one file left:
+  while($runS){
+    $countS ++; my @ranks = split(";",$iS[16]);
+    my $mlv;  for($mlv=0;$mlv<@ranks;$mlv++){if($ranks[$mlv] eq ""){last}}; $mlv--;
+    my $trustRSU = ($iS[2]>$UNIT_IDENT&&$iS[3]>$UNIT_LEN)?"SSU":"NONE";
+    print OUT "$NS\tSSU\t$iS[2]\tNA\t$iS[12]\t$mlv\t$ranks[$mlv]\t$iS[0]";
+    for(my $i=1;$i<=16;$i++){print OUT "\t$iS[$i]"};
+    for(my $i=1;$i<=16;$i++){print OUT "\tNA"};
+    print OUT "\n";
+    #summary for each BI
+    if($trustRSU eq "SSU"){
+      ($pBS,$cCount,$cBPathLv,$cBPath, $cName) = &compareBS($BS,$pBS,$cCount,$cBPathLv,$cBPath,$iS[16], $cName);
+    }
+    #read a new line:
+    while($NS eq $pNS){($BS, $NS, @iS) = &getSlvInfo($rdS=<INS>);}
+    $pNS = $NS; $runS = 0 && close INS if $rdS eq <EOF>;
+  }
+  while($runL){
+    $countL ++; my @ranks = split(";",$iL[16]);
+    my $mlv;  for($mlv=0;$mlv<@ranks;$mlv++){if($ranks[$mlv] eq ""){last}}; $mlv--;
+    my $trustRSU = ($iL[2]>$UNIT_IDENT&&$iL[3]>$UNIT_LEN)?"LSU":"NONE";
+    print OUT "$NL\t$trustRSU\t$iL[2]\tNA\t$iL[12]\t$mlv\t$ranks[$mlv]\t$iL[0]";
+    for(my $i=1;$i<=16;$i++){print OUT "\tNA"};
+    for(my $i=1;$i<=16;$i++){print OUT "\t$iL[$i]"};
+    print OUT "\n";
+    #summary for each BI
+    if($trustRSU eq "LSU"){
+      ($pBS,$cCount,$cBPathLv,$cBPath, $cName) = &compareBS($BS,$pBS,$cCount,$cBPathLv,$cBPath,$iL[16], $cName);
+    }
+    #read a new line:
+    while($NL eq $pNL){($BL, $NL, @iL) = &getSlvInfo($rdL=<INL>);}
+    $pNL = $NL; $runL = 0 && close INL if $rdL eq <EOF>;
+  }
+  &verbose(sprintf(" [SLV] Processing | SSU: %6d | LSU: %6d \n", $countS, $countL));
+  unless($runS){close INS; &verbose(" [SLV] SSU file closed.\n") };
+  unless($runL){close INL; &verbose(" [SLV] LSU file closed.\n") };
+  # output report columns defination.
+  ##     0         1        2          3          4               5       6 ##
+  ## BB_No trustUnit maxIdent unitsDelta unitsRange consistentLevel qaccver ##
+  ## (SSU) 7      8      9       10      11     12   13     14   15     16       17   18   19   20 ##
+  ## saccver pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen name path ##
+  ## (LSU)21     22     23       24      25     26   27     28   29     30       31   32   33   34 ##
+  ## saccver pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen name path ##
+  close OUT;
+  # log report columns defination.
+  ##  0     1               2              3 ##
+  ## BB clips consistentLevel consistentPath ##
+  close LOG;
+  &verbose(" [SLV] Done! \n");
+}
+
+sub getSlvInfo{
+  chomp(my $r = shift); my @s = split(/\t/,$r); my @i= split ("_",$s[0]);
+  unless ($r eq <EOF>){
+    return($i[0], "$i[0]\_$i[2]", @s)
+  }else{
+    return($i[0], "", @s);
+  }
+}
+
+sub comparePath{
+  my $S = shift; my $L = shift; my($cLv,$cPath);
+  my @Spath = split(";",$S); my @Lpath = split(";",$L);
+  my $maxLv = ($#Spath<$#Lpath)?$#Spath:$#Lpath;
+  for($cLv=0; $cLv<=$maxLv; $cLv++){
+    if($Spath[$cLv] eq $Lpath[$cLv] && $Spath[$cLv] !~/^(|unidentified)$/){
+      $cPath .= (($cLv>0)?";":"").$Spath[$cLv];
+    }else{
+      last;
+    }
+  }
+  $cLv--;
+  return($cLv,$cPath,($cLv<0)?"NA":$Spath[$cLv]);
+}
+
+sub compareNS{
+  my $S = shift; my $L = shift; my ($unit,$ident,$dlt,$rng,$subset,$cLv,$cPath,$cName2);
+  #Get higher identity
+  $ident = ($$S[2]>=$$L[2])?$$S[2]:$$L[2];
+  #Get relationshiop of ranges of SSU and LSU
+  my ($ss,$se,$ls,$le) = ($$S[6]<$$L[6])?($$S[6],$$S[7],$$L[6],$$L[7]):($$L[6],$$L[7],$$S[6],$$S[7]);
+  if($le>$se){
+    $dlt = $ls - $se; $rng = $le - $ss; $subset = 0;
+  }else{
+    $dlt = $ls - $le; $rng = $se - $ss; $subset = 1;
+  }
+
+  my $findSSU = ($$S[2]>95&&$$S[3]>400)?1:0;
+  my $findLSU = ($$L[2]>95&&$$L[3]>400)?1:0;
+  my $shortLen = ($$S[3] < $$L[3])?$$S[3]:$$L[3];
+  if($findSSU && $findLSU){
+    if($dlt / $shortLen <= -0.5){
+      if($$S[10] > $$L[10]){ $unit = "SSU" }elsif($$S[10] < $$L[10]){ $unit = "LSU" }else{
+        if($$S[3] > $$L[3]){ $unit = "SSU" }elsif($$S[3] < $$L[3]){ $unit = "LSU" }else{
+          if($$S[2] > $$L[2]){ $unit = "SSU" }elsif($$S[2] < $$L[2]){ $unit = "LSU" }else{
+            if($$S[13] eq $$L[13]){ $unit = "Either" }else{ $unit = "UNK"}
+          }
+        }
+      }
+    }elsif($dlt / $shortLen > -0.5){
+      $unit = "Both";
+    }
+  }elsif($findSSU){
+    $unit = "SSU";
+  }elsif($findLSU){
+    $unit = "LSU";
+  }else{
+    $unit = "NONE"
+  }
+
+  if($unit =~ /Both|Either|UNK/){
+    ($cLv,$cPath,$cName2) = &comparePath($$S[16],$$L[16]);
+  }else{
+    ($cLv,$cPath,$cName2) = ($unit == "SSU")?&comparePath($$S[16],$$S[16]):&comparePath($$L[16],$$L[16]);;
+  }
+  return($unit, $ident, $dlt, $rng, $cLv, $cPath, $cName2);
+}
+
+sub compareBS{
+  my $BS       = shift; my $pBS    = shift; my $cCount = shift;
+  my $cBPathLv = shift; my $cBPath = shift; my $pth    = shift;
+  my $cName    = shift;
+  if($BS eq $pBS){
+    $cCount ++;
+    ($cBPathLv,$cBPath, $cName) = &comparePath($cBPath,$pth);
+  }else{
+    print LOG "$pBS\t$cCount\t$cBPathLv\t$cName\t$cBPath\n" if $cBPathLv > 0;
+    ($cBPathLv, $cBPath, $cName) = &comparePath($pth,$pth);
+    $cCount = 1;
+    $pBS = $BS;
+  }
+  return($pBS,$cCount,$cBPathLv,$cBPath, $cName);
+}
