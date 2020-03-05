@@ -177,7 +177,7 @@ sub run_slv {
   );
   &usage4slv("Combine annotation from robosome subunit to SILVA blast results.") && exit if $help;
   #set cutoff for a valid unit hit:
-  our ($UNIT_LEN,$UNIT_IDENT) = (400,95);
+  our ($UNIT_LEN,$UNIT_IDENT) = (400,90);
 
   open OUT, ($out)?"> $out":">-" or die $!;
   open LOG, "> $log" or die $!;
@@ -188,7 +188,7 @@ sub run_slv {
   open INL, "< $inL" or die $!;
   open INS, "< $inS" or die $!;
 
-  my ($runS, $runL, $pNS, $pNL, $pBS, $pBL) = (1,1,,,,);
+  my ($runS, $runL, $pNS, $pNL, $pBS, $xBS, $pBL) = (1,1,,,,,);
   my ($countS, $countL, $pCS, $pCL) = (0,0,0,0);
   my ($cCount,$cBPathLv,@pBB, $cBPath, $cName)=(1,0,,);
   my $rdS=<INS>; my ($BS, $NS, @iS) = &getSlvInfo($rdS); $pNS = $NS;
@@ -199,7 +199,8 @@ sub run_slv {
       $countS ++; my @ranks = split(";",$iS[16]);
       my $mlv;  for($mlv=0;$mlv<@ranks;$mlv++){if($ranks[$mlv] eq ""){last}}; $mlv--;
       my $trustRSU = ($iS[2]>$UNIT_IDENT&&$iS[3]>$UNIT_LEN)?"SSU":"NONE";
-      print OUT "$NS\t$trustRSU\t$iS[2]\tNA\t$iS[12]\t$mlv\t$ranks[$mlv]\t$iS[0]";
+      my $sortMode = &sortMode(\@iS,\"");
+      print OUT "$NS\t$trustRSU\t$iS[2]\tNA\t$iS[12]\t$sortMode\t$mlv\t$ranks[$mlv]\t$iS[0]";
       for(my $i=1;$i<=16;$i++){print OUT "\t$iS[$i]"};
       for(my $i=1;$i<=16;$i++){print OUT "\tNA"};
       print OUT "\n";
@@ -208,40 +209,49 @@ sub run_slv {
         ($pBS,$cCount,$cBPathLv,$cBPath, $cName) = &compareBS($BS,$pBS,$cCount,$cBPathLv,$cBPath,$iS[16],$cName);
       }
 
-      #read a new line:
+      #prep for new line:
       while($NS eq $pNS){($BS, $NS, @iS) = &getSlvInfo($rdS=<INS>);}
       $runS = 0 && close INS if $rdS eq <EOF>; $pNS = $NS;
     }
     while($NS eq $NL && $NS ne <EOF>){
+      our %RSU = ();
       $countS ++; $countL ++;
-      my ($trustRSU, $maxIdent, $delta, $range, $consistLv, $consistPath, $cName2) = &compareNS(\@iS,\@iL);
-      print OUT "$NS\t$trustRSU\t$maxIdent\t$delta\t$range\t$consistLv\t$cName2\t$iS[0]";
-      for(my $i=1;$i<=16;$i++){print OUT "\t$iS[$i]"};
-      for(my $i=1;$i<=16;$i++){print OUT "\t$iL[$i]"};
-      print OUT "\n";
-      #summary for each BI
-      unless($trustRSU eq "NONE"){
-        my $p;
-        if($trustRSU =~ /Both|Either|UNK/){
-          (my $lv, $p, my $cn) = &comparePath($iS[16],$iL[16]);
-        }elsif($trustRSU eq "SSU"){
-          $p = $iS[16];
-        }elsif($trustRSU eq "LSU"){
-          $p = $iL[16];
+      while($NS eq $pNS){&saveAnno(\%RSU,\@iS,"S"); ($BS, $NS, @iS) = &getSlvInfo($rdS=<INS>);}
+      while($NL eq $pNL){&saveAnno(\%RSU,\@iL,"L"); ($BL, $NL, @iL) = &getSlvInfo($rdL=<INL>);}
+
+      my %BESTANNO = &getBestAnno(\%RSU);
+      foreach my $i(sort keys %BESTANNO){
+        my @piS = @{$RSU{$BESTANNO{$i}[0]}{"S"}}; my @piL = @{$RSU{$BESTANNO{$i}[1]}{"L"}};
+        my ($trustRSU, $maxIdent, $delta, $range, $consistLv, $consistPath, $cName2) = &compareNS(\@piS,\@piL);
+        my $sortMode = &sortMode(\@piS,\@piL);
+        print OUT "$pNS\t$trustRSU\t$maxIdent\t$delta\t$range\t$sortMode\t$consistLv\t$cName2\t$piS[0]";
+        for(my $i=1;$i<=16;$i++){print OUT "\t$piS[$i]"};
+        for(my $i=1;$i<=16;$i++){print OUT "\t$piL[$i]"};
+        print OUT "\n";
+        #summary for each BI
+        unless($trustRSU eq "NONE"){
+          my $p;
+          if($trustRSU =~ /Both|Either|UNK/){
+            (my $lv, $p, my $cn) = &comparePath($piS[16],$piL[16]);
+          }elsif($trustRSU eq "SSU"){
+            $p = $piS[16];
+          }elsif($trustRSU eq "LSU"){
+            $p = $piL[16];
+          }
+          ($pBS,$cCount,$cBPathLv,$cBPath, $cName) = &compareBS($xBS,$pBS,$cCount,$cBPathLv,$cBPath,$p, $cName);
         }
-        ($pBS,$cCount,$cBPathLv,$cBPath, $cName) = &compareBS($BS,$pBS,$cCount,$cBPathLv,$cBPath,$p, $cName);
       }
       #read a new line:
-      while($NS eq $pNS){($BS, $NS, @iS) = &getSlvInfo($rdS=<INS>);}
-      $pNS = $NS; $runS = 0 && close INS if $rdS eq <EOF>;
-      while($NL eq $pNL){($BL, $NL, @iL) = &getSlvInfo($rdL=<INL>);}
-      $pNL = $NL; $runL = 0 && close INL if $rdL eq <EOF>;
+      $xBS=$BS;
+      $pNS = $NS;  $runS = 0 && close INS if $rdS eq <EOF>;
+      $pNL = $NL;  $runL = 0 && close INL if $rdL eq <EOF>;
     }
     while($runL && $NS gt $NL){
       $countL ++; my @ranks = split(";",$iL[16]);
       my $mlv;  for($mlv=0;$mlv<@ranks;$mlv++){if($ranks[$mlv] eq ""){last}}; $mlv--;
       my $trustRSU = ($iL[2]>$UNIT_IDENT&&$iL[3]>$UNIT_LEN)?"LSU":"NONE";
-      print OUT "$NL\t$trustRSU\t$iL[2]\tNA\t$iL[12]\t$mlv\t$ranks[$mlv]\t$iL[0]";
+      my $sortMode = &sortMode(\"",\@iL);
+      print OUT "$NL\t$trustRSU\t$iL[2]\tNA\t$iL[12]\t$sortMode\t$mlv\t$ranks[$mlv]\t$iL[0]";
       for(my $i=1;$i<=16;$i++){print OUT "\tNA"};
       for(my $i=1;$i<=16;$i++){print OUT "\t$iL[$i]"};
       print OUT "\n";
@@ -264,7 +274,8 @@ sub run_slv {
     $countS ++; my @ranks = split(";",$iS[16]);
     my $mlv;  for($mlv=0;$mlv<@ranks;$mlv++){if($ranks[$mlv] eq ""){last}}; $mlv--;
     my $trustRSU = ($iS[2]>$UNIT_IDENT&&$iS[3]>$UNIT_LEN)?"SSU":"NONE";
-    print OUT "$NS\tSSU\t$iS[2]\tNA\t$iS[12]\t$mlv\t$ranks[$mlv]\t$iS[0]";
+    my $sortMode = &sortMode(\@iS,\"");
+    print OUT "$NS\tSSU\t$iS[2]\tNA\t$iS[12]\t$sortMode\t$mlv\t$ranks[$mlv]\t$iS[0]";
     for(my $i=1;$i<=16;$i++){print OUT "\t$iS[$i]"};
     for(my $i=1;$i<=16;$i++){print OUT "\tNA"};
     print OUT "\n";
@@ -280,7 +291,8 @@ sub run_slv {
     $countL ++; my @ranks = split(";",$iL[16]);
     my $mlv;  for($mlv=0;$mlv<@ranks;$mlv++){if($ranks[$mlv] eq ""){last}}; $mlv--;
     my $trustRSU = ($iL[2]>$UNIT_IDENT&&$iL[3]>$UNIT_LEN)?"LSU":"NONE";
-    print OUT "$NL\t$trustRSU\t$iL[2]\tNA\t$iL[12]\t$mlv\t$ranks[$mlv]\t$iL[0]";
+    my $sortMode = &sortMode(\"",\@iL);
+    print OUT "$NL\t$trustRSU\t$iL[2]\tNA\t$iL[12]\t$sortMode\t$mlv\t$ranks[$mlv]\t$iL[0]";
     for(my $i=1;$i<=16;$i++){print OUT "\tNA"};
     for(my $i=1;$i<=16;$i++){print OUT "\t$iL[$i]"};
     print OUT "\n";
@@ -334,6 +346,48 @@ sub comparePath{
   return($cLv,$cPath,($cLv<0)?"NA":$Spath[$cLv]);
 }
 
+sub sortMode{
+  my $S = shift; my $L = shift;
+  my $smd = "-----"; my $lmd = "-----";
+  my($sid,$sql,$sqs,$sqe,$sss,$sse);
+  my($lid,$lql,$lqs,$lqe,$lss,$lse);
+  if(ref $S eq "ARRAY"){
+    ($sid,$sql,$sqs,$sqe,$sss,$sse) = ($$S[1],$$S[12],$$S[6],$$S[7],$$S[8],$$S[9]);
+    my @sids = split(/\./,$sid); my $ssl = $sids[2] - $sids[1] + 1;
+    if($sss < $sse){  #forward
+      $smd = ($sss/$ssl<0.05)? '[':'-';
+      $smd .= ($sse/$ssl>0.95)? 'S>]':'S>-';
+    }else{            #reverse
+      $smd = ($sss/$ssl>0.95)? '[<':'-<';
+      $smd .= ($sse/$ssl<0.05)? 'S]':'S-';
+    }
+  }
+  if(ref $L eq "ARRAY"){
+    ($lid,$lql,$lqs,$lqe,$lss,$lse) = ($$L[1],$$L[12],$$L[6],$$L[7],$$L[8],$$L[9]);
+    my @lids = split(/\./,$lid); my $lsl = $lids[2] - $lids[1] + 1;
+    if($lss < $lse){  #forward
+      $lmd = ($lss/$lsl<0.05)? '[':'-';
+      $lmd .= ($lse/$lsl>0.95)? 'L>]':'L>-';
+    }else{            #reverse
+      $lmd = ($lss/$lsl>0.95)? '[<':'-<';
+      $lmd .= ($lse/$lsl<0.05)? 'L]':'L-';
+    }
+  }
+  $sqs ||= $lql - $lqs;
+  $lqs ||= $sql - $sqs;
+  my $res = "";
+  if($sqs < $lqs){    #SSU -> LSU
+    $res .= $smd;
+    $res .= ($sqe < $lqs)? '+':'x';
+    $res .= $lmd;
+  }else{              #LSU -> SSU
+    $res .= $lmd;
+    $res .= ($lqe < $sqs)? '+':'x';
+    $res .= $smd;
+  }
+  return($res)
+}
+
 sub compareNS{
   my $S = shift; my $L = shift; my ($unit,$ident,$dlt,$rng,$subset,$cLv,$cPath,$cName2);
   #Get higher identity
@@ -346,8 +400,8 @@ sub compareNS{
     $dlt = $ls - $le; $rng = $se - $ss; $subset = 1;
   }
 
-  my $findSSU = ($$S[2]>95&&$$S[3]>400)?1:0;
-  my $findLSU = ($$L[2]>95&&$$L[3]>400)?1:0;
+  my $findSSU = ($$S[2]>90&&$$S[3]>400)?1:0;
+  my $findLSU = ($$L[2]>90&&$$L[3]>400)?1:0;
   my $shortLen = ($$S[3] < $$L[3])?$$S[3]:$$L[3];
   if($findSSU && $findLSU){
     if($dlt / $shortLen <= -0.5){
@@ -391,4 +445,69 @@ sub compareBS{
     $pBS = $BS;
   }
   return($pBS,$cCount,$cBPathLv,$cBPath, $cName);
+}
+
+
+sub saveAnno{
+  my $H = shift; my $A = shift; my $t = shift;
+  unless(exists $$H{$$A[14]}{$t}){
+    $$H{$$A[14]}{$t} = [@$A];
+  }
+}
+
+sub getBestAnno{
+  my $R = shift;
+  my(%SS,%DS,@hSr,@hLr,@hRr,$ifD,%RES);
+  foreach my $r (keys %$R){
+    if(exists $$R{$r}{"S"} && exists $$R{$r}{"L"}){
+      $DS{$r} = $$R{$r}{"S"}[11] + $$R{$r}{"L"}[11];
+      @hRr = ($DS{$r} > $DS{$hRr[0]})?$r:($DS{$r} eq $DS{$hRr[0]})?(@hRr,$r):@hRr;
+      $ifD = 1;
+    }elsif($ifD eq ""){
+      if(exists $$R{$r}{"S"}){@hSr = ($$R{$r}{"S"}[11] > $$R{$hSr[0]}{"S"}[11])?($r):($$R{$r}{"S"}[11] eq $$R{$hSr[0]}{"S"}[11])?(@hSr,$r):@hSr};
+      if(exists $$R{$r}{"L"}){@hLr = ($$R{$r}{"L"}[11] > $$R{$hLr[0]}{"L"}[11])?($r):($$R{$r}{"L"}[11] eq $$R{$hLr[0]}{"L"}[11])?(@hLr,$r):@hLr};
+    }
+  }
+  if($ifD){
+    for(my $i=0;$i<@hRr;$i++){
+      $RES{$i}=[$hRr[$i],$hRr[$i]];
+    }
+    return(%RES);
+  }else{
+    my @comb;
+    if(@hSr){
+      for(my $s=0;$s<@hSr;$s++){
+        if(@hLr){ for(my $l=0;$l<@hLr;$l++){
+            my @tmp = &comparePath($$R{$hSr[$s]}{"S"}[16],$$R{$hLr[$l]}{"L"}[16]);
+            my $check =1 ; $check = 0 if $tmp[2] =~ /uncultured|unidentified/;
+            @comb = ($tmp[0]>$comb[0])?(@tmp,$hSr[$s],$hLr[$l]):($tmp[0] eq $comb[0] && $check)?(@comb,@tmp,$hSr[$s],$hLr[$l]):@comb;
+        }}else{
+          my @tmp = &comparePath($$R{$hSr[$s]}{"S"}[16],$$R{$hSr[$s]}{"S"}[16]);
+          my $check =1 ; $check = 0 if $tmp[2] =~ /uncultured|unidentified/;
+          @comb = ($tmp[0]>$comb[0])?(@tmp,$hSr[$s],""):($tmp[0] eq $comb[0] && $check)?(@comb,@tmp,$hSr[$s],""):@comb;
+        }
+      }
+    }else{ if(@hLr){ for(my $l=0;$l<@hLr;$l++){
+          my @tmp = &comparePath($$R{$hLr[$l]}{"L"}[16],$$R{$hLr[$l]}{"L"}[16]);
+          my $check =1 ; $check = 0 if $tmp[2] =~ /uncultured|unidentified/;
+          @comb = ($tmp[0]>$comb[0])?(@tmp,"",$hLr[$l]):($tmp[0] eq $comb[0] && $check)?(@comb,@tmp,"",$hLr[$l]):@comb;
+    }}}
+    #output
+    for(my $i=0;$i*5+5<@comb;$i++){
+      if($comb[5*$i+3]){
+        if($comb[5*$i+4]){
+          $RES{$i}=[$comb[5*$i+3],$comb[5*$i+4]];
+        }else{
+          $RES{$i}=[$comb[5*$i+3],""];
+        }
+      }else{
+        if($comb[$i+4]){
+          $RES{$i}=["",$comb[5*$i+4]];
+        }else{
+          $RES{$i}=["",""];
+        }
+      }
+    }
+    return(%RES);
+  }
 }
