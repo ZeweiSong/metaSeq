@@ -20,12 +20,19 @@ open ANN, "<$anno" or die $!;
 open ALN, "<$align" or die $!;
 
 my %HASH;
-while(<ANN>){
-	chomp;
-	my @a= split(/\t/,$_);
-  if($anno =~ /silva/){
+if($anno =~ /silva.*.txt$/){
+  while(<ANN>){
+    chomp; my @a= split(/\t/,$_);
     $HASH{"$a[0].$a[1].$a[2]"} = "$a[4]\t$a[3]";
-  }else{
+  }
+}elsif($anno =~ /silva.*tax$/){
+  while(<ANN>){
+    chomp; my @a= split(/\t/,$_);
+    $HASH{$a[0]} = "$a[1]\t$a[2]\t$a[3]\t$a[5]";
+  }
+}else{
+  while(<ANN>){
+    chomp; my @a= split(/\t/,$_);
     $HASH{$a[0]} = $_;
   }
 }

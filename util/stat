@@ -29,8 +29,8 @@ my $cmd = shift @ARGV unless $ARGV[0] =~/^-/;
 
 # SET GLOABL VARIABLES
 ## for slv:
-our ($runS, $runL, $rdS, $rdL, $pNS, $pNL, $pBS, $xBS, $pBL, $xBL, %RSU,
-$countS, $countL, $pCS, $pCL, $cCount,$cBPathLv,@pBB, $cBPath, $cName,
+our ($runS, $runL, $rdS, $rdL, $pNS, $pNL, $pBS, $pBL, %RSU,
+$countS, $countL, $pCS, $pCL, $aCount,$cCount,$cBPathLv,$cBPath, $cName,
 $BS, $NS, @iS, $BL, $NL, @iL);
 our ($UNIT_LEN,$UNIT_IDENT) = (400,90);
 # SET END
@@ -194,12 +194,12 @@ sub run_slv {
   ##qaccver saccver pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen name path##
   open INL, "< $inL" or die $!;
   open INS, "< $inS" or die $!;
-  ($runS, $runL, $pNS, $pNL, $pBS, $xBS, $pBL, $xBL, %RSU) = (1,1,,,,,,,);
+  ($runS, $runL, $pNS, $pNL, $pBS, $pBL, %RSU) = (1,1,,,,,,,);
   ($countS, $countL, $pCS, $pCL) = (0,0,0,0);
-  ($cCount,$cBPathLv,@pBB, $cBPath, $cName)=(1,0,,);
+  ($aCount, $cCount, $cBPathLv, $cBPath, $cName)=();
   $rdS=<INS>; ($BS, $NS, @iS) = &getSlvInfo($rdS);
   $rdL=<INL>; ($BL, $NL, @iL) = &getSlvInfo($rdL);
-  ($xBS,$pNS,$xBL,$pNL) = ($BS,$NS,$BL,$NL);
+  ($pBS,$pNS,$pBL,$pNL) = ($BS,$NS,$BL,$NL);
   $runS = 0 && close INS if $rdS eq <EOF>;
   $runL = 0 && close INL if $rdL eq <EOF>;
   #start looping:
@@ -213,36 +213,25 @@ sub run_slv {
       while($NL eq $pNL){&saveAnno(\%RSU,\@iL,"L"); ($BL, $NL, @iL) = &getSlvInfo($rdL=<INL>);}
 
       my %BESTANNO = &getBestAnno(\%RSU);
-      foreach my $i(sort keys %BESTANNO){
+      foreach my $i (sort keys %BESTANNO){
         my @piS = @{$RSU{$BESTANNO{$i}[0]}{"S"}}; my @piL = @{$RSU{$BESTANNO{$i}[1]}{"L"}};
         die "ID not the same: $piS[0] & $piL[0]\n" if $piS[0] ne $piL[0];
         my ($trustRSU, $maxIdent, $delta, $range, $consistLv, $consistPath, $cName2) = &compareNS(\@piS,\@piL);
         my $sortMode = &sortMode(\@piS,\@piL,$trustRSU);
         (my $pNS0 = $pNS) =~ s/@/0/;
         @ANN = ($pNS0,$trustRSU,$maxIdent,$delta,$range,$sortMode,$consistLv,$cName2,$piS[0]);
-        for(my $i=1;$i<=16;$i++){push @ANN, $piS[$i]};
-        for(my $i=1;$i<=16;$i++){push @ANN, $piL[$i]};
+        for(my $k=1;$k<=16;$k++){push @ANN, $piS[$k]};
+        for(my $k=1;$k<=16;$k++){push @ANN, $piL[$k]};
         print OUT join("\t",@ANN)."\n";
         #summary for each clip
         &summaryClip(\@ANN,\@SUM,$consistPath);
-        #summary for each bead
-        unless($trustRSU eq "NONE"){
-          my $p;
-          if($trustRSU =~ /Both|Either|UNK/){
-            (my $lv, $p, my $cn) = &comparePath($piS[16],$piL[16]);
-          }elsif($trustRSU eq "SSU"){
-            $p = $piS[16];
-          }elsif($trustRSU eq "LSU"){
-            $p = $piL[16];
-          }
-          ($pBS,$cCount,$cBPathLv,$cBPath, $cName) = &compareBS($xBS,$pBS,$cCount,$cBPathLv,$cBPath,$p, $cName);
-        }
       }
       print CLIP join("\t",@SUM)."\n" if @SUM;
+      #summary for each bead
+      &compareBS($SUM[1], (my $c = keys %BESTANNO), ($BS lt $BL)?$BS:$BL, $pBS, $SUM[33]);
       #prep for current (next) clip:
-      $pBL=$pBS;
-      $xBS=$BS; $pNS = $NS;  $runS = 0 && close INS if $rdS eq <EOF>;
-      $xBL=$BL; $pNL = $NL;  $runL = 0 && close INL if $rdL eq <EOF>;
+      $pBS=$BS; $pNS = $NS;  $runS = 0 && close INS if $rdS eq <EOF>;
+      $pBL=$BL; $pNL = $NL;  $runL = 0 && close INL if $rdL eq <EOF>;
     }
     while($runL && $pNS gt $pNL){
       &readLSU();
@@ -250,9 +239,7 @@ sub run_slv {
   }
   # When only one file left:
   while($runS){ &readSSU; }
-  &compareBS("LAST",$pBS,$cCount,$cBPathLv,$cBPath,$iS[16],$cName);
   while($runL){ &readLSU; }
-  &compareBS("LAST",$pBL,$cCount,$cBPathLv,$cBPath,$iL[16],$cName);
 
   &verbose(sprintf(" [SLV] Processing | SSU: %6d | LSU: %6d \n", $countS, $countL));
   unless($runS){close INS; &verbose(" [SLV] SSU file closed.\n") };
@@ -275,28 +262,27 @@ sub run_slv {
 sub readSSU{
   %RSU = (); $countS ++; my(@ANN,@SUM) = ();
   while($NS eq $pNS){&saveAnno(\%RSU,\@iS,"S"); ($BS, $NS, @iS) = &getSlvInfo($rdS=<INS>);}
-  my %BESTANNO = &getBestAnno(\%RSU);
+  my %BESTANNO = &getBestAnno(\%RSU); (my $pNS0 = $pNS) =~ s/@/0/;
   foreach my $i (sort keys %BESTANNO){
     my @piS = @{$RSU{$BESTANNO{$i}[0]}{"S"}};
     my @ranks = split(";",$piS[16]);
     my ($mlv,$cPath,$cNameR) = &comparePath($piS[16],$piS[16]);
     my $trustRSU = ($piS[2]>$UNIT_IDENT&&$piS[3]>$UNIT_LEN)?"SSU":"NONE";
     my $sortMode = &sortMode(\@piS,\"",$trustRSU);
-    (my $pNS0 = $pNS) =~ s/@/0/;
     @ANN = ($pNS0,$trustRSU,$piS[2],"NA",$piS[3],$sortMode,$mlv,$ranks[$mlv],$piS[0]);
     for(my $i=1;$i<=16;$i++){push @ANN, $piS[$i]};
     for(my $i=1;$i<=16;$i++){push @ANN, "NA"};
+    # output for each anno
     print OUT join("\t",@ANN)."\n";
     #summary for each clip
     &summaryClip(\@ANN,\@SUM,$cPath);
-    #summary for each bead
-    if($trustRSU eq "SSU"){
-      ($pBS,$cCount,$cBPathLv,$cBPath,$cName) = &compareBS($xBS,$pBS,$cCount,$cBPathLv,$cBPath,$piS[16],$cName);
-    }
   }
+  # output for each clip
   print CLIP join("\t",@SUM)."\n" if @SUM;
+  # summary for each bead
+  &compareBS($SUM[1], (my $c = keys %BESTANNO), ($BS lt $BL)?$BS:$BL, $pBS, $SUM[33]);
   #prep for new line:
-  $runS = 0 && close INS if $rdS eq <EOF>; $pNS = $NS; $xBS=$BS;
+  $runS = 0 && close INS if $rdS eq <EOF>; $pNS = $NS; $pBS=$BS;
 }
 
 sub readLSU{
@@ -316,14 +302,12 @@ sub readLSU{
     print OUT join("\t",@ANN)."\n";
     #summary for each clip
     &summaryClip(\@ANN,\@SUM,$cPath);
-    #summary for each bead
-    if($trustRSU eq "LSU"){
-      ($pBL,$cCount,$cBPathLv,$cBPath,$cName) = &compareBS($xBL,$pBL,$cCount,$cBPathLv,$cBPath,$piL[16],$cName);
-    }
   }
   print CLIP join("\t",@SUM)."\n" if @SUM;
+  #summary for each bead
+  &compareBS($SUM[1], (my $c = keys %BESTANNO), ($BS lt $BL)?$BS:$BL,$pBL,$SUM[33]);
   #prep for new line:
-  $runL = 0 && close INL if $rdL eq <EOF>; $pNL = $NL; $xBL=$BL;
+  $runL = 0 && close INL if $rdL eq <EOF>; $pNL = $NL; $pBL=$BL;
 }
 
 sub getSlvInfo{
@@ -331,8 +315,9 @@ sub getSlvInfo{
   if ($r eq <EOF>){
     return($i[0], "", @s);
   }else{
+    my $no = sprintf("%02d",$i[2]);
     $i[6] =~ s/0/@/g;
-    return($i[0], "$i[0]\_$i[2]\_$i[6]", @s)
+    return($i[0], "$i[0]\_$no\_$i[6]", @s)
   }
 }
 
@@ -490,8 +475,10 @@ sub compareNS{
 
   if($unit =~ /Both|Either|UNK/){
     ($cLv,$cPath,$cName2) = &comparePath($$S[16],$$L[16]);
-  }else{
-    ($cLv,$cPath,$cName2) = ($unit == "SSU")?&comparePath($$S[16],$$S[16]):&comparePath($$L[16],$$L[16]);;
+  }elsif($unit eq "SSU"){
+    ($cLv,$cPath,$cName2) = &comparePath($$S[16],$$S[16]);
+  }elsif($unit eq "LSU"){
+    ($cLv,$cPath,$cName2) = &comparePath($$L[16],$$L[16])
   }
   return($unit, $ident, $dlt, $rng, $cLv, $cPath, $cName2);
 }
@@ -527,15 +514,13 @@ sub summaryClip{
 }
 
 sub compareBS{
-  my($B,$pB,$cc,$cBLv,$cBP,$pth,$cn) = @_;
-  if($B eq $pB){
-    $cc ++;
-    ($cBLv,$cBP, $cn) = &comparePath($cBP,$pth);
-  }else{
-    print LOG "$pB\t$cc\t$cBLv\t$cn\t$cBP\n" if $cBLv > 0;
-    ($cBLv, $cBP, $cn) = &comparePath($pth,$pth);
-    $cc = 1;
-    $pB = $B;
+  my($R,$c,$B,$pB,$pth) = @_;
+  if($R ne "NONE"){
+    $aCount += $c; $cCount ++;
+    ($cBPathLv,$cBPath, $cName) = ($cBPath)?&comparePath($cBPath,$pth):&comparePath($pth,$pth);
   }
-  return($pB,$cc,$cBLv,$cBP, $cn);
+  if($B ne $pB){
+    print LOG "$pB\t$cCount\t$aCount\t$cBPathLv\t$cName\t$cBPath\n" if $aCount > 0;
+    ($aCount,$cCount,$cBPathLv,$cBPath,$cName) = (0,0,,,);
+  }
 }

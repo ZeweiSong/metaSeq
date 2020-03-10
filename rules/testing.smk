@@ -245,7 +245,6 @@ rule TEST_LFR_mafft:
         "mafft --thread {threads} --reorder {output.ssu} > {output.sma}\n"
         "mafft --thread {threads} --reorder {output.lsu} > {output.lma}\n"
 
-
 rule TEST_clipS_silva:
 	input:
 		ssu = "{sample}/summary.BI.megahit.clip.fasta",
@@ -257,7 +256,7 @@ rule TEST_clipS_silva:
 		"blastn -num_threads {threads} -perc_identity 90 "
 		"-db $STL/Source/REF/silva132/SSU/132_SSURef_Nr99_tax_RNA.fasta "
 		"-query {input.ssu} -outfmt '6 std qlen' -out {output.ssu}\n"
-		"metabbq anno.pl $STL/Source/REF/silva132/SSU/*txt {output.ssu} > {output.ann}\n"
+		"metabbq anno.pl $STL/Source/REF/silva132/SSU/taxmap_embl_ssu_ref_132.tax {output.ssu} > {output.ann}\n"
 
 rule TEST_clipL_silva:
     input:
@@ -270,7 +269,7 @@ rule TEST_clipL_silva:
         "blastn -num_threads {threads} -perc_identity 90 "
         "-db $STL/Source/REF/silva132/LSU/SILVA_132_LSURef_tax_RNA.fasta "
         "-query {input.lsu} -outfmt '6 std qlen' -out {output.lsu} \n"
-        "metabbq anno.pl $STL/Source/REF/silva132/LSU/*txt {output.lsu} > {output.lsu}.more\n"
+        "metabbq anno.pl $STL/Source/REF/silva132/LSU/taxmap_embl_lsu_ref_132.tax {output.lsu} > {output.lsu}.more\n"
 
 rule TEST_ssu_silva:
 	input:
@@ -298,6 +297,33 @@ rule TEST_lsu_silva:
         "-query {input.lsu} -outfmt '6 std qlen' -out {output.lsu} \n"
         "metabbq anno.pl $STL/Source/REF/silva132/LSU/*txt {output.lsu} > {output.lsu}.more\n"
 
+rule TEST_cdhitS_silva:
+	input:
+		ssu = "{sample}/VSEARCH/barrnap.cdhitS.fasta",
+	output:
+		ssu = "{sample}/VSEARCH/barrnap.cdhitS.m6",
+		ann = "{sample}/VSEARCH/barrnap.cdhitS.m6.more",
+	threads: 8
+	shell:
+		"blastn -num_threads {threads} -perc_identity 90 "
+		"-db $STL/Source/REF/silva132/SSU/132_SSURef_Nr99_tax_RNA.fasta "
+		"-query {input.ssu} -outfmt '6 std qlen' -out {output.ssu}\n"
+		"metabbq anno.pl $STL/Source/REF/silva132/SSU/*txt {output.ssu} > {output.ann}\n"
+
+rule TEST_cdhitL_silva:
+    input:
+        lsu = "{sample}/VSEARCH/barrnap.cdhitL.fasta"
+    output:
+        ann = "{sample}/VSEARCH/barrnap.cdhitL.m6.more",
+        lsu = "{sample}/VSEARCH/barrnap.cdhitL.m6",
+    threads: 8
+    shell:
+        "blastn -num_threads {threads} -perc_identity 90 "
+        "-db $STL/Source/REF/silva132/LSU/SILVA_132_LSURef_tax_RNA.fasta "
+        "-query {input.lsu} -outfmt '6 std qlen' -out {output.lsu} \n"
+        "metabbq anno.pl $STL/Source/REF/silva132/LSU/*txt {output.lsu} > {output.lsu}.more\n"
+
+
 rule TEST_BB_hybridize:
     input: "{sample}/summary.BI.megahit.clip.fasta"
     output: "{sample}/summary.BI.megahit.clip.num"
@@ -309,3 +335,73 @@ rule TEST_BB_mashstat:
     output: "{sample}/mash/bMin2.msh.tsv"
     shell:
         "mash info -t {input} > {output}"
+
+
+### stat
+rule STAT_barrnap_fa:
+    input:
+        ssu = "{sample}/VSEARCH/barrnap.SSU.fasta",
+        lsu = "{sample}/VSEARCH/barrnap.LSU.fasta"
+    output: "{sample}/stat/barrnap.RSU.stat"
+	threads: 1
+	shell:
+		"metabbq stat RSU -l {input.lsu} -s {input.ssu} -o {output}"
+
+### stat
+rule TEST_clip_2_unite:
+	input: "{sample}/summary.BI.megahit.clip.fasta",
+	output:
+		unite = "{sample}/summary.BI.megahit.clip.UNITE.m6",
+		ann = "{sample}/summary.BI.megahit.clip.UNITE.m6.more",
+	threads: 8
+	shell:
+		"blastn -num_threads {threads} -perc_identity 90 "
+		"-db $LFR/Source/REF/UNITE/sh_general_release_all_04.02.2020/sh_general_release_dynamic_all "
+		"-query {input} -outfmt '6 std qlen' -out {output.unite}\n"
+		"metabbq anno.pl $LFR/Source/REF/UNITE/sh_general_release_all_04.02.2020/sh_general_release_dynamic_all.tax {output.unite} > {output.ann}\n"
+
+
+rule STAT_clip_2_slv_blast:
+    input:
+        ssu = "{sample}/summary.BI.megahit.clip.SSU.m6.more",
+        lsu = "{sample}/summary.BI.megahit.clip.LSU.m6.more"
+    output:
+        clip = "{sample}/stat/summary.BI.megahit.clip.slv.stat.clips",
+        bead = "{sample}/stat/summary.BI.megahit.clip.slv.stat.beads"
+    threads: 1
+    shell:
+        "metabbq stat slv -l {input.lsu} -s {input.ssu} -o {output.clip} -g {output.bead}\n"
+
+rule STAT_clip_2_slv_getTaxRank:
+    input:
+        clip = "{sample}/stat/summary.BI.megahit.clip.slv.stat.clips",
+        bead = "{sample}/stat/summary.BI.megahit.clip.slv.stat.beads"
+    output:
+        clip = "{sample}/stat/summary.BI.megahit.clip.slv.stat.clips.tax",
+        bead = "{sample}/stat/summary.BI.megahit.clip.slv.stat.beads.tax"
+    threads: 4
+    shell:
+        "awk -F \"\\t\" '{{gsub(/ <.*>/,\"\",$4);print}}' {input.bead} "
+        "| taxonkit name2taxid -r -i 4 > {output.bead} &\n"
+        "awk -F \"\\t\" '{{gsub(/ <.*>/,\"\",$7);print $1\"\\t\"$7}}' {input.clip} "
+        "| taxonkit name2taxid -r -i 2 > {output.clip}"
+
+# From clip
+rule CLIP_1_cluster:
+    input: "{sample}/summary.BI.megahit.clip.fasta"
+    output:
+        fa1="{sample}/CLIP/preclust.fasta",
+        uc1="{sample}/CLIP/preclust.uc",
+        fa2="{sample}/CLIP/cdhit.fasta",
+        uc2="{sample}/CLIP/cdhit.fasta.uc"
+    params:
+        pct = config['p_VS_clust_Sid'],
+    threads: config['thread']['vsearch']
+    shell:
+        "vsearch --threads {threads} --cluster_fast {input} "
+        "--id {params.pct} --strand both --fasta_width 0 "
+        "--centroids {output.fa1} -uc {output.uc1}\n"
+        "vsearch --threads {threads} --cluster_fast {output.fa1} "
+        "--iddef 0 --id {params.pct} --strand both --fasta_width 0 "
+        "--relabel SSU_ --relabel_keep "
+        "--centroids {output.fa2} -uc {output.uc2}"

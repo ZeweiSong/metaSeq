@@ -31,7 +31,7 @@ rule BIA_0_sketchOLD:
         k   = config["p_dist_k"],
         s   = config["p_dist_s"]
     resources:
-        mem_mb=120000
+        mem=120
     threads: 6
     shell:
         "mash sketch -p {threads} -k {params.k} -s {params.s} -r -B {input.x1} {input.x2} -o {params.pfx}"
@@ -70,7 +70,7 @@ rule BIA_0_sketch:
 		k   = config["p_dist_k"],
 		s   = config["p_dist_s"]
 	resources:
-		mem_mb=120000
+		mem=120
 	threads: 36
 	shell:
 		"mash sketch -p 8 -k {params.k} -s {params.s} -r -B {input.x1} {input.x2} -o {params.pfx}"
@@ -79,7 +79,7 @@ rule BIA_1_mashstat:
     input: "{sample}/mash/BI.msh"
     output: "{sample}/mash/BI.msh.tsv"
     resources:
-        mem_mb=80000
+        mem=80
     threads: 36
     shell:
         "mash info -t {input}| perl -ne 'if($_=~/\d+\\t(\d+)\\t(\S+)\\t\[(\d+) /){{print \"$2\\t$3\\t$1\\n\"}}' > {output}\n"
@@ -254,10 +254,10 @@ rule VSEARCH_1_SSU_cluster:
     threads: config['thread']['vsearch']
     shell:
         "vsearch --threads {threads} --cluster_fast {input} "
-        "--id {params.pct} --strand both --fasta_width 0 --minuniquesize 1 "
+        "--id {params.pct} --strand both --fasta_width 0 "
         "--centroids {output.fa1} -uc {output.uc1}\n"
         "vsearch --threads {threads} --cluster_fast {output.fa1} "
-        "--iddef 0 --id {params.pct} --strand both --fasta_width 0 --minuniquesize 1 "
+        "--iddef 0 --id {params.pct} --strand both --fasta_width 0 "
         "--relabel SSU_ --relabel_keep "
         "--centroids {output.fa2} -uc {output.uc2}"
 
@@ -273,10 +273,10 @@ rule VSEARCH_1_LSU_cluster:
     threads: config['thread']['vsearch']
     shell:
         "vsearch --threads {threads} --cluster_fast {input} "
-        "--id {params.pct} --strand both --fasta_width 0 --minuniquesize 1 "
+        "--id {params.pct} --strand both --fasta_width 0 "
         "--centroids {output.fa1} -uc {output.uc1}\n"
         "vsearch --threads {threads} --cluster_fast {output.fa1} "
-        "--iddef 0 --id {params.pct} --strand both --fasta_width 0 --minuniquesize 1 "
+        "--iddef 0 --id {params.pct} --strand both --fasta_width 0 "
         "--relabel LSU_ --relabel_keep "
         "--centroids {output.fa2} -uc {output.uc2}"
 
@@ -285,34 +285,34 @@ rule VSEARCH_2_merge:
         S = "{sample}/VSEARCH/barrnap.cdhitS.fasta",
         L = "{sample}/VSEARCH/barrnap.cdhitL.fasta"
     output:
-        "{sample}/VSEARCH/barrnap.LFRs.fasta"
+        "{sample}/VSEARCH/barrnap.RSUs.fasta"
     shell:
         "cat {input.S} {input.L} > {output}"
 
 rule CloseRef_1_makeIndex:
-    input: "{sample}/VSEARCH/barrnap.LFRs.fasta"
-    output:"{sample}/VSEARCH/contig.LFRs.fasta.index.sa"
-    params:"{sample}/VSEARCH/contig.LFRs.fasta.index"
+    input: "{sample}/VSEARCH/barrnap.RSUs.fasta"
+    output:"{sample}/VSEARCH/contig.RSUs.fasta.index.sa"
+    params:"{sample}/VSEARCH/contig.RSUs.fasta.index"
     shell: "bwa index {input} -p {params}"
 
 rule CloseRef_2_mapping:
     input:
-        R1 = "{sample}/clean/fastp.sort.1.fq",
-        R2 = "{sample}/clean/fastp.sort.2.fq",
-        db = "{sample}/VSEARCH/contig.LFRs.fasta.index.sa"
-    output: "{sample}/VSEARCH/contig.LFRs.bwa.bam"
-    params: "{sample}/VSEARCH/contig.LFRs.fasta.index"
+        R1 = "{sample}/clean/fastp.sort.1.fq.gz",
+        R2 = "{sample}/clean/fastp.sort.2.fq.gz",
+        db = "{sample}/VSEARCH/contig.RSUs.fasta.index.sa"
+    output: "{sample}/VSEARCH/contig.RSUs.bwa.bam"
+    params: "{sample}/VSEARCH/contig.RSUs.fasta.index"
     threads: config['thread']['blastn']
     shell:
         "bwa mem -t {threads} {params} {input.R1} {input.R2} "
         "| samtools view -b -@ {threads} > {output}"
 
 rule Quatification:
-    input: "{sample}/VSEARCH/contig.LFRs.bwa.bam"
+    input: "{sample}/VSEARCH/contig.RSUs.bwa.bam"
     output:
-        stat = "{sample}/VSEARCH/contig.LFRs.bwa.stat",
-        sbb1 = "{sample}/VSEARCH/contig.LFRs.bwa.sbb1",
-        prop = "{sample}/VSEARCH/contig.LFRs.bwa.prop"
+        stat = "{sample}/VSEARCH/contig.RSUs.bwa.stat",
+        sbb1 = "{sample}/VSEARCH/contig.RSUs.bwa.sbb1",
+        prop = "{sample}/VSEARCH/contig.RSUs.bwa.prop"
     shell:
         "samtools view {input} | metabbq beadStat sam -i - -o {output.stat} -v\n"
         "metabbq beadStat sam2b -i {output.stat} -o {output.sbb1} -v\n"
