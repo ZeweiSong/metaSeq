@@ -1,0 +1,226 @@
+#!/usr/bin/env perl
+# (c) 2016 - 2020 Chao IN-HORSE SHARE ONLY
+# ===================================================================
+# Description:       Find the adj graph acrossing beads
+# Author:            Chao<fangchao@genomics.cn>
+# Created Date:      20 Mar 2020
+# ===================================================================
+# see detail below
+use strict;
+use Getopt::Long qw(:config no_ignore_case); # For case sensitive
+
+sub usage {
+  my $msg = shift;
+  print <<USAGE;
+$msg
+usage:
+  $0 -i input -o output -r ref.bed
+    -i  input fasta file
+    -m  blast 6 format alignment file
+    -k  minimum kmers of overlape zone
+    -o  output beads stat annotation
+    -c  output clips best annotation
+    -v  verbose
+    -h  show help info
+USAGE
+}
+&usage && exit unless @ARGV;
+
+our ($stime,$m6,$kmer,$fa,$out,$clip,$covf,$verbose,$help)=(time(),);
+GetOptions(
+  "i:s" => \$fa,
+  "m:s" => \$m6,
+  "k:i" => \$kmer,
+  "o:s" => \$out,
+  "c:s" => \$clip,
+  "g:s" => \$covf,
+  "v" => \$verbose,
+  "h|help|?" => \$help,
+);
+$kmer||=31;
+&usage && exit if $help;
+
+our(%SEQ,%LINK,%vertex);
+open FA, ($fa)?"<$fa":"< -" or die $!;
+open M6, "<$m6" or die $!;
+open DOT,">$out.dot" or die $!;
+open PATH,">$out.path" or die $!;
+open SEQ,">$out.merge.fa" or die $!;
+
+&verbose("AdjGet start.\nRading fasta ... ");
+while(<FA>){
+  chomp;
+  my @s =split " |\t|>", $_;
+  chomp(my $seq = <FA>);
+  $SEQ{"$s[1]"} = $seq;
+}
+close FA;
+&verbose("done.\nReading m6 and generating dot ... ");
+print DOT "digraph g {\n";
+while(<M6>){
+  chomp;
+  my @s=split;
+  my $std=($s[9]>$s[8])?"+":"-";
+  my $rcs=($std eq "+")?"-":"+";
+  my($sLeft,$sRight)=($std eq "+")?($s[8],$s[9]):($s[9],$s[8]);
+  my($qTipL,$qTipR,$sTipL,$sTipR) = ($s[6]-1,$s[12]-$s[7],$sLeft-1,$s[13]-$sRight);
+  my($sTipI,$sTipO) = ($std eq "+")?($sTipR,$sTipL):($sTipL,$sTipR);
+  next if $s[3] < $kmer;
+  if($s[0] eq "BI00193502.3.C-." && $s[1] eq "BI00051209.2.C-."){
+    print "found $s[0] $s[1]\n";
+  }
+
+  if($qTipL<5&&$qTipR>48&&$sTipI<5&&$sTipO>48){
+    # left to right
+    #      L~|6------7------>  query   +  #       L~|6-----7-------> query   +
+    # --------8----->9|~R      subject +  # <--------8-----9|~L      subject -
+    my $extend = $s[12] - $s[7] - (($std eq "+")?$sTipR:$sTipL);
+    if(not exists $LINK{$s[1]}{$std}{V} || (exists $LINK{$s[1]}{$std}{E} && $LINK{$s[1]}{$std}{E} < $extend)){
+      print DOT "\"$s[1]$std\" -> \"$s[0]+\" [d=-$s[3]]\n";
+      $LINK{$s[1]}{$std}{V} = $s[0];
+      $LINK{$s[1]}{$std}{S} = "+";
+      $LINK{$s[1]}{$std}{D} = $s[3];
+      $LINK{$s[1]}{$std}{1} = ($std eq "+")?$sTipR:$sTipL;
+      $LINK{$s[1]}{$std}{2} = $qTipL;
+      $LINK{$s[1]}{$std}{E} = $extend;
+    }
+    #reverse
+    $extend = $s[13] - $s[8] - $qTipL;
+    if(not exists $LINK{$s[0]}{"-"}{V} || (exists $LINK{$s[0]}{"-"}{E} && $LINK{$s[0]}{"-"}{E} < $extend)){
+      print DOT "\"$s[0]-\" -> \"$s[1]$rcs\" [d=-$s[3]]\n";
+      $LINK{$s[0]}{"-"}{V} = $s[1];
+      $LINK{$s[0]}{"-"}{S} = $rcs;
+      $LINK{$s[0]}{"-"}{D} = $s[3];
+      $LINK{$s[0]}{"-"}{1} = $qTipL;
+      $LINK{$s[0]}{"-"}{2} = ($std eq "+")?$sTipR:$sTipL;;
+      $LINK{$s[0]}{"-"}{E} = $extend;
+    }
+  }elsif($qTipR<5&&$qTipL>48&&$sTipO<5&&$sTipI>48){
+    # right to left
+    # -----6------>7|~    query   + #  ----6---->7|~     query   +
+    #   L~|8-------9----> subject + #   R~|8<----9------ subject -
+    my $extend = $s[13] - $s[9] - $qTipR;
+    if(not exists $LINK{$s[0]}{"+"}{V} || (exists $LINK{$s[0]}{"+"}{E} && $LINK{$s[0]}{"+"}{E} < $extend)){
+      print DOT "\"$s[0]+\" -> \"$s[1]$std\" [d=-$s[3]]\n";
+      $LINK{$s[0]}{"+"}{V} = $s[1];
+      $LINK{$s[0]}{"+"}{S} = $std;
+      $LINK{$s[0]}{"+"}{D} = $s[3];
+      $LINK{$s[0]}{"+"}{1} = $qTipR;
+      $LINK{$s[0]}{"+"}{2} = ($std eq "+")?$sTipL:$sTipR;
+      $LINK{$s[0]}{"+"}{E} = $extend;
+    }
+    #reverse
+    my $extend = $s[12] - $s[6] - (($std eq "+")?$sTipL:$sTipR);
+    if(not exists $LINK{$s[1]}{$rcs}{V} || (exists $LINK{$s[1]}{$rcs}{E} && $LINK{$s[1]}{$rcs}{E} < $extend)){
+      print DOT "\"$s[1]$rcs\" -> \"$s[0]-\" [d=-$s[3]]\n";
+      $LINK{$s[1]}{$rcs}{V} = $s[0];
+      $LINK{$s[1]}{$rcs}{S} = "-";
+      $LINK{$s[1]}{$rcs}{D} = $s[3];
+      $LINK{$s[1]}{$rcs}{1} = ($std eq "+")?$sTipL:$sTipR;
+      $LINK{$s[1]}{$rcs}{2} = $qTipR;
+      $LINK{$s[1]}{$rcs}{E} = $extend;
+    }
+  }
+  $vertex{"$s[0]"} ||= $s[12];
+  $vertex{"$s[1]"} ||= $s[13];
+}
+print DOT "}\n";
+close DOT;
+#exit;
+&verbose("done.\nGenerating path and merging sequence:");
+#get path
+our ($pid)=(0);
+my @ss = ("+","-");
+while(@ss){
+  my ($std, $rcs) = &dPN(shift @ss);
+  &verbose("\nstart searching $std sense:\n");
+  foreach my $v (sort keys %vertex){
+    if(not exists $LINK{$v}{$rcs}{V}){
+      my ($vi,$count,$len,$tip2,$path,$seq) = ($v,1,0,0,"$v$std","");
+      while(exists $LINK{$vi}{$std}{V}){
+        my $leni = $vertex{$vi} - $LINK{$vi}{$std}{1} - $LINK{$vi}{$std}{D} - $tip2;
+        my $seqi = ($std eq "+")?$SEQ{$vi}:&xDNA("rc",$SEQ{$vi});
+        $len += $leni;
+        $seq .= substr($seqi,$tip2,$leni);
+        $path .= " $LINK{$vi}{$std}{V}$LINK{$vi}{$std}{S}";
+        &verbose(" $vi$std,$tip2,$leni,$LINK{$vi}{$std}{D},$LINK{$vi}{$std}{1},$LINK{$vi}{$std}{2},$LINK{$vi}{$std}{S}");
+        $count ++;
+        $tip2 = $LINK{$vi}{$std}{2};
+        my $tmp = $LINK{$vi}{$std}{V};
+        $std = $LINK{$vi}{$std}{S};
+        $vi = $tmp
+        #
+      }
+      next if $count < 2;
+      &verbose(" $vi$std,$tip2,$vertex{$vi}\n");
+      $len += $vertex{$vi} - $tip2;
+      $seq .= substr(($std eq "+")?$SEQ{$vi}:&xDNA("rc",$SEQ{$vi}),$tip2);
+      $pid ++;
+      print SEQ ">$pid $len $path\n$seq\n";
+      print PATH "$pid\t$len\t$path\n";
+      &verbose("found merged sequence up to $pid\n");
+      #reset sense:
+      ($rcs,$std) = &dPN($rcs);
+    }
+  }
+}
+close PATH;
+close SEQ;
+&verbose("found merged sequence up to $pid ... done.\nAdjGet DONE!\n");
+exit;
+
+################################################################################
+# sub
+################################################################################
+sub dPN{
+  my $i = shift;
+  my $o = ($i eq "+")?"-":"+";
+  return($i,$o);
+}
+
+sub xDNA{
+  my %SH;
+  my $mod = shift;
+  my $str = shift;
+  for(my $p=0;$p<length($str);$p++){
+    my $pick = substr($str,$p,1);
+    my $comp = ($pick eq "A")?"T":(($pick eq "T")?"A":(($pick eq "G")?"C":(($pick eq "C")?"G":$pick)));
+    $SH{$p}{'raw'} = $pick;
+    $SH{$p}{'com'} = $comp;
+  }
+  my $res = "";
+  if($mod =~ /r/){
+    foreach my $p (sort {$b<=>$a} %SH){
+      $res .= ($mod =~/c/)?$SH{$p}{'com'}:$SH{$p}{'raw'};
+    }
+  }else{
+    foreach my $p (sort {$a<=>$b} %SH){
+      $res .= ($mod =~/c/)?$SH{$p}{'com'}:$SH{$p}{'raw'};
+    }
+  }
+  return($res);
+}
+
+sub verbose{
+  my $msg = shift;
+  print STDERR $msg if $verbose;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#
