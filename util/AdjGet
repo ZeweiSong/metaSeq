@@ -40,7 +40,7 @@ GetOptions(
 $kmer||=31;
 &usage && exit if $help;
 
-our(%SEQ,%LINK,%vertex);
+our(%SEQ,%LINK,%DIST,%vertex);
 open FA, ($fa)?"<$fa":"< -" or die $!;
 open M6, "<$m6" or die $!;
 open DOT,">$out.dot" or die $!;
@@ -66,66 +66,79 @@ while(<M6>){
   my($qTipL,$qTipR,$sTipL,$sTipR) = ($s[6]-1,$s[12]-$s[7],$sLeft-1,$s[13]-$sRight);
   my($sTipI,$sTipO) = ($std eq "+")?($sTipR,$sTipL):($sTipL,$sTipR);
   next if $s[3] < $kmer;
-  if($s[0] eq "BI00193502.3.C-." && $s[1] eq "BI00051209.2.C-."){
-    print "found $s[0] $s[1]\n";
-  }
+  $s[0] =~ /(BI\d+)/; my $qBI = $1;
+  $s[1] =~ /(BI\d+)/; my $sBI = $1;
 
   if($qTipL<5&&$qTipR>48&&$sTipI<5&&$sTipO>48){
     # left to right
     #      L~|6------7------>  query   +  #       L~|6-----7-------> query   +
     # --------8----->9|~R      subject +  # <--------8-----9|~L      subject -
-    my $extend = $s[12] - $s[7] - (($std eq "+")?$sTipR:$sTipL);
-    if(not exists $LINK{$s[1]}{$std}{V} || (exists $LINK{$s[1]}{$std}{E} && $LINK{$s[1]}{$std}{E} < $extend)){
+    my $overlap = $s[12] - $s[7] - (($std eq "+")?$sTipR:$sTipL);
+    if(not exists $LINK{$s[1]}{$std}{V} || (exists $LINK{$s[1]}{$std}{E} && $LINK{$s[1]}{$std}{E} < $s[3])){
       print DOT "\"$s[1]$std\" -> \"$s[0]+\" [d=-$s[3]]\n";
       $LINK{$s[1]}{$std}{V} = $s[0];
       $LINK{$s[1]}{$std}{S} = "+";
       $LINK{$s[1]}{$std}{D} = $s[3];
       $LINK{$s[1]}{$std}{1} = ($std eq "+")?$sTipR:$sTipL;
       $LINK{$s[1]}{$std}{2} = $qTipL;
-      $LINK{$s[1]}{$std}{E} = $extend;
+      $LINK{$s[1]}{$std}{E} = $overlap;
     }
     #reverse
-    $extend = $s[13] - $s[8] - $qTipL;
-    if(not exists $LINK{$s[0]}{"-"}{V} || (exists $LINK{$s[0]}{"-"}{E} && $LINK{$s[0]}{"-"}{E} < $extend)){
+    $overlap = $s[13] - $s[8] - $qTipL;
+    if(not exists $LINK{$s[0]}{"-"}{V} || (exists $LINK{$s[0]}{"-"}{E} && $LINK{$s[0]}{"-"}{E} < $s[3])){
       print DOT "\"$s[0]-\" -> \"$s[1]$rcs\" [d=-$s[3]]\n";
       $LINK{$s[0]}{"-"}{V} = $s[1];
       $LINK{$s[0]}{"-"}{S} = $rcs;
       $LINK{$s[0]}{"-"}{D} = $s[3];
       $LINK{$s[0]}{"-"}{1} = $qTipL;
       $LINK{$s[0]}{"-"}{2} = ($std eq "+")?$sTipR:$sTipL;;
-      $LINK{$s[0]}{"-"}{E} = $extend;
+      $LINK{$s[0]}{"-"}{E} = $overlap;
     }
   }elsif($qTipR<5&&$qTipL>48&&$sTipO<5&&$sTipI>48){
     # right to left
     # -----6------>7|~    query   + #  ----6---->7|~     query   +
     #   L~|8-------9----> subject + #   R~|8<----9------ subject -
-    my $extend = $s[13] - $s[9] - $qTipR;
-    if(not exists $LINK{$s[0]}{"+"}{V} || (exists $LINK{$s[0]}{"+"}{E} && $LINK{$s[0]}{"+"}{E} < $extend)){
+    my $overlap = $s[13] - $s[9] - $qTipR;
+    if(not exists $LINK{$s[0]}{"+"}{V} || (exists $LINK{$s[0]}{"+"}{E} && $LINK{$s[0]}{"+"}{E} < $s[3])){
       print DOT "\"$s[0]+\" -> \"$s[1]$std\" [d=-$s[3]]\n";
       $LINK{$s[0]}{"+"}{V} = $s[1];
       $LINK{$s[0]}{"+"}{S} = $std;
       $LINK{$s[0]}{"+"}{D} = $s[3];
       $LINK{$s[0]}{"+"}{1} = $qTipR;
       $LINK{$s[0]}{"+"}{2} = ($std eq "+")?$sTipL:$sTipR;
-      $LINK{$s[0]}{"+"}{E} = $extend;
+      $LINK{$s[0]}{"+"}{E} = $overlap;
     }
     #reverse
-    my $extend = $s[12] - $s[6] - (($std eq "+")?$sTipL:$sTipR);
-    if(not exists $LINK{$s[1]}{$rcs}{V} || (exists $LINK{$s[1]}{$rcs}{E} && $LINK{$s[1]}{$rcs}{E} < $extend)){
+    my $overlap = $s[12] - $s[6] - (($std eq "+")?$sTipL:$sTipR);
+    if(not exists $LINK{$s[1]}{$rcs}{V} || (exists $LINK{$s[1]}{$rcs}{E} && $LINK{$s[1]}{$rcs}{E} < $s[3])){
       print DOT "\"$s[1]$rcs\" -> \"$s[0]-\" [d=-$s[3]]\n";
       $LINK{$s[1]}{$rcs}{V} = $s[0];
       $LINK{$s[1]}{$rcs}{S} = "-";
       $LINK{$s[1]}{$rcs}{D} = $s[3];
       $LINK{$s[1]}{$rcs}{1} = ($std eq "+")?$sTipL:$sTipR;
       $LINK{$s[1]}{$rcs}{2} = $qTipR;
-      $LINK{$s[1]}{$rcs}{E} = $extend;
+      $LINK{$s[1]}{$rcs}{E} = $overlap;
     }
   }
+  $DIST{$qBI}{$sBI}{D} -= $s[3];
+  $DIST{$qBI}{$sBI}{C} ++;
+
   $vertex{"$s[0]"} ||= $s[12];
   $vertex{"$s[1]"} ||= $s[13];
 }
 print DOT "}\n";
 close DOT;
+#test
+&verbose("done.\n");
+my @bd = sort keys %DIST;
+print "BIXXXXXXXX\t".(join "\t", @bd)."\n";
+for (my $i=0;$i<@bd;$i++){
+  print "$bd[$i]";
+  for(my $j=0;$j<@bd;$j++){
+    print "\t$DIST{$bd[$i]}{$bd[$j]}{D}($DIST{$bd[$i]}{$bd[$j]}{C})";
+  }
+  print "\n";
+}
 #exit;
 &verbose("done.\nGenerating path and merging sequence:");
 #get path
