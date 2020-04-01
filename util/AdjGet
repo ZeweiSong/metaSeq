@@ -16,6 +16,7 @@ $msg
 usage:
   $0 -i input -o output -r ref.bed
     -i  input fasta file
+    -u  read bead to bead info from uc file if sequence were clustered
     -m  blast 6 format alignment file
     -k  minimum kmers of overlape zone
     -o  output beads stat annotation
@@ -26,9 +27,10 @@ USAGE
 }
 &usage && exit unless @ARGV;
 
-our ($stime,$m6,$kmer,$fa,$out,$clip,$covf,$verbose,$help)=(time(),);
+our ($stime,$m6,$kmer,$fa,$uc,$out,$clip,$covf,$verbose,$help)=(time(),);
 GetOptions(
   "i:s" => \$fa,
+  "u:s" => \$uc,
   "m:s" => \$m6,
   "k:i" => \$kmer,
   "o:s" => \$out,
@@ -56,6 +58,20 @@ while(<FA>){
 }
 close FA;
 &verbose("done.\nReading m6 and generating dot ... ");
+#Account dist if spefic uc file:
+if($uc){
+  open UC, "<$uc" or die $!;
+  while(<UC>){
+    next unless $_ =~ /^H/;
+    my @s = split;
+    $s[8] =~ /(BI\d+)/; my $mBI = $1;
+    $s[9] =~ /(BI\d+)/; my $cBI = $1;
+    $DIST{$mBI}{$cBI}{D} -= $s[3]; $DIST{$mBI}{$cBI}{C} ++;
+    $DIST{$cBI}{$mBI}{D} -= $s[3]; $DIST{$cBI}{$mBI}{C} ++;
+  }
+}
+close UC;
+#Generating graph
 print DOT "digraph g {\n";
 while(<M6>){
   chomp;
@@ -73,55 +89,39 @@ while(<M6>){
     # left to right
     #      L~|6------7------>  query   +  #       L~|6-----7-------> query   +
     # --------8----->9|~R      subject +  # <--------8-----9|~L      subject -
-    my $overlap = $s[12] - $s[7] - (($std eq "+")?$sTipR:$sTipL);
-    if(not exists $LINK{$s[1]}{$std}{V} || (exists $LINK{$s[1]}{$std}{E} && $LINK{$s[1]}{$std}{E} < $s[3])){
-      print DOT "\"$s[1]$std\" -> \"$s[0]+\" [d=-$s[3]]\n";
-      $LINK{$s[1]}{$std}{V} = $s[0];
-      $LINK{$s[1]}{$std}{S} = "+";
-      $LINK{$s[1]}{$std}{D} = $s[3];
-      $LINK{$s[1]}{$std}{1} = ($std eq "+")?$sTipR:$sTipL;
-      $LINK{$s[1]}{$std}{2} = $qTipL;
-      $LINK{$s[1]}{$std}{E} = $overlap;
-    }
+    print DOT "\"$s[1]$std\" -> \"$s[0]+\" [d=-$s[3]]\n";
+    $LINK{$s[1]}{$std}{$s[0]}{S} = "+";
+    $LINK{$s[1]}{$std}{$s[0]}{D} = $s[3];
+    $LINK{$s[1]}{$std}{$s[0]}{1} = ($std eq "+")?$sTipR:$sTipL;
+    $LINK{$s[1]}{$std}{$s[0]}{2} = $qTipL;
     #reverse
-    $overlap = $s[13] - $s[8] - $qTipL;
-    if(not exists $LINK{$s[0]}{"-"}{V} || (exists $LINK{$s[0]}{"-"}{E} && $LINK{$s[0]}{"-"}{E} < $s[3])){
-      print DOT "\"$s[0]-\" -> \"$s[1]$rcs\" [d=-$s[3]]\n";
-      $LINK{$s[0]}{"-"}{V} = $s[1];
-      $LINK{$s[0]}{"-"}{S} = $rcs;
-      $LINK{$s[0]}{"-"}{D} = $s[3];
-      $LINK{$s[0]}{"-"}{1} = $qTipL;
-      $LINK{$s[0]}{"-"}{2} = ($std eq "+")?$sTipR:$sTipL;;
-      $LINK{$s[0]}{"-"}{E} = $overlap;
-    }
+    $LINK{$s[0]}{"-"}{$s[1]}{S} = $rcs;
+    $LINK{$s[0]}{"-"}{$s[1]}{D} = $s[3];
+    $LINK{$s[0]}{"-"}{$s[1]}{1} = $qTipL;
+    $LINK{$s[0]}{"-"}{$s[1]}{2} = ($std eq "+")?$sTipR:$sTipL;;
+    #
+    $DIST{$qBI}{$sBI}{D} -= $s[3]; $DIST{$qBI}{$sBI}{C} ++;
+    $DIST{$sBI}{$qBI}{D} -= $s[3]; $DIST{$sBI}{$qBI}{C} ++;
   }elsif($qTipR<5&&$qTipL>48&&$sTipO<5&&$sTipI>48){
     # right to left
     # -----6------>7|~    query   + #  ----6---->7|~     query   +
     #   L~|8-------9----> subject + #   R~|8<----9------ subject -
     my $overlap = $s[13] - $s[9] - $qTipR;
-    if(not exists $LINK{$s[0]}{"+"}{V} || (exists $LINK{$s[0]}{"+"}{E} && $LINK{$s[0]}{"+"}{E} < $s[3])){
-      print DOT "\"$s[0]+\" -> \"$s[1]$std\" [d=-$s[3]]\n";
-      $LINK{$s[0]}{"+"}{V} = $s[1];
-      $LINK{$s[0]}{"+"}{S} = $std;
-      $LINK{$s[0]}{"+"}{D} = $s[3];
-      $LINK{$s[0]}{"+"}{1} = $qTipR;
-      $LINK{$s[0]}{"+"}{2} = ($std eq "+")?$sTipL:$sTipR;
-      $LINK{$s[0]}{"+"}{E} = $overlap;
-    }
+    print DOT "\"$s[0]+\" -> \"$s[1]$std\" [d=-$s[3]]\n";
+    $LINK{$s[0]}{"+"}{$s[1]}{S} = $std;
+    $LINK{$s[0]}{"+"}{$s[1]}{D} = $s[3];
+    $LINK{$s[0]}{"+"}{$s[1]}{1} = $qTipR;
+    $LINK{$s[0]}{"+"}{$s[1]}{2} = ($std eq "+")?$sTipL:$sTipR;
     #reverse
-    my $overlap = $s[12] - $s[6] - (($std eq "+")?$sTipL:$sTipR);
-    if(not exists $LINK{$s[1]}{$rcs}{V} || (exists $LINK{$s[1]}{$rcs}{E} && $LINK{$s[1]}{$rcs}{E} < $s[3])){
-      print DOT "\"$s[1]$rcs\" -> \"$s[0]-\" [d=-$s[3]]\n";
-      $LINK{$s[1]}{$rcs}{V} = $s[0];
-      $LINK{$s[1]}{$rcs}{S} = "-";
-      $LINK{$s[1]}{$rcs}{D} = $s[3];
-      $LINK{$s[1]}{$rcs}{1} = ($std eq "+")?$sTipL:$sTipR;
-      $LINK{$s[1]}{$rcs}{2} = $qTipR;
-      $LINK{$s[1]}{$rcs}{E} = $overlap;
-    }
+    print DOT "\"$s[1]$rcs\" -> \"$s[0]-\" [d=-$s[3]]\n";
+    $LINK{$s[1]}{$rcs}{$s[0]}{S} = "-";
+    $LINK{$s[1]}{$rcs}{$s[0]}{D} = $s[3];
+    $LINK{$s[1]}{$rcs}{$s[0]}{1} = ($std eq "+")?$sTipL:$sTipR;
+    $LINK{$s[1]}{$rcs}{$s[0]}{2} = $qTipR;
+    #
+    $DIST{$qBI}{$sBI}{D} -= $s[3]; $DIST{$qBI}{$sBI}{C} ++;
+    $DIST{$sBI}{$qBI}{D} -= $s[3]; $DIST{$sBI}{$qBI}{C} ++;
   }
-  $DIST{$qBI}{$sBI}{D} -= $s[3];
-  $DIST{$qBI}{$sBI}{C} ++;
 
   $vertex{"$s[0]"} ||= $s[12];
   $vertex{"$s[1]"} ||= $s[13];
@@ -129,18 +129,20 @@ while(<M6>){
 print DOT "}\n";
 close DOT;
 #test
-&verbose("done.\n");
-my @bd = sort keys %DIST;
-print "BIXXXXXXXX\t".(join "\t", @bd)."\n";
-for (my $i=0;$i<@bd;$i++){
-  print "$bd[$i]";
-  for(my $j=0;$j<@bd;$j++){
-    print "\t$DIST{$bd[$i]}{$bd[$j]}{D}($DIST{$bd[$i]}{$bd[$j]}{C})";
-  }
-  print "\n";
-}
-#exit;
-&verbose("done.\nGenerating path and merging sequence:");
+# if($verbose){
+#   print "done.\n##########\n";
+#   my @bd = sort keys %DIST;
+#   print "BIXXXXXXXX\t".(join "\t", @bd)."\n";
+#   for (my $i=0;$i<@bd;$i++){
+#     print "$bd[$i]";
+#     for(my $j=0;$j<@bd;$j++){
+#       printf("\t%10s","$DIST{$bd[$i]}{$bd[$j]}{D}($DIST{$bd[$i]}{$bd[$j]}{C})");
+#     }
+#     print "\n";
+#   }
+#   &verbose("##########\nGenerating path and merging sequence:");
+# }
+&verbose("done.\nGenerating path and merging sequence:\n");
 #get path
 our ($pid)=(0);
 my @ss = ("+","-");
@@ -148,20 +150,29 @@ while(@ss){
   my ($std, $rcs) = &dPN(shift @ss);
   &verbose("\nstart searching $std sense:\n");
   foreach my $v (sort keys %vertex){
-    if(not exists $LINK{$v}{$rcs}{V}){
+    if(not exists $LINK{$v}{$rcs}){
       my ($vi,$count,$len,$tip2,$path,$seq) = ($v,1,0,0,"$v$std","");
-      while(exists $LINK{$vi}{$std}{V}){
-        my $leni = $vertex{$vi} - $LINK{$vi}{$std}{1} - $LINK{$vi}{$std}{D} - $tip2;
+      $vi =~ /(BI\d+)/; my $qBI = $1;
+      my %NODES = ($vi => 1);
+      while(exists $LINK{$vi}{$std}){
+        #pick most overlapped beads to current bead
+        my ($vj,$bBI) = &topOverlapped($vi, keys %{$LINK{$vi}{$std}});
+        if(exists $NODES{$vj}){
+          &verbose("Repeat nodes found. It will cause loopping. Discard.\n");
+          last;
+        }
+        my $leni = $vertex{$vi} - $LINK{$vi}{$std}{$vj}{1} - $LINK{$vi}{$std}{$vj}{D} - $tip2;
         my $seqi = ($std eq "+")?$SEQ{$vi}:&xDNA("rc",$SEQ{$vi});
         $len += $leni;
         $seq .= substr($seqi,$tip2,$leni);
-        $path .= " $LINK{$vi}{$std}{V}$LINK{$vi}{$std}{S}";
-        &verbose(" $vi$std,$tip2,$leni,$LINK{$vi}{$std}{D},$LINK{$vi}{$std}{1},$LINK{$vi}{$std}{2},$LINK{$vi}{$std}{S}");
+        $path .= " $vj$LINK{$vi}{$std}{$vj}{S}";
+        &verbose("$vi$std,$tip2,$leni,$LINK{$vi}{$std}{$vj}{D},$LINK{$vi}{$std}{$vj}{1},$LINK{$vi}{$std}{$vj}{2},$LINK{$vi}{$std}{$vj}{S}\n");
+        #$DIST{$qBI}{$bBI}{D} += $LINK{$vi}{$std}{$vj}{D};
+        $NODES{$vj} ++;
         $count ++;
-        $tip2 = $LINK{$vi}{$std}{2};
-        my $tmp = $LINK{$vi}{$std}{V};
-        $std = $LINK{$vi}{$std}{S};
-        $vi = $tmp
+        $tip2 = $LINK{$vi}{$std}{$vj}{2};
+        $std = $LINK{$vi}{$std}{$vj}{S};
+        $vi = $vj;
         #
       }
       next if $count < 2;
@@ -189,6 +200,26 @@ sub dPN{
   my $i = shift;
   my $o = ($i eq "+")?"-":"+";
   return($i,$o);
+}
+
+sub topOverlapped{
+  my $qCI = shift;
+  my @sCIs= @_;
+  $qCI =~ /(BI\d+)/;
+  my $qBI = $1;
+  my %MIN=("D"=>0,"B"=>"","C"=>"");
+  for(my $i=0;$i<@sCIs;$i++){
+    $sCIs[$i] =~ /(BI\d+)/;
+    my $sBI = $1;
+    if($DIST{$qBI}{$sBI}{D} < $MIN{D}){
+      if($sBI eq $MIN{B}){
+        die "Nodes from same BB: $sCIs[$i] and $MIN{C} !\n";
+      }
+      %MIN = ("D"=>$DIST{$qBI}{$sBI}{D}, "B"=>$sBI,"C"=>$sCIs[$i]);
+    }
+  }
+  &verbose(" Found:($MIN{D} between $MIN{B} and $qBI),");
+  return($MIN{C},$MIN{B});
 }
 
 sub xDNA{
