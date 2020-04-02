@@ -441,7 +441,7 @@ sub run_fqpick {
 
   &verbose("[pick] Mode start ... \n");
   open IDX, "<$idx" or die $!;
-  open INF, "<$inf" or die $!;
+  open INF, ($inf=~/.gz$/)?"gzip -dc $inf|":"<$inf" or die $!;
   open OUT, ($out)?">$out":">-" or die $!;
 
   srand($randomPiece) if $randomPiece;
