@@ -42,7 +42,7 @@ GetOptions(
 $kmer||=31;
 &usage && exit if $help;
 
-our(%SEQ,%LINK,%DIST,%vertex);
+our(%SEQ,%LINK,%DIST,%CLUST,%vertex);
 open FA, ($fa)?"<$fa":"< -" or die $!;
 open M6, "<$m6" or die $!;
 open DOT,">$out.dot" or die $!;
@@ -68,6 +68,23 @@ if($uc){
     $s[9] =~ /(BI\d+)/; my $cBI = $1;
     $DIST{$mBI}{$cBI}{D} -= $s[3]; $DIST{$mBI}{$cBI}{C} ++;
     $DIST{$cBI}{$mBI}{D} -= $s[3]; $DIST{$cBI}{$mBI}{C} ++;
+    # save cluster info
+    $CLUST{$s[9]}{$s[8]}{B} = $mBI;
+    # Get left cigar
+    my ($mLen,$fLen,$mode);
+    if($s[7] =~ s/^(\d+[DI])//){
+      ($mLen,$fLen,$mode) = &cigarLen($1);
+    }else{
+      ($mLen,$fLen,$mode) = (0,0,"I");
+    }
+    $CLUST{$s[9]}{$s[8]}{P} = ($mode eq "I")?($fLen):0; #count from ZERO.
+    # Remove right
+    $s[7] =~ s/(\d+[DI])$//;
+    # Get aligned length
+    ($mLen,$fLen,$mode) = &cigarLen($s[7]);
+    $CLUST{$s[9]}{$s[8]}{L} = $fLen;
+    $CLUST{$s[9]}{$s[8]}{R} = $s[3];
+    $CLUST{$s[9]}{$s[8]}{S} = $s[4];
   }
 }
 close UC;
@@ -128,64 +145,59 @@ while(<M6>){
 }
 print DOT "}\n";
 close DOT;
-#test
-# if($verbose){
-#   print "done.\n##########\n";
-#   my @bd = sort keys %DIST;
-#   print "BIXXXXXXXX\t".(join "\t", @bd)."\n";
-#   for (my $i=0;$i<@bd;$i++){
-#     print "$bd[$i]";
-#     for(my $j=0;$j<@bd;$j++){
-#       printf("\t%10s","$DIST{$bd[$i]}{$bd[$j]}{D}($DIST{$bd[$i]}{$bd[$j]}{C})");
-#     }
-#     print "\n";
-#   }
-#   &verbose("##########\nGenerating path and merging sequence:");
-# }
+
+
 &verbose("done.\nGenerating path and merging sequence:\n");
 #get path
-our ($pid)=(0);
-my @ss = ("+","-");
-while(@ss){
-  my ($std, $rcs) = &dPN(shift @ss);
-  &verbose("\nstart searching $std sense:\n");
-  foreach my $v (sort keys %vertex){
-    if(not exists $LINK{$v}{$rcs}){
-      my ($vi,$count,$len,$tip2,$path,$seq) = ($v,1,0,0,"$v$std","");
-      $vi =~ /(BI\d+)/; my $qBI = $1;
-      my %NODES = ($vi => 1);
-      while(exists $LINK{$vi}{$std}){
-        #pick most overlapped beads to current bead
-        my ($vj,$bBI) = &topOverlapped($vi, keys %{$LINK{$vi}{$std}});
+our ($pid,%PATH)=(0,);
+my ($std, $rcs) = ("+","-");
+&verbose("\nstart searching $std sense:\n");
+foreach my $v (sort keys %vertex){
+  if(not exists $LINK{$v}{$rcs}){
+    my ($vi,$count,$len,$tip2,$path,$seq,$pos) = ($v,1,0,0,"$v$std","",0);
+    $vi =~ /(BI\d+)/; my $qBI = $1;
+    my %NODES = ($vi => 1);
+    $PATH{$v}{PATH}{$v}{P} = 0;
+    # sort by tips
+    my @next = sort { $LINK{$vi}{$std}{$a}{2} <=> $LINK{$vi}{$std}{$b}{2} } keys %{$LINK{$vi}{$std}};
+    while(exists @next){
+      my @nexti = @next; @next=();
+
+      $PATH{$v}{BEAD}{$qBI}{$pos}{N} = $vi;
+      $PATH{$v}{BEAD}{$qBI}{$pos}{L} = $vertex{$vi} - $tip2 - $LINK{$vi}{$std}{$next[0]}{1};
+
+      for (my $s=0;$s<@next;$i++){
+        my $vj = $next[$s];
         if(exists $NODES{$vj}){
           &verbose("Repeat nodes found. It will cause loopping. Discard.\n");
-          last;
+
         }
-        my $leni = $vertex{$vi} - $LINK{$vi}{$std}{$vj}{1} - $LINK{$vi}{$std}{$vj}{D} - $tip2;
-        my $seqi = ($std eq "+")?$SEQ{$vi}:&xDNA("rc",$SEQ{$vi});
-        $len += $leni;
-        $seq .= substr($seqi,$tip2,$leni);
-        $path .= " $vj$LINK{$vi}{$std}{$vj}{S}";
-        &verbose("$vi$std,$tip2,$leni,$LINK{$vi}{$std}{$vj}{D},$LINK{$vi}{$std}{$vj}{1},$LINK{$vi}{$std}{$vj}{2},$LINK{$vi}{$std}{$vj}{S}\n");
-        #$DIST{$qBI}{$bBI}{D} += $LINK{$vi}{$std}{$vj}{D};
-        $NODES{$vj} ++;
-        $count ++;
-        $tip2 = $LINK{$vi}{$std}{$vj}{2};
-        $std = $LINK{$vi}{$std}{$vj}{S};
-        $vi = $vj;
         #
+        my $seqi = ($std eq "+")?$SEQ{$vi}:&xDNA("rc",$SEQ{$vi});
+        my $leni = $vertex{$vi} - $tip2 - $LINK{$vi}{$std}{$vj}{1} ;
+        my $seqi_remove_tips .= substr($seqi,$tip2,$leni);
+        my $posi = $PATH{$v}{PATH}{$v}{P};
+        #For the smallest tip
+        if($s == 0){
+          for(my $i = 0;$i<$leni;$i++){ $PATH{$v}{SEQ}{substr($seqi_remove_tips,$posi+$i,1)} ++;}
+        }
+        for(my $i = 0;$i<$leni;$i++){ $PATH{$v}{PATH}{$vi}{SEQ}{substr($seqi_remove_tips,$i,1)} = 1; }
+
+        push @next, keys $LINK{$vj}{$std};
+        $NODES{$vj} ++;
       }
-      next if $count < 2;
-      &verbose(" $vi$std,$tip2,$vertex{$vi}\n");
-      $len += $vertex{$vi} - $tip2;
-      $seq .= substr(($std eq "+")?$SEQ{$vi}:&xDNA("rc",$SEQ{$vi}),$tip2);
-      $pid ++;
-      print SEQ ">$pid $len $path\n$seq\n";
-      print PATH "$pid\t$len\t$path\n";
-      &verbose("found merged sequence up to $pid\n");
-      #reset sense:
-      ($rcs,$std) = &dPN($rcs);
+        #
     }
+    next if $count < 2;
+    &verbose(" $vi$std,$tip2,$vertex{$vi}\n");
+    $len += $vertex{$vi} - $tip2;
+    $seq .= substr(($std eq "+")?$SEQ{$vi}:&xDNA("rc",$SEQ{$vi}),$tip2);
+    $pid ++;
+    print SEQ ">$pid $len $path\n$seq\n";
+    print PATH "$pid\t$len\t$path\n";
+    &verbose("found merged sequence up to $pid\n");
+    #reset sense:
+    ($rcs,$std) = &dPN($rcs);
   }
 }
 close PATH;
@@ -244,6 +256,22 @@ sub xDNA{
   }
   return($res);
 }
+
+sub cigarLen{
+	my $cigar =shift;
+	my ($mLen,$fLen,%MODE) = (0,0,);
+	while($cigar){
+		$cigar =~ s/^(\d*)([MIDNSHP=X])//;
+		my ($mode,$n) = ($2,$1);
+		$n ||=1;
+		if($mode =~/[MINP=X]/){$mLen += $n;}
+		if($mode =~/[HSMINP=X]/){$fLen += $n;}
+    $MODE{$mode} ++;
+	}
+  my $mode = join "", keys %MODE;
+	return($mLen,$fLen,$mode);
+}
+
 
 sub verbose{
   my $msg = shift;
