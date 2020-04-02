@@ -94,11 +94,10 @@ rule BIA_1_getBIs:
     shell:
         "awk '$1!~/0000/&&$3>{params.k}&&$2*{params.n}/$3>{params.c}{{print FNR\"\\t\"$0}}' {input} > {output}"
 
-
 rule BIA_1_write:
     input:
-        s1 = "{sample}/clean/fastp.sort.1.fq",
-        s2 = "{sample}/clean/fastp.sort.2.fq",
+        s1 = "{sample}/mash/BI.1.fq",
+        s2 = "{sample}/mash/BI.2.fq",
         bi = "{sample}/Assemble_BI/ID.lst"
     output: "{sample}/Assemble_BI/log"
     params:
@@ -108,10 +107,23 @@ rule BIA_1_write:
         "metabbq beadsWrite.pl -d {input.bi} -f fq -t {threads} -o {params.outDir} -v "
         "--r1 {input.s1}  --r2 {input.s2} &> {output}\n"
 
+rule BIA_1_prepCFG:
+    input: "{sample}/Assemble_BI/log"
+    output: "{sample}/primers.cfg"
+    params:
+        Ad = config["AdRCA"],
+        FWD= config["AdFw"],
+        REV= config["AdRv"]
+    shell:
+        """
+echo -e "Ad={params.Ad}\nFWD={params.FWD}\nREV={params.REV}" > {output}
+        """
+
 rule BIA_2_initASMsh:
     input:
         log = "{sample}/Assemble_BI/log",
         bi = "{sample}/Assemble_BI/ID.lst",
+        cfg= "{sample}/primers.cfg"
     output: "{sample}/batch.assemble.BI.sh"
     params:
         samDir = "{sample}",
@@ -121,7 +133,7 @@ rule BIA_2_initASMsh:
         cpu    = config["p_asm_cpu"]
     shell:
         "for i in `cut -f1 {input.bi}`; do "
-        "echo metabbq RCAasm.sh {params.mode} {params.samDir} BI $i BI {params.mem} {params.cpu} ; done > {output}\n"
+        "echo metabbq RCAasm.sh {params.mode} {params.samDir} BI $i BI {params.mem} {params.cpu} {input.cfg}; done > {output}\n"
 
 outPfx="{sample}/summary.BI." + str(config["method"]["assemble"]["mode"])
 outXa= "{sample}/summary.BI." + str(config["method"]["assemble"]["mode"]) + ".contig.fasta"
