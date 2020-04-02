@@ -165,8 +165,8 @@ sub specifcBarcode{
   # my (@R1,@R2);
   # tie @R1, "Tie::File", $in1, autochomp => 0 or die $!;
   # tie @R2, 'Tie::File', $in2, autochomp => 0 or die $!;
-  open R1, "< $in1" or die $!;
-  open R2, "< $in2" or die $!;
+  open R1, ($in1=~/.gz$/)?"gzip -dc $in1|":"< $in1" or die $!;
+  open R2, ($in2=~/.gz$/)?"gzip -dc $in2|":"< $in2" or die $!;
 
   if(defined $pfx){
     &filesOpen(2,"$out/$pfx");
