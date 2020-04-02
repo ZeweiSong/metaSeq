@@ -17,7 +17,10 @@ $msg
 usage:
   beadStat <mode> [option]
   command:
-    RSU     grep info from robosome subunit sequence file
+    rsu     grep info from robosome subunit sequence file
+    basic
+    fastp
+    slv
 
 options:  Defined according to the mode and cmd you chosed.
 USAGE
@@ -31,7 +34,7 @@ my $cmd = shift @ARGV unless $ARGV[0] =~/^-/;
 ## for slv:
 our ($runS, $runL, $rdS, $rdL, $pNS, $pNL, $pBS, $pBL, %RSU,
 $countS, $countL, $pCS, $pCL, $aCount,$cCount,$cBPathLv,$cBPath, $cName,
-$BS, $NS, @iS, $BL, $NL, @iL);
+$cB,$cS,$cL, $BS, $NS, @iS, $BL, $NL, @iL);
 our ($UNIT_LEN,$UNIT_IDENT) = (400,90);
 # SET END
 
@@ -53,6 +56,8 @@ sub verbose{
   print STDERR $msg if $verbose;
 }
 
+### basic section start ########################################################
+
 sub usage4basic {
   my $msg = shift;
 print <<USAGE;
@@ -61,7 +66,7 @@ usage:
   $0 basic -p path/to/output [-n sample_name] [-o output_file]
     -p  path to output directory.
     -n  sample name. Use directory name if not specified.
-    -o  output YAML format file. STDOUT if ignored.
+    -o  output table file. STDOUT if ignored.
     -v  verbose
     -h  show help info
 USAGE
@@ -70,6 +75,7 @@ USAGE
 
 sub run_basic {
   use File::Basename;
+  use JSON qw( decode_json );
   &usage4basic("Grep basic information.") && exit unless @ARGV;
   my ($dir,$sam,$out,$verbose,$help);
   GetOptions(
@@ -92,11 +98,25 @@ sub run_basic {
     my $count = $s[2]/4;
     $INFO{'QC'}{'reads'} = $count;
   };
+
+  $get = "$dir/clean/fastp.json";
+  if(-e $get ){
+    open INF, "< $get" or die $!;
+    my $json = decode_json(join('',<INF>));
+    close INF;
+    foreach my $s (sort keys %{$$json{'summary'}}){
+      foreach my $h (sort keys %{$$json{'summary'}{$s}} ){
+        my $t = "$s.$h";
+        $INFO{'fastp'}{$t} = $$json{'summary'}{$s}{$h};
+      }
+    }
+  }
+
   $get = "$dir/clean/BB.stat";
   if(-e $get){
     $_ = `tail -n1 $get`;
     my @s = split;
-    $INFO{'BB'}{'reads'} = $s[2];
+    $INFO{'BB'}{'beads'} = $s[2];
     $INFO{'BB'}{'singleton'} = $s[0];
   };
   $get = "$dir/Assemble_BI/ID.lst";
@@ -112,7 +132,19 @@ sub run_basic {
     $INFO{'ASM'}{'clips'} = $s[0];
   };
 
+  &verbose(" [basic] print ... ");
+  print OUT ".ID";
+  my $res = "$sam";
+  foreach my $f (sort keys %INFO){
+    foreach my $h (sort keys %{$INFO{$f}}){
+      print OUT "\t$f.$h";
+      $res .= "\t$INFO{$f}{$h}";
+    }
+  }
+  print OUT "\n$res\n";
+  &verbose(" done! \n");
 }
+### basic section end ##########################################################
 
 
 sub usage4rsu {
@@ -158,6 +190,7 @@ sub run_rsu {
   close OUT;
 }
 
+### slv section start ##########################################################
 sub usage4slv {
   my $msg = shift;
 print <<USAGE;
@@ -195,7 +228,7 @@ sub run_slv {
   open INL, "< $inL" or die $!;
   open INS, "< $inS" or die $!;
   ($runS, $runL, $pNS, $pNL, $pBS, $pBL, %RSU) = (1,1,,,,,,,);
-  ($countS, $countL, $pCS, $pCL) = (0,0,0,0);
+  ($countS, $countL, $pCS, $pCL, $cB,$cS,$cL) = (0,0,0,0, 0,0,0);
   ($aCount, $cCount, $cBPathLv, $cBPath, $cName)=();
   $rdS=<INS>; ($BS, $NS, @iS) = &getSlvInfo($rdS);
   $rdL=<INL>; ($BL, $NL, @iL) = &getSlvInfo($rdL);
@@ -516,11 +549,15 @@ sub summaryClip{
 sub compareBS{
   my($R,$c,$B,$pB,$pth) = @_;
   if($R ne "NONE"){
+    if($R eq "SSU"){$cS++}elsif($R eq "LSU"){$cL++}else{$cB++};
     $aCount += $c; $cCount ++;
     ($cBPathLv,$cBPath, $cName) = ($cBPath)?&comparePath($cBPath,$pth):&comparePath($pth,$pth);
   }
   if($B ne $pB){
-    print LOG "$pB\t$cCount\t$aCount\t$cBPathLv\t$cName\t$cBPath\n" if $aCount > 0;
+    print LOG "$pB\t$cCount\t$aCount\t$cB\t$cS\t$cL\t$cBPathLv\t$cName\t$cBPath\n" if $aCount > 0;
     ($aCount,$cCount,$cBPathLv,$cBPath,$cName) = (0,0,,,);
+    ($cB,$cS,$cL) = (0,0,0);
   }
 }
+
+### slv section end ############################################################
