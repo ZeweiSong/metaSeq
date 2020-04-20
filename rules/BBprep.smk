@@ -15,7 +15,11 @@ if config["AdFw"] and config["AdRv"]:
         params:
             title = "{sample}",
             AdF   = config["AdFw"],
-            AdR   = config["AdRv"]
+            AdR   = config["AdRv"],
+            process=config["fastp_process"],
+            pos1  = config["stLFR_pos1"],
+            pos2  = config["stLFR_pos2"],
+            pos3  = config["stLFR_pos3"]
         output:
             r1 = "{sample}/clean/fastp.1.fq",
             r2 = "{sample}/clean/fastp.2.fq",
@@ -27,10 +31,12 @@ if config["AdFw"] and config["AdRv"]:
             "benchmarks/{sample}.fp.benchmark.txt"
         threads: config["thread"]["fastp"]
         shell:
-            "fastp --stLFR_barcode_file {input.bfile} --stLFR_pos3 132 "
-            "--in1 {input.r1} --in2 {input.r2} "
+            "fastp --stLFR_barcode_file {input.bfile} --reads_to_process {params.process} "
+            "--stLFR_pos1 {params.pos1} --stLFR_pos2 {params.pos2} --stLFR_pos3 {params.pos3} "
+            "-L --in1 {input.r1} --in2 {input.r2} "
             "--adapter_sequence {params.AdF} --adapter_sequence_r2 {params.AdR} "
-            "--out1 {output.r1} --out2 {output.r2} --json {output.json} --html {output.html} "
+            "--out1 {output.r1} --out2 {output.r2} "
+            "--json {output.json} --html {output.html} "
             "--disable_trim_poly_g --report_title {params.title} "
             "-w {threads} -V &> {log}\n"
 else:
@@ -40,7 +46,11 @@ else:
             r2 = "{sample}/input/rawSeq_2.fq.gz",
             bfile = config["BB_LIST"]
         params:
-            title = "{sample}"
+            title = "{sample}",
+            process=config["fastp_process"],
+            pos1  = config["stLFR_pos1"],
+            pos2  = config["stLFR_pos2"],
+            pos3  = config["stLFR_pos3"]
         output:
             r1 = "{sample}/clean/fastp.1.fq",
             r2 = "{sample}/clean/fastp.2.fq",
@@ -52,7 +62,8 @@ else:
             "benchmarks/{sample}.fp.benchmark.txt"
         threads: config["thread"]["fastp"]
         shell:
-            "fastp --stLFR_barcode_file {input.bfile} --stLFR_pos3 132 "
+            "fastp -L --stLFR_barcode_file {input.bfile} --reads_to_process {params.process} "
+            "--stLFR_pos1 {params.pos1} --stLFR_pos2 {params.pos2} --stLFR_pos3 {params.pos3} "
             "--in1 {input.r1} --in2 {input.r2} "
             "--out1 {output.r1} --out2 {output.r2} --json {output.json} --html {output.html} "
             "--disable_trim_poly_g --report_title {params.title} "
@@ -81,9 +92,10 @@ rule BB_2_sortR1:
     output:
         s1 = "{sample}/clean/fastp.sort.1.fq"
     params:
-        tmp = config["tmp"]
+        tmp = "{sample}/.tmp.1"
     threads: config["thread"]["pigz"]
     shell:
+        "mkdir -p {params.tmp}\n"
         "cat {input.r1} | paste - - - - | sort -T {params.tmp} -k2,2 -t \"/\" | "
         "tr \"\\t\" \"\\n\" > {output.s1}"
 
@@ -93,9 +105,10 @@ rule BB_2_sortR2:
     output:
         s2 = "{sample}/clean/fastp.sort.2.fq"
     params:
-        tmp = config["tmp"]
+        tmp = "{sample}/.tmp.2"
     threads: config["thread"]["pigz"]
     shell:
+        "mkdir -p {params.tmp}\n"
         "cat {input.r2} | paste - - - - | sort -T {params.tmp} -k2,2 -t \"/\" | "
         "tr \"\\t\" \"\\n\" > {output.s2}"
 
@@ -123,3 +136,13 @@ rule BB_4_split:
         "awk -v p=$pointer 'FNR>=p{{print}}' {input.s1} > {output.x1} & "
         "awk -v p=$pointer 'FNR>=p{{print}}' {input.s2} > {output.x2} & "
         "wait"
+
+rule BB_5_gzip:
+    input:
+        s1 = "{sample}/clean/fastp.sort.1.fq",
+        s2 = "{sample}/clean/fastp.sort.2.fq"
+    output:
+        x1 = "{sample}/clean/fastp.sort.1.fq.gz",
+        x2 = "{sample}/clean/fastp.sort.2.fq.gz"
+    shell:
+        "gzip {input.s1} {input.s2}"

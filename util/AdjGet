@@ -1,0 +1,469 @@
+#!/usr/bin/env perl
+# (c) 2016 - 2020 Chao IN-HORSE SHARE ONLY
+# ===================================================================
+# Description:       Find the adj graph acrossing beads
+# Author:            Chao<fangchao@genomics.cn>
+# Created Date:      20 Mar 2020
+# ===================================================================
+# see detail below
+use strict;
+use Getopt::Long qw(:config no_ignore_case); # For case sensitive
+
+sub usage {
+  my $msg = shift;
+  print <<USAGE;
+$msg
+usage:
+  $0 -i input -o output -r ref.bed
+    -i  input fasta file
+    -u  read bead to bead info from uc file if sequence were clustered
+    -m  minimum cluster size (remove singleton)
+    -b  blast 6 format alignment file
+    -z  Estimated target scaffold's max length, default [5000]
+    -s  Minium overlap size between beads, default [1000]
+    -k  minimum kmers of overlape zone
+    -o  output beads stat annotation
+    -c  output clips best annotation
+    -d  debug mode
+    -v  verbose
+    -h  show help info
+USAGE
+}
+&usage && exit unless @ARGV;
+
+our ($stime,$m6,$AMPSIZE,$MINSIZE,$mClustSize,$mOverSize,$kmer,$fa,$uc,$out,$clip,$covf,$MAXNODES,$debug,$verbose,$help)=(time(),);
+GetOptions(
+  "i:s" => \$fa,
+  "u:s" => \$uc,
+  "m:s" => \$mClustSize,
+  "b:s" => \$m6,
+  "Z:s" => \$AMPSIZE,
+  "z:s" => \$MINSIZE,
+  "s:s" => \$mOverSize,
+  "k:i" => \$kmer,
+  "o:s" => \$out,
+  "c:s" => \$clip,
+  "g:s" => \$covf,
+  "n:i" => \$MAXNODES,
+  "d" => \$debug,
+  "v" => \$verbose,
+  "h|help|?" => \$help,
+);
+$kmer||=200;
+$AMPSIZE||=5000;
+$MINSIZE||=2000;
+$mOverSize||=500;
+$mClustSize||=5;
+&usage && exit if $help;
+
+our(%SEQ,%LINK,%DIST,%CLUST,%vertex,%STAT);
+open FA, ($fa)?"<$fa":"< -" or die $!;
+open M6, "<$m6" or die $!;
+open DOT,">$out.dot" or die $!;
+open PATH,">$out.path" or die $!;
+open SEQ,">$out.merge.fa" or die $!;
+open LOG,">$out.log" or die $!;
+
+&verbose("AdjGet start.\nRading fasta ... ");
+while(<FA>){
+  chomp;
+  my @s =split " |\t|>", $_;
+  chomp(my $seq = <FA>);
+  $SEQ{"$s[1]"} = $seq;
+}
+close FA;
+&verbose("done.\nReading m6 and generating dot ... ");
+#Account dist if spefic uc file:
+my $akeys = "";
+if($uc){
+  open UC, "<$uc" or die $!;
+  while(<UC>){
+    if($_ =~ /^H/){
+      my @s = split;
+      $s[8] =~ /(BI\d+)/; my $mBI = $1;
+      $s[9] =~ /(BI\d+)/; my $cBI = $1;
+      $DIST{$mBI}{$cBI}{D} -= $s[2]; $DIST{$mBI}{$cBI}{C} ++;
+      $DIST{$cBI}{$mBI}{D} -= $s[2]; $DIST{$cBI}{$mBI}{C} ++;
+      # save cluster info
+      $CLUST{$s[9]}{$s[8]}{B} = $mBI;
+      # Get left cigar
+      my ($mLen,$fLen,$mode);
+      if($s[7] =~ s/^(\d+[DI])//){
+        ($mLen,$fLen,$mode) = &cigarLen($1);
+      }else{
+        ($mLen,$fLen,$mode) = (0,0,"I");
+      }
+      $CLUST{$s[9]}{$s[8]}{P} = ($mode eq "I")?($fLen):0; #count from ZERO.
+      # Remove right
+      $s[7] =~ s/(\d+[DI])$//;
+      # Get aligned length
+      ($mLen,$fLen,$mode) = &cigarLen($s[7]);
+      $CLUST{$s[9]}{$s[8]}{L} = $fLen;
+      $CLUST{$s[9]}{$s[8]}{R} = $s[3];
+      $CLUST{$s[9]}{$s[8]}{S} = $s[4];
+    }elsif($_ =~ /^C/){
+      $akeys ||= keys %CLUST;
+      my @s = split;
+      if($s[2] < $mClustSize && exists $CLUST{$s[8]}){
+        delete $CLUST{$s[8]};
+      }
+    }
+  }
+}
+close UC;
+my $kkeys = keys %CLUST;
+&verbose(" done. $kkeys / $akeys retained.\n");
+#Generating graph
+print DOT "digraph g {\n";
+while(<M6>){
+  chomp;
+  my @s=split;
+  my $std=($s[9]>$s[8])?"+":"-";
+  my $rcs=($std eq "+")?"-":"+";
+  my($sLeft,$sRight)=($std eq "+")?($s[8],$s[9]):($s[9],$s[8]);
+  my($qTipL,$qTipR,$sTipL,$sTipR) = ($s[6]-1,$s[12]-$s[7],$sLeft-1,$s[13]-$sRight);
+  my($sTipI,$sTipO) = ($std eq "+")?($sTipR,$sTipL):($sTipL,$sTipR);
+  next if $s[3] < $kmer || $s[0] eq $s[1];
+  $s[0] =~ /(BI\d+)/; my $qBI = $1;
+  $s[1] =~ /(BI\d+)/; my $sBI = $1;
+
+  next unless exists $CLUST{$s[0]} && exists $CLUST{$s[1]};
+  if($qTipL<5&&$qTipR>100&&$sTipI<5&&$sTipO>100){
+    # left to right
+    #      L~|6------7------>  query   +  #       L~|6-----7-------> query   +
+    # --------8----->9|~R      subject +  # <--------8-----9|~L      subject -
+    if($s[3] > $kmer){
+      print DOT "\"$s[1]$std\" -> \"$s[0]+\" [d=-$s[3]]\n";
+      $LINK{$s[1]}{$std}{$s[0]}{S} = "+";
+      $LINK{$s[1]}{$std}{$s[0]}{D} = $s[3];
+      $LINK{$s[1]}{$std}{$s[0]}{1} = ($std eq "+")?$sTipR:$sTipL;
+      $LINK{$s[1]}{$std}{$s[0]}{2} = $qTipL;
+      #reverse
+      $LINK{$s[0]}{"-"}{$s[1]}{S} = $rcs;
+      $LINK{$s[0]}{"-"}{$s[1]}{D} = $s[3];
+      $LINK{$s[0]}{"-"}{$s[1]}{1} = $qTipL;
+      $LINK{$s[0]}{"-"}{$s[1]}{2} = ($std eq "+")?$sTipR:$sTipL;;
+    }
+    #
+    $DIST{$qBI}{$sBI}{D} -= $s[3]; $DIST{$qBI}{$sBI}{C} ++;
+    $DIST{$sBI}{$qBI}{D} -= $s[3]; $DIST{$sBI}{$qBI}{C} ++;
+  }elsif($qTipR<5&&$qTipL>100&&$sTipO<5&&$sTipI>100){
+    # right to left
+    # -----6------>7|~    query   + #  ----6---->7|~     query   +
+    #   L~|8-------9----> subject + #   R~|8<----9------ subject -
+    if($s[3] > $kmer){
+      my $overlap = $s[13] - $s[9] - $qTipR;
+      print DOT "\"$s[0]+\" -> \"$s[1]$std\" [d=-$s[3]]\n";
+      $LINK{$s[0]}{"+"}{$s[1]}{S} = $std;
+      $LINK{$s[0]}{"+"}{$s[1]}{D} = $s[3];
+      $LINK{$s[0]}{"+"}{$s[1]}{1} = $qTipR;
+      $LINK{$s[0]}{"+"}{$s[1]}{2} = ($std eq "+")?$sTipL:$sTipR;
+      #reverse
+      print DOT "\"$s[1]$rcs\" -> \"$s[0]-\" [d=-$s[3]]\n";
+      $LINK{$s[1]}{$rcs}{$s[0]}{S} = "-";
+      $LINK{$s[1]}{$rcs}{$s[0]}{D} = $s[3];
+      $LINK{$s[1]}{$rcs}{$s[0]}{1} = ($std eq "+")?$sTipL:$sTipR;
+      $LINK{$s[1]}{$rcs}{$s[0]}{2} = $qTipR;
+    }
+    #
+    $DIST{$qBI}{$sBI}{D} -= $s[3]; $DIST{$qBI}{$sBI}{C} ++;
+    $DIST{$sBI}{$qBI}{D} -= $s[3]; $DIST{$sBI}{$qBI}{C} ++;
+  }
+  $vertex{"$s[0]"} ||= $s[12];
+  $vertex{"$s[1]"} ||= $s[13];
+}
+print DOT "}\n";
+close DOT;
+
+#test
+if( keys %DIST < 10 ){
+  my @bd = sort keys %DIST;
+  print LOG "BIXXXXXXXX\t".(join "\t", @bd)."\n";
+  for (my $i=0;$i<@bd;$i++){
+    print LOG "$bd[$i]";
+    for(my $j=0;$j<@bd;$j++){
+      print LOG sprintf("\t%10s", "$DIST{$bd[$i]}{$bd[$j]}{D}($DIST{$bd[$i]}{$bd[$j]}{C})");
+    }
+    print LOG "\n";
+  }
+}elsif($debug){
+  &verbose("done\nDIST stat start (debug format) ...");
+  open DBG, ">$out.debug.dist.tsv" or die $!;
+  foreach my $i (sort keys %DIST){
+    foreach my $j (sort keys %{$DIST{$i}}){
+      next unless $j gt $i;
+      next unless $DIST{$i}{$j}{C};
+      my $di = $DIST{$i}{$j}{D};
+      print DBG "$i\t$j\t$DIST{$i}{$j}{C}\t$DIST{$i}{$j}{D}\n";
+    }
+  }
+  close DBG;
+}else{
+  &verbose("done\nDIST stat start ...");
+  foreach my $i (sort keys %DIST){
+    foreach my $j (sort keys %{$DIST{$i}}){
+      next unless $j gt $i;
+      next unless $DIST{$i}{$j}{C};
+      my $di = $DIST{$i}{$j}{D};
+      my ($kd,$kc);
+      if(   $di<-6000){$kd=-6000}elsif($di<-5000){$kd=-5000}
+      elsif($di<-4000){$kd=-4000}elsif($di<-3000){$kd=-3000}
+      elsif($di<-2000){$kd=-2000}elsif($di<-1000){$kd=-1000}
+      elsif($di< -500){$kd= -500}elsif($di< -100){$kd= -100}else{$kd=0};
+      $kc = ($DIST{$i}{$j}{C} > 30)?30:$DIST{$i}{$j}{C};
+      $STAT{$kc}{$kd}++;
+    }
+  }
+  my @kcs = sort {$a<=>$b} keys %STAT;
+  print LOG "DIST\t    <-6000\t    <-5000\t    <-4000\t    <-3000\t    <-2000\t    <-1000\t     <-500\t     <-100\t        <0\n";
+  my @kds = ("-6000","-5000","-4000","-3000","-2000","-1000","-500","-100","0");
+  foreach my $kc (sort {$a<=>$b} keys %STAT){
+    print LOG "$kc";
+    foreach my $kd (@kds){
+      $STAT{$kc}{$kd}||=0;
+      print LOG sprintf("\t%10d", $STAT{$kc}{$kd})
+    }
+    print LOG "\n";
+  }
+
+}
+
+&verbose("done.\nGenerating path and merging sequence:\n");
+#get path
+our ($gid,$pid,%SV,%USED,$sumCount)=(1,0,);
+my @ss = ("+","-");
+while(@ss){
+  my ($std, $rcs) = &dPN(shift @ss);
+  &verbose(" Start searching $std sense:\n");
+  foreach my $v (sort keys %vertex){
+    if(not exists $LINK{$v}{$rcs}){
+      my ($count,$len,$tip2,$path,$seq);
+      $v =~ /(BI\d+)/; my $qBI = $1;
+      my $firstSTD = &checkStrand($v,$std);
+      my %NODES = ($v => 1);
+      my %BEADS = ($qBI => 1);
+      my @savedVertex = ($v);
+      %{$SV{$v}} = ( "d"=> $std, "c" => 1, "l" => 0, "t" => 0, "p" => "$v$std", "s" => "");
+      %{$SV{$v}{N}} = %NODES;
+      %{$SV{$v}{B}} = %BEADS;
+      %USED = ();
+      while(@savedVertex){
+        my $vi = shift @savedVertex;
+        my $discardNext = 0;
+        ($std,$count,$len,$tip2,$path,$seq) = ($SV{$vi}{d},$SV{$vi}{c},$SV{$vi}{l},$SV{$vi}{t},$SV{$vi}{p},$SV{$vi}{"s"});
+        %NODES = %{$SV{$vi}{"N"}};
+        %BEADS = %{$SV{$vi}{"B"}};
+        &verbose("  Start from count=$count: $path\n");
+        while(exists $LINK{$vi}{$std}){
+          #pick most overlapped beads to current bead
+          $discardNext = 0;
+          my (@vjs) = (0,);
+          foreach my $i (sort keys %{$LINK{$vi}{$std}}){
+            push @vjs, $i unless $USED{EDGE}{$vi}{$i} > 0;
+          };
+          last unless @vjs;
+          if(@vjs>1){
+            unshift @savedVertex, $vi;
+            ($SV{$vi}{d},$SV{$vi}{c},$SV{$vi}{l},$SV{$vi}{t},$SV{$vi}{p},$SV{$vi}{"s"}) = ($std,$count,$len,$tip2,$path,$seq);
+            %{$SV{$vi}{"N"}} = %NODES;
+            %{$SV{$vi}{"B"}} = %BEADS;
+          }
+          my ($vj,$bBI,$beadOverlap,$msg) = &topOverlapped($vi, @vjs);
+          my $checkSTD = &checkStrand($vj,$LINK{$vi}{$std}{$vj}{S});
+          if($checkSTD ne $firstSTD && $firstSTD ne "" && $checkSTD ne ""){
+            &verbose("   The vertex may not connected in the same strand ($v:$firstSTD <=> $vj$LINK{$vi}{$std}{$vj}{S}:$checkSTD). It will cause chimeras. Break.\n");
+            $discardNext = 1;
+            $USED{EDGE}{$vi}{$vj} ++;
+            last;
+          }
+          if(exists $NODES{$vj} ){
+            &verbose("   Repeat nodes found ($vi -=> $vj). It will cause loopping. Break.\n");
+            $discardNext = 1;
+            #mark used link:
+            $USED{EDGE}{$vi}{$vj} ++;
+            last;
+          }
+          $NODES{$vj} ++;
+          $BEADS{$bBI} ++;
+          my $keys = keys %BEADS;
+          if(defined $MAXNODES && $keys > $MAXNODES){
+            &verbose("  Nodes ($path+$vj:$bBI) larger than set ($MAXNODES). Skip this one.\n");
+            $discardNext = 1;
+            #mark used link:
+            $USED{EDGE}{$vi}{$vj} ++;
+            last;
+          }
+          if(-$beadOverlap < $mOverSize){
+            &verbose("   $msg. But Beads overlap (".(-$beadOverlap).") less than set ($mOverSize). Skip\n");
+            $discardNext = 1;
+            $USED{EDGE}{$vi}{$vj} ++;
+            last;
+          }
+          my $leni = $vertex{$vi} - $LINK{$vi}{$std}{$vj}{1} - $LINK{$vi}{$std}{$vj}{D} - $tip2;
+          my $seqi = ($std eq "+")?$SEQ{$vi}:&xDNA("rc",$SEQ{$vi});
+          $len += $leni;
+          $seq .= substr($seqi,$tip2,$leni);
+          $path .= " $vj$LINK{$vi}{$std}{$vj}{S}";
+          &verbose("   $vi$std,$tip2,$leni,$LINK{$vi}{$std}{$vj}{D},$LINK{$vi}{$std}{$vj}{1},$LINK{$vi}{$std}{$vj}{2},$LINK{$vi}{$std}{$vj}{S}\t$msg\n");
+          #mark used link:
+          $USED{EDGE}{$vi}{$vj} ++;
+          #$DIST{$qBI}{$bBI}{D} += $LINK{$vi}{$std}{$vj}{D};
+          $count ++;
+          $tip2 = $LINK{$vi}{$std}{$vj}{2};
+          $std = $LINK{$vi}{$std}{$vj}{S};
+          $vi = $vj;
+        }
+        if($discardNext && $savedVertex[0] eq $vi){
+          &verbose("   found another path to extend. Skip current.\n");
+        }elsif($count >1){
+          unless($discardNext){
+            &verbose("   $vi$std,$tip2,$vertex{$vi}\n");
+            $len += $vertex{$vi} - $tip2;
+            $seq .= substr(($std eq "+")?$SEQ{$vi}:&xDNA("rc",$SEQ{$vi}),$tip2);
+          }
+          #
+          my $keys = keys %BEADS;
+          if($len > $AMPSIZE){
+            &verbose("  Path length ($len) larger than set ($AMPSIZE). Skip this one.\n");
+          }elsif($len < $MINSIZE){
+            &verbose("  Path length ($len) less than set ($MINSIZE). Skip this one.\n");
+          }elsif(exists $USED{PATH}{$seq}){
+            &verbose("  Found exactly previous path. Skip this one.\n");
+          }elsif(defined $MAXNODES && $keys > $MAXNODES){
+            &verbose("  Nodes ($keys) larger than set ($MAXNODES). Skip this one.\n");
+          }else{
+            $pid ++;
+            $sumCount ++;
+            $USED{PATH}{$seq} ++;
+            print SEQ ">$gid.$pid $len $count $path\n$seq\n";
+            print PATH "$gid.$pid\t$len\t$keys\t$path\n";
+            &verbose("  Scaffold linked. ID: $gid.$pid | len: $len | Beads : $keys | nodes: $count\n");
+          }
+        }else{
+          &verbose("   SKIP due to \$count=$count <= 1\n");
+        };
+        #reset sense:
+        ($rcs,$std) = &dPN($rcs);
+      }
+      # reset for next input vertex:
+      $pid = 0; $gid ++;
+    }
+  }
+}
+
+close PATH;
+close SEQ;
+&verbose("found merged sequence up to $sumCount ... done.\nAdjGet DONE!\n");
+exit;
+
+################################################################################
+# sub
+################################################################################
+sub BID{
+  my $id = shift;
+  $id =~ /(BI\d+)/;
+  return($1);
+}
+sub dPN{
+  my $i = shift;
+  my $o = ($i eq "+")?"-":"+";
+  return($i,$o);
+}
+
+sub topOverlapped{
+  my $qCI = shift;
+  my @sCIs= @_;
+  $qCI =~ /(BI\d+)/;
+  my $qBI = $1;
+  my %MIN=("D"=>0,"B"=>"","C"=>"");
+  for(my $i=0;$i<@sCIs;$i++){
+    $sCIs[$i] =~ /(BI\d+)/;
+    my $sBI = $1;
+    if($DIST{$qBI}{$sBI}{D} < $MIN{D}){
+      if($sBI eq $MIN{B}){
+        die "Nodes from same BB: $sCIs[$i] and $MIN{C} !\n";
+      }
+      %MIN = ("D"=>$DIST{$qBI}{$sBI}{D}, "B"=>$sBI,"C"=>$sCIs[$i]);
+    }
+  }
+  my $msg = "Distance of $MIN{D} between $qBI and $MIN{B}";
+  return($MIN{C},$MIN{B},$MIN{D},$msg);
+}
+
+sub checkStrand{
+  my($id,$std) = @_;
+  if($id =~ /(FWD|REV)(\+|-)/ ){
+    my $adpos = (($1 eq "FWD")?1:-1) + (($2 eq "+")?1:-1);
+    my $stdpos = (($adpos eq 0)?-1:1) + (($std eq "+")?1:-1);
+    if($stdpos eq 0){
+      return("-");
+    }else{
+      return("+");
+    }
+  }else{
+    return("");
+  }
+}
+
+sub xDNA{
+  my %SH;
+  my $mod = shift;
+  my $str = shift;
+  for(my $p=0;$p<length($str);$p++){
+    my $pick = substr($str,$p,1);
+    my $comp = ($pick eq "A")?"T":(($pick eq "T")?"A":(($pick eq "G")?"C":(($pick eq "C")?"G":$pick)));
+    $SH{$p}{'raw'} = $pick;
+    $SH{$p}{'com'} = $comp;
+  }
+  my $res = "";
+  if($mod =~ /r/){
+    foreach my $p (sort {$b<=>$a} %SH){
+      $res .= ($mod =~/c/)?$SH{$p}{'com'}:$SH{$p}{'raw'};
+    }
+  }else{
+    foreach my $p (sort {$a<=>$b} %SH){
+      $res .= ($mod =~/c/)?$SH{$p}{'com'}:$SH{$p}{'raw'};
+    }
+  }
+  return($res);
+}
+
+sub cigarLen{
+	my $cigar =shift;
+	my ($mLen,$fLen,%MODE) = (0,0,);
+	while($cigar){
+		$cigar =~ s/^(\d*)([MIDNSHP=X])//;
+		my ($mode,$n) = ($2,$1);
+		$n ||=1;
+		if($mode =~/[MINP=X]/){$mLen += $n;}
+		if($mode =~/[HSMINP=X]/){$fLen += $n;}
+    $MODE{$mode} ++;
+	}
+  my $mode = join "", keys %MODE;
+	return($mLen,$fLen,$mode);
+}
+
+
+sub verbose{
+  my $msg = shift;
+  print STDERR $msg if $verbose;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#

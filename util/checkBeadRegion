@@ -1,0 +1,248 @@
+#!/usr/bin/env perl
+# (c) 2016 - 2020 Chao IN-HORSE SHARE ONLY
+# ===================================================================
+# Description:       Find the aligned region for each bead's clips
+# Author:            Chao<fangchao@genomics.cn>
+# Created Date:      20 Mar 2020
+# ===================================================================
+# see detail below
+use strict;
+use Getopt::Long qw(:config no_ignore_case); # For case sensitive
+
+sub usage {
+  my $msg = shift;
+  print <<USAGE;
+$msg
+usage:
+  $0 -i input -o output -r ref.bed
+    -i  blast 6 format alignment file
+    -r  reference units position informatino in bed format
+    -o  output beads stat annotation
+    -c  output clips best annotation
+    -v  verbose
+    -h  show help info
+USAGE
+}
+&usage && exit unless @ARGV;
+
+our ($stime,$ref,$inf,$out,$clip,$covf,$verbose,$help)=(time(),);
+GetOptions(
+  "r:s" => \$ref,
+  "i:s" => \$inf,
+  "o:s" => \$out,
+  "c:s" => \$clip,
+  "g:s" => \$covf,
+  "v" => \$verbose,
+  "h|help|?" => \$help,
+);
+&usage && exit if $help;
+
+open REF, "< $ref" or die $!;
+open INF, ($inf)?"<$inf":"< -" or die $!;
+open OUT, ($out)?">$out":"> -" or die $!;
+open CLIP, ($clip)?">$clip":"> /dev/null" or die $!;
+
+### example of a bed file:
+# Bacillus_subtilis        6     1552  16S_rRNA  1  +  6     1552  50,50,05
+our (%BED,%COV,$uct,$pID,$ufrom);
+while(<REF>){
+  chomp;
+  my @s = split;
+  my($id,$unit,$from,$to,$strand) = ($s[0], $s[3], $s[1], $s[2], $s[5]);
+  $unit =~ s/_rRNA//;
+  $uct = 0 if $pID ne $id;
+  $uct ++ if $unit =~ /23S|16S/;
+  $BED{$id}{$from}{'unit'} = $unit;
+  $BED{$id}{$from}{'to'} = $to;
+  $BED{$id}{$from}{'std'} = $strand;
+  $pID = $id;
+  if($uct == 1){
+    $ufrom = $from + ($strand eq "+")?-1:1;
+    $BED{$id}{$ufrom}{'unit'} = "ALL";
+    $BED{$id}{$ufrom}{'std'} = $strand;
+  }
+  if($uct == 2){
+    $BED{$id}{$ufrom}{'to'} = $to;
+  }
+}
+close REF;
+
+# example of a m6 file:
+# BI00000002_k141_1_flag=1_multi=21.0000_len=1141_C1_()_903       Bacillus_subtilis       97.811  594     11      1       2       595     4516    3925    0.0     1024    903
+our (%BB,$ctB,$ctC,$pB,$pBNo,$pClip);
+while(<INF>){
+  chomp;
+  my @s = split;
+  my ($qi,$si,$ide,$len,$mm,$gap,$qf,$qt,$sf,$st,$ev,$bs,$qlen) = @s;
+  my ($iB,$kmer,$BNo,$flag,$mult,$oLen,$cType,$ads,$cLen) = split(/_/,$s[0]);
+  if ($iB ne $pB){
+    &summaryRegion();
+    %BB = ();
+  }
+  my $std = ($sf<$st)?"+":"-";
+  my $cNo= "$BNo$cType";
+  #add record
+  $BB{I} = $iB;
+  $BB{N}{$cNo}{I}{qlen} = $qlen;
+  $BB{N}{$cNo}{I}{flag} = $flag;
+  $BB{N}{$cNo}{I}{type} = $cType;
+  $BB{N}{$cNo}{A}{$si}{A}{$qf}{all}   = join "\t", @s;
+  $BB{N}{$cNo}{A}{$si}{A}{$qf}{qt}  = $qt;
+  $BB{N}{$cNo}{A}{$si}{A}{$qf}{len} = $len;
+  $BB{N}{$cNo}{A}{$si}{A}{$qf}{mm}  = $mm;
+  $BB{N}{$cNo}{A}{$si}{A}{$qf}{gap} = $gap;
+  $BB{N}{$cNo}{A}{$si}{A}{$qf}{std} = $std;
+  $BB{N}{$cNo}{A}{$si}{A}{$qf}{sf}  = ($std eq "+")?$sf:$st;
+  $BB{N}{$cNo}{A}{$si}{A}{$qf}{st}  = ($std eq "-")?$sf:$st;;
+  $BB{N}{$cNo}{A}{$si}{A}{$qf}{bs}  = $bs;
+  $BB{N}{$cNo}{A}{$si}{A}{$qf}{qlen}  = $qlen;
+  $BB{N}{$cNo}{A}{$si}{S}{mm}  += $mm;
+  $BB{N}{$cNo}{A}{$si}{S}{gap} += $gap;
+  $BB{N}{$cNo}{A}{$si}{S}{bs} += $bs;
+  $ctB ++ if $iB ne $pB;
+  $BB{A} ++ if "$iB\_$BNo" ne $pBNo;
+  if ($pClip ne "$iB\_$BNo\_$cType"){
+    $BB{C} ++;
+    $BB{L} += $qlen;
+  }
+  $pB   = $iB;
+  $pBNo = "$iB\_$BNo";
+  $pClip= "$pBNo\_$cType";
+  if($. % 1000 == 0){
+    &verbose(sprintf("[log] Processing %.0d k beads and %d k records\r", $ctB/1000, $./1000));
+  }
+}
+&summaryRegion();
+close INF;
+close OUT;
+#summary coverage
+if($covf){
+  &verbose("\ncov set. summarizing ... ");
+  open COV, ">$covf" or die $!;
+  foreach my $s (sort keys %COV){
+    my @p = sort {$a<=>$b} keys %{$COV{$s}};
+    my ($pMin, $pMax) = ($p[0],$p[$#p]);
+    for(my $i=$pMin;$i<=$pMax;$i++){
+      $COV{$s}{$i} ||= 0;
+      print COV "$s\t$i\t$COV{$s}{$i}\n";
+    }
+  }
+  close COV;
+  &verbose("Done!");
+}
+$stime = time() - $stime;
+&verbose("\nALL DONE! Elapsed: $stime sec.  \n");
+
+exit;
+
+sub summaryRegion{
+  my($BID,%QP,$fi,%RE) = ($BB{I},,);
+  return () if $BID eq "";
+  foreach my $cNo (sort {$a<=>$b} keys %{$BB{N}}){
+    my @s = (sort {$BB{N}{$cNo}{A}{$b}{S}{'bs'} <=> $BB{N}{$cNo}{A}{$a}{S}{'bs'}} keys %{$BB{N}{$cNo}{A}});
+    my ($s1,$s2) = ($s[0],$s[1]);
+    $RE{N}{$cNo}{'ref'} = $s1;
+    $RE{N}{$cNo}{'bs'} = $BB{N}{$cNo}{A}{$s1}{S}{'bs'};
+    $RE{N}{$cNo}{'ref2'} = $2;
+    $RE{N}{$cNo}{'bs2'} = $BB{N}{$cNo}{A}{$s2}{S}{'bs'};
+    # sort regions on clips
+    for(my $i=0;$i<@s;$i++){
+      my $si = $s[$i];
+      $RE{C}{$si} ++;
+      my @f = sort {$a<=>$b} keys %{$BB{N}{$cNo}{A}{$si}{A}};
+      push @{$RE{Q}{$si}{'position'}}, $cNo;
+      for(my $i=0;$i<@f;$i++){
+        $fi ||= $f[$i];
+        my $ti = $BB{N}{$cNo}{A}{$si}{A}{$f[$i]}{qt};
+        if(not defined $f[$i+1] || $ti < $f[$i+1]){
+          $RE{Q}{$si}{all}{$cNo.$f[$i]} = $BB{N}{$cNo}{A}{$si}{A}{$f[$i]}{all};
+          $RE{Q}{$si}{'pieces'} ++;
+          $RE{Q}{$si}{'covLen'} += $ti - $fi + 1;
+          push @{$RE{Q}{$si}{'position'}}, "$fi-$ti";
+          $RE{Q}{$si}{'mm'} += $BB{N}{$cNo}{A}{$si}{S}{'mm'};
+          $RE{Q}{$si}{'gap'} += $BB{N}{$cNo}{A}{$si}{S}{'gap'};
+          $RE{Q}{$si}{'bs'} += $BB{N}{$cNo}{A}{$si}{S}{'bs'};
+          $fi = "";
+        }
+        #log position on ref
+        $QP{$si}{$BB{N}{$cNo}{A}{$si}{A}{$f[$i]}{'sf'}}{'st'} = $BB{N}{$cNo}{A}{$si}{A}{$f[$i]}{'st'};
+        $QP{$si}{$BB{N}{$cNo}{A}{$si}{A}{$f[$i]}{'sf'}}{'std'} = $BB{N}{$cNo}{A}{$si}{A}{$f[$i]}{'std'};
+        #output clip best anno
+        if($si eq $s1){ print CLIP $BB{N}{$cNo}{A}{$si}{A}{$f[$i]}{all}."\n";}
+
+      }
+    }
+  }
+  # summary
+  my @s = (sort {$RE{Q}{$b}{'bs'} <=> $RE{Q}{$a}{'bs'}} keys %{$RE{Q}});
+  my ($s1,$s2) = ($s[0],$s[1]);
+  # sort regions on the ref
+  my @f = sort {$a<=>$b} keys %{$QP{$s1}};
+  my($f0,$t0);
+  for(my $i=0;$i<@f;$i++){
+    my $fi = $f[$i];
+    my $ti  = $QP{$s1}{$fi}{st};
+    $f0 ||= $fi;
+    $t0 = ($ti>$t0)?$ti:$t0;
+    if($i eq $#f|| $t0 < $f[$i+1]){
+      $RE{S}{$s1}{'covLen'} += $t0 - $f0 + 1;
+      #reset fi
+      $f0 = "";
+    }
+    $RE{S}{$s1}{'pieces'} ++;
+    push @{$RE{S}{$s1}{'position'}}, "$f[$i]-$ti";
+    push @{$RE{Q}{$s1}{'strand'}}, $QP{$s1}{$f[$i]}{std};
+  };
+  #Get info from bed
+  my $unit = &scanBED($s1,\%QP);
+  my $bs2 = ($RE{Q}{$s2}{'bs'})?$RE{Q}{$s2}{'bs'}:0;
+  # heads:
+  # #BID  BLength  #Asm  #Clips  #tax.clips  #tax.pieces  tax
+  my $qCov = sprintf("%.3f", $RE{Q}{$s1}{'covLen'}/$BB{L}) ;
+  my $ide = sprintf("%.3f", 100-100*($RE{Q}{$s1}{'mm'}+2*$RE{Q}{$s1}{'gap'})/$RE{Q}{$s1}{'covLen'}) ;
+  print OUT (join "\t", $BB{I}, $BB{L}, $BB{A}, $BB{C}, $RE{C}{$s1}, $RE{Q}{$s1}{'pieces'}, $s1,
+  $ide, $RE{Q}{$s1}{'covLen'}, $RE{Q}{$s1}{'mm'}, $RE{Q}{$s1}{'gap'}, $RE{Q}{$s1}{'bs'},
+  $bs2, $RE{S}{$s1}{'pieces'}, $RE{S}{$s1}{'covLen'}, $unit, (join "",@{$RE{Q}{$s1}{'strand'}}),
+  (join ",", @{$RE{Q}{$s1}{'position'}}), (join ",", @{$RE{S}{$s1}{'position'}}))."\n";
+}
+
+sub scanBED{
+  my($s,$Q) = @_;
+  my @fb = sort {$a<=>$b} keys %{$BED{$s}};
+  my @fq = sort {$a<=>$b} keys %{$$Q{$s}};
+  my $res = "";
+  for(my $b=0;$b<@fb;$b++){
+    my $fb = $fb[$b];
+    my $tb = $BED{$s}{$fb}{'to'};
+    my ($fi,$cov,$f0,$t0);
+    for(my $i=0;$i<@fq;$i++){
+      my $fi = $fq[$i];
+      my $ti = $$Q{$s}{$fi}{st};
+      $t0 = ($ti>$t0)?$ti:$t0;
+      next if $t0 < $fb;
+      $f0 ||= ($fi>$fb)?$fi:$fb;
+      last if $f0 > $tb;
+      if($i == $#fq || $t0 < $fq[$i+1]){
+        my $t0 = ($t0<$tb)?$t0:$tb;
+        $cov +=  $t0 - $f0 + 1;
+        &sCovCal($s,$f0,$t0) if $covf;
+        $f0 = "";
+        $t0 = 0;
+      }
+    }
+    $res .= sprintf("%s(%.0f%)",$BED{$s}{$fb}{'unit'}, 100*$cov/($tb-$fb+1)) if $cov;
+  }
+  return($res);
+}
+
+sub sCovCal{
+  my($s,$f,$t) = @_;
+  for(my $i=$f;$i<=$t;$i++){
+    $COV{$s}{$i} ++;
+  }
+}
+
+sub verbose{
+  my $msg = shift;
+  print STDERR $msg if $verbose;
+}

@@ -28,5 +28,13 @@ include: "rules/beadsIsolate.smk"
 # Module #03: Assemble Draft
 #include: src + "/rules/assemble.smk"
 
-# Module #04: binning method
+# Module #04: prediction and annotation
+include: "rules/annotation.smk"
+# Module #05: quantification
+include: "rules/quantification.smk"
+
+# Module #99: binning method
 include: "rules/athena.smk"
+
+# Module testing
+include: "rules/testing.smk"

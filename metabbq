@@ -71,6 +71,9 @@ if ($pattern eq "cmd"){
 	exit;
 }
 if ($pattern !~ /^(init|cfg|smk|-v|-h)$/){
+  shift @ARGV;
+  $pattern =~ s/(!)$//;
+  my $warn = ($1)?1:0;
   my $path = ( -e "$Bin/src/$pattern")?"$Bin/src":
              ( -e "$Bin/util/$pattern")?"$Bin/util":'';
   die "[cmd] Can not find sub func '$pattern'. Please check it again.\n" unless $path;
@@ -78,8 +81,10 @@ if ($pattern !~ /^(init|cfg|smk|-v|-h)$/){
             ($pattern=~/\.py$/)?'python ':
             ($pattern=~/\.sh$/)?'sh ':
             ($pattern=~/\.[Rr]$/)?'Rscript ':'';
-    print STDERR colored("[cmd] ",'bold blue').colored("$int$path/@ARGV\n",'underline green');
-	if(system("$int$path/@ARGV")){
+  if($warn){
+    print STDERR colored("[cmd] ",'bold blue').colored("$int$path/$pattern @ARGV\n",'underline green');
+  }
+	if(system("$int$path/$pattern @ARGV")){
 		exit(1);
 	}else{
 		exit;

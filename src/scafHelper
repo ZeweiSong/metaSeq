@@ -1,0 +1,185 @@
+#!/usr/bin/env perl
+# (c) 2016 - 2020 Chao IN-HORSE SHARE ONLY
+# ===================================================================
+# Description:       Scripts to help scaffolding
+# Author:            Chao<fangchao@genomics.cn>
+# Created Date:      03 Apr 2020
+# ===================================================================
+# see detail below
+use strict;
+use Getopt::Long qw(:config no_ignore_case); # For case sensitive
+my($verbose,$help);
+sub usage {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  beadStat <mode> [option]
+  command:
+    ffa     filter fasta file. Discard abnormal contigs and rename seq id.
+    fuc     filter uc file. Discard abnormal contigs and rename seq id.
+
+options:  Defined according to the mode and cmd you chosed.
+USAGE
+}
+
+&usage("Scaffolding helper") && exit if @ARGV == 0 || $ARGV[0] eq "-h";
+
+my $cmd = shift @ARGV unless $ARGV[0] =~/^-/;
+
+# Main start
+&run_filterFa  if $cmd eq "ffa";
+&run_filterUC  if $cmd eq "fuc";
+# Main end
+
+&verbose(" [All done!]\n");
+
+exit;
+
+################################################################################
+# Sub functions
+################################################################################
+sub verbose{
+  my $msg = shift;
+  print STDERR $msg if $verbose;
+}
+
+### filter section start ########################################################
+
+sub usage4filterFa {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  $0 filter [-i input] [-o output_file]
+    -i  input fasta file. STDIN if not specified.
+    -o  output table file. STDOUT if ignored.
+    -v  verbose
+    -h  show help info
+USAGE
+}
+
+
+sub run_filterFa {
+  my ($inf,$out,$verbose,$help);
+  GetOptions(
+    "i=s" => \$inf,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4filterFa("Filter fasta.") && exit if $help;
+  my (%HS);
+  open INF, ($inf)?"<$inf":"< -" or die $!;
+  open OUT, ($out)?">$out":"> -" or die $!;
+
+  &verbose(" [FFA] start ... \n");
+  $/=">";
+  while(<INF>){
+  	chomp;	next unless $_;
+  	my @s = split "\n";
+    my @a = split(">|_",$s[0]);
+  	if($HS{BI} && $a[0] ne $HS{BI}){
+  		unless($HS{SKIP}||$HS{sfx}{FWD}>1||$HS{sfx}{REV}>1){
+  			foreach my $i (sort {$a<=>$b} keys %{$HS{CLIP}}){
+  				print ">$i $HS{CLIP}{$i}{len} $HS{CLIP}{$i}{kmer}\n$HS{CLIP}{$i}{seq}\n";
+  			}
+  		}
+  		undef %HS;
+  	}
+  	$HS{BI} ||= $a[0];
+  	if($a[7]=~/REV+\)&\(REV+|REV-\)&\(REV-|FWD+\)&\(FWD+|FWD-\)&\(FWD-/){
+      $HS{SKIP} = 1;
+      next
+    }
+  	$a[7] =~ /\((FWD|REV)([+-])\)/;
+    my $sfx = "$1$2";
+  	$HS{sfx}{$1} ++;
+  	my $i = join "_", $a[0], $a[2], $a[6], $sfx;
+  	$HS{CLIP}{$i}{len} = $a[8];
+  	$HS{CLIP}{$i}{kmer} = $a[1];
+  	$HS{CLIP}{$i}{seq} = $s[1];
+  }
+  unless($HS{SKIP}){
+  	foreach my $i (sort {$a<=>$b} keys %{$HS{CLIP}}){
+  		print OUT ">$i $HS{CLIP}{$i}{len} $HS{CLIP}{$i}{kmer}\n$HS{CLIP}{$i}{seq}\n";
+  	}
+  }
+  close INF;
+  close OUT;
+  &verbose(" [FFA] done!\n");
+}
+### filter section end ##########################################################
+
+### filter UC section start ########################################################
+
+sub usage4filterUC {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  $0 fuc [-i input] -u ucfile [-o output_file]
+    -i  input fasta file. STDIN if not specified.
+    -u  input uc file.
+    -s  min size to retain.
+    -o  output table file. STDOUT if ignored.
+    -v  verbose
+    -h  show help info
+USAGE
+}
+
+
+sub run_filterUC {
+  my ($inf,$ucf,$size,$out,$verbose,$help);
+  GetOptions(
+    "i=s" => \$inf,
+    "u=s" => \$ucf,
+    "s=s" => \$size,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4filterUC("Filter fasta.") && exit if $help;
+  my (%HS);
+  open INF, ($inf)?"<$inf":"< -" or die $!;
+  open UCF, "<$ucf" or die $!;
+  open OUT, ($out)?">$out":"> -" or die $!;
+
+  &verbose(" [FUC] start ... \n");
+  while(<INF>){
+  	chomp;	next unless $_;
+    if($_ =~ s/^>//){
+      my $seq = <INF>;
+      chomp($seq);
+      $HS{$_} = $seq;
+    }
+  }
+  close INF;
+  while(<UCF>){
+    next unless $_ =~ /^C/;
+    chomp;
+    my @s = split;
+    if($s[2]>=$size){
+      print OUT ">$s[8]\n$HS{$s[8]}\n";
+    }
+  }
+  close UCF;
+  close OUT;
+  &verbose(" [FUC] done!\n");
+}
+### filter section end ##########################################################
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#

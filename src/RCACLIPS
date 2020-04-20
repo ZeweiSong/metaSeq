@@ -1,0 +1,284 @@
+#!/usr/bin/env perl
+# (c) 2016 - 2019 Chao IN-HORSE SHARE ONLY
+# ===================================================================
+# Description:       Clipping RCA adaptor(s) from contigs (in a stupid way)
+# Author:            Chao | fangchao@genomics.cn
+# Version:           V0.1
+# Last modified:    17 Mar 2020 (since 23 Aug 2019)
+# ===================================================================
+# see detail below
+use strict;
+use Getopt::Long qw(:config no_ignore_case); # For case sensitive
+#
+our %DB = (
+    "A" => ["A"], "G" => ["G"], "C" => ["C"], "T" => ["T"],
+    "R" => ["A","G"], "Y" => ["C","T"], "M" => ["A","C"],
+    "K" => ["G","T"], "S" => ["C","G"], "W" => ["A","T"],
+    "H" => ["A","T","C"], "B" => ["T","G","C"],
+    "V" => ["A","G","C"], "D" => ["A","G","T"],
+    "N" => ["A","G","T","C"],
+);
+#
+sub usage {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  $0 -a <adaptor> -k [17] -i <input> -o <output>
+    -a   RCA adaptor, default is [AAGTCGGACGCTGATAAGGTCGCCATGCCTCTCAGTACTCCGACTT]
+    -fwd (optional) forward primer sequence, default is SSU515Fngs [GCCAGCAACCGCGGTAA]
+    -rev (optional) reverse primer sequence, default is TW13 [GGTCCGTGTTTCAAGACG]
+    -m   minimal output sequence length. default is [100].
+    -i   contig fasta file
+    -o   output filename
+    -d   keep tmp dir
+    -v   verbose
+    -h   show help info
+USAGE
+}
+&usage("Show usage page due to none argument specificed:") && exit unless @ARGV;
+
+my ($ad,$fwd,$rev,$minLen,$inf,$out,$dbug,$verbose,$help);
+GetOptions(
+  "a=s" => \$ad,
+  "fwd=s"=>\$fwd,
+  "rev=s"=>\$rev,
+  "m=s" => \$minLen,
+  "d"   => \$dbug,
+  "i=s" => \$inf,
+  "o=s" => \$out,
+  "v" => \$verbose,
+  "h|help|?" => \$help,
+);
+&usage && exit if $help;
+&usage("[fatal] Essential input is missing") && exit unless defined $inf;
+
+$ad ||= "AAGTCGGACGCTGATAAGGTCGCCATGCCTCTCAGTACTCCGACTT";
+&verbose("[log] Searching RCA adaptor: [$ad]\n");
+$fwd ||= "GCCAGCAACCGCGGTAA";
+&verbose("[log] Searching FWD primer: [$fwd]\n");
+$rev ||= "GGTCCGTGTTTCAAGACG";
+&verbose("[log] Searching REV primer: [$rev]\n");
+
+$minLen||=100;
+open INF, ($inf)?"<$inf":"<-" or die $!;
+open OUT, ($out)?">$out":">-" or die $!;
+#`mkdir -p $ramtmp`;
+chomp(my $ramtmp=("-e /dev/shm")?`mktemp -d /dev/shm/barrnap.XXXXXXXXXX`:"mktemp -dp $out.XXX");
+# Main start
+## find RCA
+&verbose("[log] Preparing adaptor and primers database at tmpdir: $ramtmp ... ");
+open TMP,"> $ramtmp/flank10.m6" or die $!;
+open ADP,"> $ramtmp/adaptor.fa" or die $!;
+&printAdaptor("RCA",$ad);
+&printAdaptor("FWD",$fwd) if $fwd;
+&printAdaptor("REV",$rev) if $rev;
+close ADP;
+system("makeblastdb -in $ramtmp/adaptor.fa -dbtype nucl &>$ramtmp/adaptor.log");
+my $cmd = "blastn -word_size 13 -evalue 1 -db $ramtmp/adaptor.fa -query $inf -outfmt 6 -out $ramtmp/contig2adaptor.m6 &>>$ramtmp/adaptor.log";
+&verbose("Done.\n[log] Blast contigs to adapters:\n[cmd] [$cmd] ...");
+system($cmd);
+&verbose("Done.\n[log] Loading blast resutls ... ");
+open ADP,"< $ramtmp/contig2adaptor.m6" or die $!;
+my (%ADP,@tmp);
+while(<ADP>){
+  chomp;
+  my @a = split;
+  $a[1] =~ s/.(\d+)//;
+  my $d = ($a[8]<$a[9])?"FWD":"REV";
+  unless(defined $ADP{$a[0]}){
+    $ADP{$a[0]}{$a[6]}{N} = $a[1];
+    $ADP{$a[0]}{$a[6]}{D} = $d;
+    $ADP{$a[0]}{$a[6]}{E} = $a[7];
+    @tmp = ($a[6],$a[7]);
+  }else{
+    my $keep=1;
+    for(my $i=$a[6];$i<=$a[7];$i++){
+      if(grep { $_ eq $i } @tmp){$keep=0;last};
+    }
+    if($keep){
+      $ADP{$a[0]}{$a[6]}{N} = $a[1];
+      $ADP{$a[0]}{$a[6]}{D} = $d;
+      $ADP{$a[0]}{$a[6]}{E} = $a[7];
+      push @tmp, ($a[6],$a[7]);
+    }
+  }
+}
+&verbose("Done.\n[log] Now Cliping.\n");
+## Reading input
+$/=">";
+while(<INF>){
+  chomp;
+  my($hit,$thisKmer,$sLen,$pattern,%CLIPS)=(0,);
+  #$/="\n";
+  my @a = split(/\n/,$_);
+  my $id = shift @a;
+  my $seq = join('',@a);
+  next if $id eq "";
+  $sLen = length($seq);
+  my @a = split(/\t|\s+/,$id);
+  (my $id2 = $id) =~ s/\s+/_/g;
+  my @ks = ();
+  foreach my $p (sort {$a<=>$b} keys %{$ADP{$a[0]}}){
+    push @ks, $p if $ADP{$a[0]}{$p}{N} eq "RCA";
+  }
+  if(@ks == 0){
+    my ($mode,$SEQ,$msg) = &dealAdaptor($a[0],1,$sLen,$seq);
+    $sLen = length($SEQ);
+    &verbose("[CLIP] $id2\_C-\_$mode\_$sLen\t$msg\n");
+    print OUT ">$id2\_C-\_$mode\_$sLen\n$SEQ\n";
+  }else{
+    #pick flank left side of the first RCA adaptor:
+    my ($mode0,$flank0,$msg0) = &dealAdaptor($a[0],1,$ks[0],$seq);
+    my $fl0 = length($flank0);
+    # print middle-region segments:
+    for(my $i=0;$i<$#ks;$i++){
+      my ($mode,$flank,$msg) = &dealAdaptor($a[0],$ADP{$a[0]}{$ks[$i]}{E},$ks[$i+1],$seq);
+      my $fLen = length($flank);
+      print OUT ">$id2\_C".($i+1)."\_$mode\_$fLen\n$flank\n" if $fLen >= $minLen;
+      &verbose("[CLIP] $id2\_C".($i+1)."\_$mode\_$fLen\t$msg\n");
+    }
+    #pick flank right side of the last RCA adaptor:
+    my ($mode1,$flank1,$msg1) = &dealAdaptor($a[0],$ADP{$a[0]}{$ks[$#ks]}{E},$sLen,$seq);
+    my $fl1 = length($flank1);
+    # join if flank0 and flank1 are ovelaped.
+    my $join ="";
+    if($fl0>0 && $fl1>0){
+      my $cmd;
+      $cmd = "echo -e \">$a[0]\.0_$fl0\n$flank0\" > $ramtmp/tmp.0.fa";
+      #print $cmd;
+      system($cmd);
+      $cmd = "echo -e \">$a[0]\.1_$fl1\n$flank1\" > $ramtmp/tmp.1.fa";
+      #print $cmd;
+      system($cmd);
+      $cmd = "makeblastdb -in $ramtmp/tmp.0.fa -dbtype nucl &>> $ramtmp/blast.log";
+      #print $cmd;
+      system($cmd);
+      #$cmd = "blastn -db $ramtmp/tmp.0.fa -query $ramtmp/tmp.1.fa -outfmt 6 -out $ramtmp/$a[0]\.m6 &>$ramtmp/blast.log";
+      $cmd = "blastn -db $ramtmp/tmp.0.fa -query $ramtmp/tmp.1.fa -outfmt 6 2>>$ramtmp/blast.log";
+      #print $cmd;
+      my $res = `$cmd`;
+      if($res){
+        print TMP $res;
+        my @a = split(/\t/,$res);
+        my @p1 = sort {$a<=>$b} ($a[6],$a[7]);
+        my @p0 = sort {$a<=>$b} ($a[8],$a[9]);
+        if ( @p1[1] > 0.5 * $fl1 && @p0[0] < 0.5 * $fl0 && $a[6] < $a[7] && $a[8] < $a[9]) {
+          $join = substr($flank1,0,$p1[0]-1).substr($flank0,$p0[0]-1,$fl0-$p0[0]+1);
+        }
+      }
+    }
+    if($join){
+      print OUT ">$id2\_C".($#ks+1)."0\_$mode1&$mode0\_".length($join)."\n$join\n";
+      &verbose("[CLIP] $id2\_C".($#ks+1)."0\_$mode1&$mode0\_".length($join)."\t$msg1&$msg0\n");
+    }else{
+      if($fl1 >= $minLen){
+        print OUT ">$id2\_C".($#ks+1)."\_$mode1\_$fl1\n$flank1\n";
+        &verbose("[CLIP] $id2\_C".($#ks+1)."\_$mode1\_$fl1\t$msg1\n");
+      }else{
+        &verbose("[CLIP] $id2\_C".($#ks+1)."\_$mode0\_$fl1\t#skip(<$minLen)\n")
+      }
+      if($fl0 >= $minLen){
+        print OUT ">$id2\_C0\_$mode0\_$fl0\n$flank0\n";
+        &verbose("[CLIP] $id2\_C0\_$mode0\_$fl0\t$msg0\n");
+      }else{
+        &verbose("[CLIP] $id2\_C0\_$mode0\_$fl0\t#skip(<$minLen)\n")
+      }
+    }
+  }
+  #prep for next loop
+  #$/=">";
+}
+
+close TMP;
+close INF;
+close OUT;
+if($dbug){
+  &verbose("[CLIP] Done. Kept clean tmp folder $ramtmp ...");
+}else{
+  &verbose("[CLIP] Done. Now clean tmp folder $ramtmp ... ");
+  `rm -rf $ramtmp`;
+}
+
+# Main end
+&verbose(" done\nDONE!\n");
+
+exit;
+
+sub verbose{
+  my $msg = shift;
+  print STDERR $msg if $verbose;
+}
+
+sub formatPrimers{
+  my $seq = shift;
+  my $len = length($seq);
+  my $NNN = "NNNNNNNNNNNNNNNNNNNN";
+  if($len<20){
+    $seq = $seq.substr($NNN,0,20-$len);
+  }
+  return($seq);
+}
+
+sub dealAdaptor{
+  my ($id, $s, $e, $seq) = @_;
+  #ForwardStrand, ReverseComplement, foward primer position, reverse primer position
+  my ($FS,$RC,$fp,$rp,$fn,$rn,$mode,$msg) = (0,0,$s,$e,'','','(','');
+  foreach my $k(sort {$a<=>$b} keys %{$ADP{$id}}){
+    next if $k < $s;
+    last if $k > $e;
+    $msg = "FindRCA" && last if $ADP{$id}{$k}{N} eq "RCA";
+    if($ADP{$id}{$k}{D} eq $ADP{$id}{$k}{N}){ $FS++ }else{ $RC++ };
+    my $sign = ($ADP{$id}{$k}{D} eq "FWD")?"+":"-";
+    $mode .= ()."$ADP{$id}{$k}{N}$sign";
+    # if($fn eq '' && $fn < $rp*0.5){
+    #   $fp = $k;
+    #   $fn = $ADP{$id}{$k}{N};
+    # }else{
+    # #if($ADP{$id}{$k}{N} ne $fn){
+    #   $rp = $ADP{$id}{$k}{E};
+    #   $rn = $ADP{$id}{$k}{N};
+    # }
+  }
+  $seq = substr($seq,$fp-1,$rp-$fp+1);
+  if($FS>0 && $RC>0){
+    $msg = "+&-";
+  }elsif($RC > 0){
+    $msg = "RC";
+    #$seq = &ReverseComplement($seq);
+  }else{
+    $msg = "Normal"
+  }
+  $mode .= ')';
+  return($mode,$seq,$msg);
+}
+
+sub ReverseComplement{
+  my $seq = shift;
+  my %RC = ('A','T','T','A','G','C','C','G','N',"N");
+  my $len = length($seq);
+  my $RCseq = "";
+  for(my $i=$len-1;$i>=0;$i--){
+    $RCseq .= $RC{substr($seq,$i,1)};
+  }
+  return($RCseq);
+}
+
+
+sub printAdaptor{
+  my($t,$a) = @_;
+  my %S; my $n = 1;
+  for(my $i=0;$i<length($a);$i++){
+    my $b = substr($a,$i,1);
+    my $m = $#{$DB{$b}};
+    for(my $j=$m; $j>=0;$j--){
+      for(my $k=1;$k<=$n;$k++){
+        $S{$j*$n+$k} = $S{$k}.$DB{$b}[$j];
+      }
+    }
+    $n = $n * ($m + 1);
+  }
+  foreach my $s(sort {$a<=>$b} keys %S){
+    print ADP ">$t.$s\n$S{$s}\n"
+  }
+}

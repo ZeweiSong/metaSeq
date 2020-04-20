@@ -39,6 +39,7 @@ my (%CDD);
 &run_uniq if $mode eq "uniq";
 &run_best if $mode eq "best";
 &run_fqpick if $mode eq "fqpick";
+&run_fqSplit if $mode eq "fqSplit";
 ### END
 exit;
 
@@ -437,10 +438,10 @@ sub run_fqpick {
   &usage4fqpick("filter fq files with beads above a threashold\n") && exit if $help;
   undef $topB if $topB == 0;
   undef $randomPiece if $randomPiece ==0;
-  
+
   &verbose("[pick] Mode start ... \n");
   open IDX, "<$idx" or die $!;
-  open INF, "<$inf" or die $!;
+  open INF, ($inf=~/.gz$/)?"gzip -dc $inf|":"<$inf" or die $!;
   open OUT, ($out)?">$out":">-" or die $!;
 
   srand($randomPiece) if $randomPiece;
@@ -451,8 +452,8 @@ sub run_fqpick {
     my $idx_;
     while($Li>$idxs[2] && ($idx_ = <IDX>)){
       chomp($idx_);
-      next if $idx_ =~ /0000/;
       my @a = split(/\t/,$idx_);
+      next if $a[0] =~ /0000/;
       my $n = ($a[2] - $a[1] + 1 ) / 4;
       next if $n < $cut;
       next if $cMax && $n > $cMax ;
@@ -473,8 +474,82 @@ sub run_fqpick {
   exit;
 }
 
+###############################################################################
+sub usage4fqSplit {
+  my $msg = shift;
+  print <<USAGE;
+$msg
+usage [v0.1] :
+  binWrite fqSplit -x <index> -p [int] -i <fastq> -o <prefix>
+    -x  fastq index file
+    -p  pieces to split
+    -i  fqstq file
+    -o  output prefix
+    -v  verbose
+    -h  show help info
+USAGE
+}
 
+sub run_fqSplit {
+  use POSIX;
+  &usage4fqSplit("split fq files with specific beads number") && exit unless @ARGV;
+  my ($idx,$cut,$cMax,$topB,$piece,$bnum,$inf,$out,%IDX);
+  GetOptions(
+    "x=s" => \$idx,
+    "p=i" => \$piece,
+    "n=i" => \$bnum,
+    "i=s" => \$inf,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4fqSplit("split fq files with specific beads number\n") && exit if $help;
+  &verbose("[split] Mode start ... \n");
 
+  unless ($bnum){
+    chomp(my $maxLines=`wc -l $idx|cut -d " " -f1`);
+    $bnum = ceil($maxLines/$piece);
+  }
+  &verbose("[pick] Will writing $piece files with $bnum beads for each.\n");
+  open IDX, "<$idx" or die $!;
+  open INF, "<$inf" or die $!;
+  my ($sw,$sfx) = (length($piece-1),0);
+  open OUT, ">$out".sprintf("%0".$sw."d",$sfx) or die $!;
+  my ($Li,$bcount, @idxs) = (0,0,0,0,0);
+  while(<INF>){
+    $Li ++;
+    my $idx_;
+    while($Li>$idxs[2] && ($idx_ = <IDX>)){
+      chomp($idx_);
+      my @a = split(/\t/,$idx_);
+      next if $a[0] =~ /0000/;
+      @idxs = @a;
+      $bcount ++;
+      if($bcount>$bnum){
+        close OUT; $sfx ++;
+        &verbose("\r[pick] $sfx/$piece done. ".($bcount-1)." writen ...");
+        open OUT, ">$out".sprintf("%0".$sw."d",$sfx) or die $!;
+        $bcount = 1;
+      }
+      last;
+    }
+    while($Li<$idxs[1]){
+      &verbose("\n[pick] $idxs[0] skipped\n");
+      $_ = <INF> ; $Li ++;
+    }
+    if($Li <= $idxs[2]){
+      print OUT $_;
+    }else{
+      &verbose("\n[pick] $idxs[0] skipped\n");
+    }
+  }
+  close IDX;
+  close INF;
+  close OUT; $sfx++;
+  &verbose("\r[pick] $sfx/$piece done ...");
+  &verbose("\n[pick] All done ... \n");
+  exit;
+}
 
 sub verbose{
   my $msg = shift;

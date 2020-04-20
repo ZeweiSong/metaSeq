@@ -1,0 +1,119 @@
+#!/usr/bin/env perl
+# (c) 2016 - 2019 Chao IN-HORSE SHARE ONLY
+# ===================================================================
+# Description:       Get rRNA seq from barrnap gff3 file.
+# Author:            Chao | fangchao@genomics.cn
+# Last modified:     15 Apr 2020 (since 15 Apr 2020)
+# ===================================================================
+# see detail below
+# see detail below
+use strict;
+use Getopt::Long qw(:config no_ignore_case); # For case sensitive
+
+sub usage {
+  my $msg = shift;
+  print <<USAGE;
+$msg
+usage:
+  $0 -r [L|S|B] -g gff3 -i fasta -o fasta
+    -r  region to export. LSU|SSU|Both.
+    -p  percentage cutoff [0].
+    -g  gff3 file
+    -i  input sequence file, fasta format
+    -o  output sequence file, fasta format
+    -v  verbose
+    -h  show help info
+USAGE
+}
+&usage && exit unless @ARGV;
+
+my ($region,$pct,$gff3,$inf,$out,$verbose,$help);
+GetOptions(
+  "r:s" => \$region,
+  "p:i" => \$pct,
+  "g:s" => \$gff3,
+  "i:s" => \$inf,
+  "o:s" => \$out,
+  "v" => \$verbose,
+  "h|help|?" => \$help,
+);
+&usage && exit if $help;
+$pct||=0;
+#open OUT, ($out)?">$out":">-" or die $!;
+#open INF, ($inf)?"<$inf":"<-" or die $!;
+open GFF, ($gff3)?"<$gff3":"<-" or die $!;
+my $tmpPfx = ($out)?$out:"getampseq.tmp";
+$tmpPfx =~ s/(fa|fasta)$//;
+open REGF, "> $tmpPfx.forward.region";
+open REGR, "> $tmpPfx.reverse.region";
+
+&verbose("Start reading alignemnt info ... ");
+my (%REG,@tmp,$otu_label,$otu_no,$percent);
+while(<GFF>){
+  next if $_ =~ /^#/;
+  chomp;
+  my @s = split /\t/;
+  $s[8] =~ /Name=(\d+)S_rRNA/;
+  my $unit = ($1=~/16|18/)?"SSU":($1=~/23|25|28/)?"LSU":"others";
+  if($s[8] =~ /\(partial\);note=aligned only (\d+) percent/){
+    $percent = $1;
+  }else{
+    $percent = 100;
+  }
+  next if $percent < $pct;
+  if($s[0] =~ /(\S+)_(\d+)/){
+    $otu_label ||= $1;
+    $otu_no = $2;
+  }else{
+    $otu_no = $s[0];
+  }
+  $REG{$otu_no}{fullID} = $s[0];
+  $REG{$otu_no}{$unit}{start} = $s[3];
+  $REG{$otu_no}{$unit}{end}   = $s[4];
+  $REG{$otu_no}{$unit}{strand}= $s[6];
+}
+close GFF;
+&verbose("done!\nSearching rRNA ... ");
+foreach my $no (sort {$a<=>$b} keys %REG){
+  if($region eq "B" && exists $REG{$no}{LSU} && exists $REG{$no}{SSU}){
+    if ($REG{$no}{LSU}{strand} eq $REG{$no}{SSU}{strand}){
+      if($REG{$no}{SSU}{strand} eq "+" && $REG{$no}{SSU}{end} < $REG{$no}{LSU}{start}){
+        print REGF sprintf("%s:%d-%d\n", $REG{$no}{fullID}, $REG{$no}{SSU}{start}, $REG{$no}{LSU}{end});
+      }elsif($REG{$no}{SSU}{strand} eq "-" && $REG{$no}{LSU}{end} < $REG{$no}{SSU}{start}){
+        print REGR sprintf("%s:%d-%d\n", $REG{$no}{fullID}, $REG{$no}{LSU}{start}, $REG{$no}{SSU}{end});
+      }
+    }
+  }elsif($region eq "S" && exists $REG{$no}{SSU}){
+    my $outputRegion = sprintf("%s:%d-%d\n", $REG{$no}{fullID}, $REG{$no}{SSU}{start}, $REG{$no}{SSU}{end});
+    if($REG{$no}{SSU}{strand} eq "+" ){
+      print REGF $outputRegion;
+    }elsif($REG{$no}{SSU}{strand} eq "-" ){
+      print REGR $outputRegion;
+    }
+  }elsif($region eq "L" && exists $REG{$no}{LSU}){
+    my $outputRegion = sprintf("%s:%d-%d\n", $REG{$no}{fullID}, $REG{$no}{LSU}{start}, $REG{$no}{LSU}{end});
+    if($REG{$no}{LSU}{strand} eq "+" ){
+      print REGF $outputRegion;
+    }elsif($REG{$no}{LSU}{strand} eq "-" ){
+      print REGR $outputRegion;
+    }
+  }
+}
+close REGF;
+close REGR;
+&verbose("done! Writing:\n");
+
+my $cmd = "samtools faidx $inf -n 6000 -r $tmpPfx.forward.region > $out";
+&verbose("$cmd\n");
+system($cmd);
+$cmd = "samtools faidx $inf -n 6000 -i -r $tmpPfx.reverse.region >> $out";
+&verbose("$cmd\n");
+system($cmd);
+
+&verbose("done!\n");
+exit;
+
+sub verbose{
+  my $msg = shift;
+  print STDERR $msg if $verbose;
+}

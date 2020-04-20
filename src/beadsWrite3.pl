@@ -25,17 +25,15 @@ default options:
     -f        format [fq|fa|fq+fa|fq.gz]
     -t        threads to use for compressing
     -k        skip if file exists
-    -e        exchange barcode and seq ID (put barcode in front of seqID)
+    -e        exchange barcode and seq ID (e:put barcode in front of seqID;d:remove barcodes)
     -x        make index only
     -p        prefix. When specificed, output seq into a single file with this prefix.
     -o        output dir
     -v        verbose mode
 extract specific barcodes:
-    --r2        read2 fq file
+    --r2      read2 fq file
     -b        barcode id
     -d        individual barcode id
-
-
 USAGE
   exit;
 };
@@ -52,7 +50,7 @@ GetOptions(
     "d|individual:s"=>\$idvd,
     "t|thread=i"  => \$proc,
     "k|skip"      => \$skip,
-    "e|exchange"  => \$exchange,
+    "e|exchange:s"  => \$exchange,
     "x|index"     => \$index,
     "p|pfx=s"     => \$pfx,
     "F|format:s"  => \$fmt,
@@ -69,14 +67,25 @@ my $firstCatchTime = time();
 my $lastCatch = $firstCatchTime;
 my @timeS;
 
-if($list){
-  `mkdir -p $out`;
-  &writeAll($in1,$list,$cut,$sfx,$proc,$fmt,$out);
+if($index){
+  &makeindex('make');
 }elsif($bcode||$idvd){
   &specifcBarcode($in1,$in2,$bcode,$fmt,$out);
-}elsif($index){
-  &makeindex('make');
+}else{
+  unless($list){
+    if( -e "$in1.idx"){
+      &verbose("index haven't specificed but $in1.idx is found. Use it by default.\n");
+    }else{
+      &verbose("index haven't found. Generating...\n");
+      &makeindex('make');
+      &verbose("Use index $in1.idx\n");
+    }
+    $list = "$in1.idx";
+  }
+  `mkdir -p $out`;
+  &writeAll($in1,$list,$cut,$sfx,$proc,$fmt,$out);
 }
+
 
 exit;
 
@@ -198,8 +207,8 @@ sub specifcBarcode{
 
         for(my $i=$S;$i<=$E;$i+=4){
           if($fmt eq "fq"){
-            print Q1 $R1[$i].$R1[$i+1].$R1[$i+2].$R1[$i+3];
-            print Q2 $R2[$i].$R2[$i+1].$R2[$i+2].$R2[$i+3];
+            print Q1 &exchange($R1[$i]).$R1[$i+1].$R1[$i+2].$R1[$i+3];
+            print Q2 &exchange($R2[$i]).$R2[$i+1].$R2[$i+2].$R2[$i+3];
           }
           if($fmt eq "fa"){
             print A1 $R1[$i].$R1[$i+1];
@@ -251,11 +260,12 @@ sub writeAll {
   my $i=0;
   while(<IN>){
     # Read one sequence info
+    chomp;
+    my @bc = &getIdBcode($_);
     my $id = &exchange($_);
     my $seq = <IN>;
     my $qua = <IN>.<IN>;
     # Detect barcode
-    my @bc = &getIdBcode($id);
 
     if (defined $LIST{$bc[1]}){
       if($bc[1] ne $p[1]){
@@ -364,14 +374,13 @@ sub getIdBcode {
 
 sub exchange {
   my $id = shift;
-  chomp($id);
-  unless($exchange){
-    return($id)
-  }else{
-    $id =~ s/^([@>])(\S+)\/(\d+_\d+_\d+)\//\1\3\/\2/;
-    my $eID = "$1$3/$2/$4\n";
-    return($eID);
+  #chomp($id);
+  if($exchange eq "d"){
+    $id =~ s/^([@>]\S+)(\/\d+_\d+_\d+)(\/[12])$/\1\3/;
+  }elsif(defined $exchange){
+    $id =~ s/^([@>])(\S+)\/(\d+_\d+_\d+)\/(\/[12])$/\1\3\/\2\/\4/;
   }
+  return($id);
 }
 
 sub filesOpen{

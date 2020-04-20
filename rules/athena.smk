@@ -26,8 +26,9 @@ rule ATHENA_2_assemble:
     input:  "{sample}/clean/sort_atn_sp.fastq"
     output: "{sample}/spadesMeta/contigs.fasta"
     params: "{sample}/spadesMeta"
+    threads: config['thread']['athena']
     shell:
-        "spades.py -t 48 --meta -o {params} --12 {input}"
+        "spades.py -t {threads} --meta -o {params} --12 {input}"
 
 rule ATHENA_3_index:
     input:
@@ -35,9 +36,10 @@ rule ATHENA_3_index:
         inf = "{sample}/clean/sort_atn_sp.fastq"
     output: "{sample}/athena/reads.2.metaspades-contigs.bam"
     params: "{sample}/spadesMeta"
+    threads: config['thread']['athena']
     shell:
         "bwa index {input}\n"
-        "bwa mem -t 60 -C -p {input.idx} {input.inf}| "
+        "bwa mem -t {threads} -C -p {input.idx} {input.inf}| "
         "samtools sort -@ 8 -o {output} - \n"
         "samtools index {output}"
 
@@ -59,9 +61,10 @@ rule ATHENA_4_config:
 rule ATHENA_5_FinalShell:
     input: "{sample}/athena/config.json"
     output:"{sample}/athena/run.athena.sh"
+    threads: config['thread']['athena']
     shell:
         "source activate athena_env\n"
-        "athena-meta --config {input} --threads 64\n" # For now, run it manully
+        "athena-meta --config {input} --threads {threads}\n" # For now, run it manully
 
 rule ATHENA_6_annotation:
     input:
@@ -74,8 +77,9 @@ rule ATHENA_6_annotation:
         oDir = "{sample}/athena/reAlign",
         b6   = "{sample}/athena/reAlign/scaf2ref.blast6"
     output:"{sample}/athena/reAlign/scaf2ref.blast6.anno"
+    threads: config['thread']['athena']
     shell:
-        "metabbq reAlign.sh 24 {input.r1} {input.r2} {input.scaf} {input.refFA} {params.oDir}\n"
+        "metabbq reAlign.sh {threads} {input.r1} {input.r2} {input.scaf} {input.refFA} {params.oDir}\n"
         "metabbq anno.pl {input.refID} {params.b6} > {output}"
 
 rule ATHENA_7_quast:
@@ -87,8 +91,9 @@ rule ATHENA_7_quast:
     params:
         oDir = "{sample}/athena/quast_REF_output",
     output: "{sample}/athena/quast_REF_output/report.pdf"
+    threads: config['thread']['athena']
     shell:
-        "quast.py -t 24 {input.scaf} \ "
+        "quast.py -t {threads} {input.scaf} \ "
         "-R {input.refFA} \ "
         "-1 {input.read1} \ "
         "-2 {input.read2} \ "

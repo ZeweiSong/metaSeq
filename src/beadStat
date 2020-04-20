@@ -10,7 +10,7 @@
 use strict;
 use Getopt::Long;
 my (%CLUST);
-my($verbose,$help);
+our($verbose,$help);
 sub usage {
   my $msg = shift;
 print <<USAGE;
@@ -23,6 +23,11 @@ usage:
     bc     output best anno with specified cutoffs
     bin    filter fq files with beads above a threashold
     RBS    Reads supports from Beads to Scaffolds
+    sam    stat beads mapping proportion from bwa alignment result
+    sam2b  stat above stat into beads scale
+    sam2c  stat above stat into clips scale
+    otu2b  summary otu annotation into beads scale
+    mfreq  stat sketch bins numbers and top frequency in each bead from mash
 
 options:  Defined according to the mode and cmd you chosed.
 USAGE
@@ -34,12 +39,19 @@ my $mode = shift @ARGV unless $ARGV[0] =~/^-/;
 
 # Main start
 &run_uc    if $mode eq "uc";
+&run_ruc   if $mode eq "ruc";
 &run_merge if $mode eq "merge";
 &run_BCent if $mode eq "bc";
 &run_rbs   if $mode eq "RBS";
+&run_sam   if $mode eq "sam";
+&run_sam2b if $mode eq "sam2b";
+&run_sam2c if $mode eq "sam2c";
+&run_otu2b if $mode eq "otu2b";
+&run_mfreq if $mode eq "mfreq";
+
 # Main end
 
-&verbose("[log] All done!\n");
+&verbose("[All done!]\n");
 
 exit;
 
@@ -397,4 +409,636 @@ sub run_rbs {
     }
   }
   &verbose("[RBS] Mode done!\n");
+}
+
+sub usage4sam {
+  my $msg = shift;
+  print <<USAGE;
+$msg
+usage [v0.1] :
+  $0 sam -i <sam file> -o output
+    -i  input sam file
+    -o  output
+    -v  verbose
+    -h  show help info
+USAGE
+}
+
+sub run_sam {
+  &usage4sam("stat beads number to each reference") && exit unless @ARGV;
+  my ($inf,$out);
+  GetOptions(
+    "i=s" => \$inf,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4sam("stat beads number to each reference") && exit if $help;
+  &verbose("[SAM] Mode start ... \n");
+  #Init
+  open INF,"<$inf" or die "Cannot open alignment file: $inf.\n";
+  open OUT,">$out" or die "Cannot open output file: $out.\n";
+  my (@XA,%HS,%B2R,$pRd,$pBB,$count,$cigar2);
+  while(<INF>){
+    chomp;
+    next if $_ =~ /^@/;
+    my @s=split (/\t/);
+    $s[0] =~ /^(\S+)\/(\d+_\d+_\d+)$/;
+    my $rd = $1;
+    my $obb = $2;
+    my $bb = ($obb =~ /0000/)?"0000_0000_0000":$obb;
+    #summary when a paired read all read:
+    if($pRd ne $rd){
+      $count ++;
+      while(@XA){
+        my $xa = shift @XA;
+        #XA:Z:chr,pos,CIGAR,NM
+        $xa =~ /(\S+),([+-]\d+),(\S+),(\S+)/;
+        $HS{$1} += $3 - $4;
+
+      }
+      #foreach my $H (keys %HS){
+      #  undef $HS{$H} if $HS{$H} < 100;
+      #}
+      my $hitType = ((keys %HS)>1)?"MULT":"UNIQ";
+      # count once per paired-read:
+      foreach my $H (keys %HS){
+          $B2R{$H}{$hitType} ++;
+          $B2R{$H}{'NM'} += $HS{$H};
+      }
+      %HS = ();
+    }
+    #summary when a bead all read:
+    if ($pBB ne $bb){
+      &samout($pBB,\%B2R,$count);
+      %B2R = (); $count = 0;
+    }
+    # Adding a new read:
+    #$cigar2 += &cigarMatchLen($s[5]);
+    my $NM = ($_ =~ /NM:i:(\d+)/)?$1:0;
+    $HS{$s[2]} += &cigarMatchLen($s[5]) - $NM;
+    my $alter = ($_ =~ /XA:Z:(\S+);$/)?$1:"";
+    push @XA, split(/;/,$alter);
+    $pRd = $rd; $pBB = $bb;
+    #verbose
+    if($. % 100000 == 0 ){
+      &verbose(sprintf("\r[SAM] Processing BB [%s]",$obb));
+    }
+    # Next loop
+  }
+  &verbose("\n");
+  close INF;
+  # count last read:
+  $count ++;
+  while(@XA){
+    my $xa = shift @XA;
+    $xa =~ /(\S+),[+-]\d+,(\S+),(\S+)/;
+    $HS{$1} ++;
+  }
+  my $hitType = ((keys %HS)>1)?"MULT":"UNIQ";
+  # count once per paired-read:
+  foreach my $H (keys %HS){ $B2R{$H}{$hitType} ++; };
+  # count last bead:
+  &samout($pBB,\%B2R,$count);
+  close OUT;
+  &verbose("[SAM] Mode done!\n");
+}
+
+sub samout {
+  my $B  = shift;
+  my $HS = shift;
+  my $ct = shift;
+    foreach my $H (sort keys %$HS){
+      $$HS{$H}{UNIQ} ||=0; $$HS{$H}{MULT} ||=0; $$HS{$H}{NM} ||=0;
+      print OUT "$B\t$H\t$$HS{$H}{UNIQ}\t$$HS{$H}{MULT}\t$ct\t$$HS{$H}{NM}\n";
+  }
+}
+
+our %PROP;
+sub run_sam2b {
+  &usage4sam("stat beads stat to beads represent") && exit unless @ARGV;
+  my ($inf,$out);
+  GetOptions(
+    "i=s" => \$inf,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4sam("stat beads number to each reference") && exit if $help;
+  &verbose("[S2B] Mode start ... \n");
+  #Init
+  open INF,"<$inf" or die "Cannot open alignment file: $inf.\n";
+  open OUT,">$out" or die "Cannot open output file: $out.\n";
+  open PROP,">$out.p" or die "Cannot open output file: $out.p.\n";
+  my ($bb,%B2B,%HS,$uSum,$mSum,$pBB,$count);
+  while(<INF>){
+    chomp;
+    next if $_ =~ /^@/;
+    my @r = split /\t/;
+    $bb = $r[0]; $bb = "0000_0000_0000" if $bb =~ /0000/;
+    if ($pBB ne $bb){
+      &sambout($pBB,\%B2B,$count);
+      ($count,%B2B,$uSum,$mSum) = (0,);
+    }
+    $B2B{$r[1]}{UNIQ} = $r[2];
+    $B2B{$r[1]}{MULT} = $r[3];
+    $count = $r[4];
+    $B2B{$r[1]}{NM} = $r[5];
+    $pBB = $bb;
+    #verbose
+    if($. % 100000 == 0 ){
+      &verbose(sprintf("\r[S2B] $. lines read. Last BB is [%s]",$r[0]));
+    }
+  }
+  &verbose(sprintf("\r[S2B] $. lines read. Last BB is [%s]\n",$bb));
+  close INF;
+  &sambout($pBB,\%B2B,$count);
+  close OUT;
+  foreach my $otu(sort keys %PROP){
+    $PROP{$otu}{0}||=0;
+    $PROP{$otu}{1}||=1;
+    print PROP sprintf("%d\t%d\t%s\n",$PROP{$otu}{0},$PROP{$otu}{1},$otu);
+  }
+  close PROP;
+  &verbose("[S2B] Mode done!\n");
+}
+
+sub sambout{
+  my $B = shift;
+  my $HS = shift;
+  my $ct = shift;
+  my @top;
+  return unless $B;
+  my ($k1, $k2,$US,$MS) = ("*","*",0,0);
+  $$HS{"*"}{UNIQ} = 0; $$HS{"*"}{MULT} = 0; $$HS{"*"}{NM} = 0;
+  foreach my $H (keys %$HS){
+    $US += $$HS{$H}{UNIQ};
+    $MS ++;
+    #next if $H eq "*";
+    if($$HS{$H}{NM}>$$HS{$k1}{NM}){
+      $k2 = $k1; $k1 = $H; @top = ($H);
+    }elsif($$HS{$H}{NM}==$$HS{$k1}{NM}){
+      if($$HS{$H}{MULT}>$$HS{$k1}{MULT}){
+        $k2 = $k1; $k1 = $H; @top = ($H);
+      }elsif($$HS{$H}{MULT}==$$HS{$k1}{MULT}){
+        if($$HS{$H}{UNIQ}>$$HS{$k1}{UNIQ}){
+          $k2 = $k1; $k1 = $H; @top = ($H);
+        }elsif($$HS{$H}{UNIQ} eq $$HS{$k1}{UNIQ}){
+          $k2 = $k1; $k1 = $H; push @top, $H;
+        }
+      }
+    }elsif($$HS{$H}{NM}>$$HS{$k2}{NM}){
+      $k2 = $H;
+    }elsif($$HS{$H}{NM}==$$HS{$k2}{NM}){
+      if($$HS{$H}{MULT}>$$HS{$k2}{MULT}){
+        $k2 = $H;
+      }elsif($$HS{$H}{MULT}==$$HS{$k2}{MULT}){
+        if($$HS{$H}{UNIQ}>$$HS{$k2}{UNIQ}){
+          $k2 = $H;
+        }elsif($k2 eq "MISS"){
+          $k2 = $H;
+        }
+      }
+    }
+    # loop end
+  }
+  # if($k1 eq "MISS"){
+  #   $k1 = "*";
+  # }elsif($k2 eq "MISS"){
+  #   $k2 = "*";
+  # }
+  my $tops  = scalar @top ;
+  if($B eq "0000_0000_0000"){
+    foreach my $h (@top){
+      $PROP{$h}{0} += 1/$tops;
+    }
+  }else{
+    foreach my $h (@top){
+      $PROP{$h}{1} += 1/$tops;
+    }
+  }
+  $$HS{"MISS"}{NM} = 0 ;
+  print OUT sprintf("%s\t%d\t%d\t%d\t%s\t%d\t%d\t%d\t%s\t%d\t%d\t%d\n", $B,$ct,$US,$tops,
+  $k1,$$HS{$k1}{UNIQ},$$HS{$k1}{MULT}, $$HS{$k1}{NM},
+  $k2,$$HS{$k2}{UNIQ},$$HS{$k2}{MULT}, $$HS{$k2}{NM});
+}
+
+################################################################################
+#
+sub run_sam2c {
+  &usage4sam("stat beads stat to beads linkage") && exit unless @ARGV;
+  my ($inf,$out);
+  GetOptions(
+    "i=s" => \$inf,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4sam("stat beads number to each reference") && exit if $help;
+  &verbose("[SAM] Mode start ... \n");
+  #Init
+  open INF,"<$inf" or die "Cannot open alignment file: $inf.\n";
+  open OUT,">$out" or die "Cannot open output file: $out.\n";
+  #open OUT,">$out.ID"  or die "Cannot open output file: $out.ID\n";
+  my ($bb, %B2B,%B2C,%HS,$uSum,$mSum,$pBB,$count);
+  while(<INF>){
+    chomp;
+    next if $_ =~ /^@/;
+    my @r = split (/\t/);
+    $bb = $r[0];
+    next if $bb =~ /0000/;
+    if ($pBB ne $bb){
+      my @h = sort keys %B2B;
+      if(@h>1){
+        for (my $i=0;$i<@h-1;$i++){
+          for (my $j=$i+1;$j<@h;$j++){
+            $B2C{$h[$i]}{$h[$j]}{'C'} += $B2B{$h[$i]}{MULT};
+            $B2C{$h[$i]}{$h[$j]}{'T'} += $count;
+            $B2C{$h[$i]}{$h[$j]}{'B'} ++;
+            $B2C{$h[$i]}{$h[$j]}{'U'} ++ if $B2B{$h[$i]}{UNIQ} && $B2B{$h[$j]}{UNIQ};
+          }
+        }
+      }
+      ($count,%B2B,$uSum,$mSum) = (0,);
+    }
+    if ($r[1] ne "*"){
+      $B2B{$r[1]}{UNIQ} = $r[2];
+      $B2B{$r[1]}{MULT} = $r[3];
+    }
+    $count = $r[4];
+    $pBB = $bb;
+    #verbose
+    if($. % 1000000 == 0 ){
+      &verbose(sprintf("\r[SAM] Processing BB [%s]",$bb));
+    }
+  }
+  &verbose(sprintf("\r[SAM] Processing BB [%s]\n",$bb));
+  close INF;
+  my @h1 = sort keys %B2C;
+  for(my $i=0;$i<@h1;$i++){
+    next if $h1[$i] eq ("*" or "");
+    my @h2 = sort keys %{$B2C{$h1[$i]}};
+    for(my $j=0;$j<@h2;$j++){
+      next if $h2[$j] =~ /\*|\s+/;
+      $B2C{$h1[$i]}{$h2[$j]}{'U'}||=0;
+      my $score = ($B2C{$h1[$i]}{$h2[$j]}{'B'} == 0)?1: 1- ($B2C{$h1[$i]}{$h2[$j]}{'U'} / $B2C{$h1[$i]}{$h2[$j]}{'B'});
+      print OUT "$h1[$i]\t$h2[$j]\t$score\t$B2C{$h1[$i]}{$h2[$j]}{'U'}\t$B2C{$h1[$i]}{$h2[$j]}{'B'}\t$B2C{$h1[$i]}{$h2[$j]}{'C'}\t$B2C{$h1[$i]}{$h2[$j]}{'T'}\n";
+    }
+  }
+  close OUT;
+  &verbose("[SAM] Mode done!\n");
+}
+
+sub samc{
+  my $B = shift;
+  my $HS = shift;
+  my $ct = shift;
+  my $b2c = shift;
+  return unless $B;
+  my ($k1, $k2,$US,$MS) = ("MISS","MISS",0,0);
+  $$HS{"MISS"}{UNIQ} = 0; $$HS{"MISS"}{MULT} = 0; $$HS{"MISS"}{NM} = $ct * 3000;
+  my @h = sort keys %$HS;
+  for (my $i=0;$i<@h-1;$i++){
+    for (my $j=$i+1;$j<@h;$j++){
+      $$b2c{$h[0]}{$h[1]}{'C'} += $$HS{$h[0]}{MULT} + $$HS{$h[1]}{MULT};
+      $$b2c{$h[0]}{$h[1]}{'T'} += $ct * 2;
+    }
+  }
+}
+
+################################################################################
+# summary SSU and LSU annotation for each otu
+################################################################################
+sub usage4otu2b {
+  my $msg = shift;
+  print <<USAGE;
+$msg
+usage [v0.1] :
+  $0 otu2b -R rank -L <LSU annotation file> -S <SSU annotation file> -o output
+    -R  rank to merge 0-6. default [6].
+    -L  LSU annotation file
+    -S  SSU annotation file
+    -o  output
+    -v  verbose
+    -h  show help info
+USAGE
+}
+
+our $rank;
+sub run_otu2b {
+  &verbose("[log] Mode [O2B] start ... \n");
+  my ($inL,$inS,$out,$verbose,$help);
+  GetOptions(
+    "R=s" => \$rank,
+    "L=s" => \$inL,
+    "S=s" => \$inS,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  $rank||=6;
+  &usage4otu2b("[log] Mode [O2B] start ... \n") && exit if $help;
+  &verbose("[O2B] Mode start ... \n");
+  #Init
+  open my $IN1,"<$inL" or die "Cannot open alignment file: $inL.\n";
+  open my $IN2,"<$inS" or die "Cannot open alignment file: $inS.\n";
+  open OUT,">$out" or die "Cannot open output file: $out.\n";
+  #open OUT,">$out.ID"  or die "Cannot open output file: $out.ID\n";
+  my ($run1,$run2,$count1,$count2,%HSL,%HSS,$count) = (1,1,0,0,);
+  my %EMPTY = ("MAIN" => {"NONE" => 0});
+  chomp(my $read1 = <$IN1>);
+  my @inf1 = split (/\t/,$read1);
+  $inf1[0] =~ /(\d+)$/; my $no1 = $1;
+  $HSL{NEXT}{A} = \@inf1; $HSL{NEXT}{N} = $no1; $HSL{FILEHANDLE} = $IN1;
+  chomp(my $read2 = <$IN2>);
+  my @inf2 = split (/\t/,$read2);
+  $inf2[0] =~ /(\d+)$/; my $no2 = $1;
+  $HSS{NEXT}{A} = \@inf2; $HSS{NEXT}{N} = $no2; $HSS{FILEHANDLE} = $IN2;
+
+  while($run1 && $run2){
+
+    while($run1 && $no1 lt $no2){
+      $count1 ++;
+      %HSL = &read1otu(\%HSL);
+      &summaryAnno(\%HSL,\%EMPTY);
+      $run1 = 0 && close $IN1 if $HSL{NEXT}{N} eq <EOF>;
+      $no1 = $HSL{NEXT}{N};
+    }
+
+    while($no1 eq $no2 && $no1 ne <EOF>){
+      $count1 ++; $count2 ++;
+      %HSL = &read1otu(\%HSL);
+      %HSS = &read1otu(\%HSS);
+      &summaryAnno(\%HSL,\%HSS);
+      $run1 = 0 && close $IN1 if $HSL{NEXT}{N} eq <EOF>;
+      $no1 = $HSL{NEXT}{N};
+      $run2 = 0 && close $IN2 if $HSS{NEXT}{N} eq <EOF>;
+      $no2 = $HSS{NEXT}{N};
+    }
+
+    while($run2 && $no1 gt $no2){
+      $count2 ++;
+      %HSS = &read1otu(\%HSS);
+      &summaryAnno(\%EMPTY,\%HSS);
+      $run2 = 0 && close $IN2 if $HSS{NEXT}{N} eq <EOF>;
+      $no2 = $HSS{NEXT}{N};
+    }
+    if($count1 % 1000000 == 0 || $count2 % 1000000 == 0){
+      &verbose(sprintf("[log] Processing | file1: %9d | file2: %9d\n", $count1, $count2));
+    }
+  }
+  &verbose("[log] file1 closed.\n") unless $run1;
+  &verbose("[log] file2 closed.\n") unless $run2;
+  while($run1){
+    $count1 ++;
+    %HSL = &read1otu(\%HSL);
+    &summaryAnno(\%HSL,\%EMPTY);
+    $run1 = 0 && close $IN1 if $HSL{NEXT}{N} eq <EOF>;
+    $no1 = $HSL{NEXT}{N};
+  }
+  while($run2){
+    $count2 ++;
+    %HSS = &read1otu(\%HSS);
+    &summaryAnno(\%EMPTY,\%HSS);
+    $run2 = 0 && close $IN2 if $HSS{NEXT}{N} eq <EOF>;
+    $no2 = $HSS{NEXT}{N};
+  }
+
+  close OUT;
+  &verbose("[log] Mode [O2B] done ... \n");
+}
+
+sub read1otu {
+  my $HS = shift;
+  #load first line:
+  my ($no1,$IN,@inf1) = ($$HS{NEXT}{N},$$HS{FILEHANDLE},@{$$HS{NEXT}{A}});
+  #rest hash
+  %$HS = ();
+  my ($no,@inf) = ($no1,@inf1);
+  while($no eq $no1){
+    #treat previous record
+    my $tag = (exists $$HS{MAIN})?"REST":"MAIN";
+    my @ranks = split /;/, $inf[17];
+    $$HS{$tag}{$inf[1]}{RefID}    = $inf[1];
+    $$HS{$tag}{$inf[1]}{taxID}    = $inf[15];
+    $$HS{$tag}{$inf[1]}{bitScore} = $inf[11];
+    $$HS{$tag}{$inf[1]}{identity} = $inf[2];
+    $$HS{$tag}{$inf[1]}{rank} = $ranks[$rank];
+    $$HS{$tag}{$inf[1]}{A} = [@inf];
+    #read new record
+    chomp(my $read = <$IN>);
+    if($read eq <EOF>){
+      @inf = (<EOF>);
+      $no = <EOF>;
+      last;
+    }else{
+      @inf = split (/\t/,$read);
+      $inf[0] =~ /(\d+)$/; $no = $1;
+    }
+
+  }
+  $$HS{NEXT}{A} = [@inf];
+  $$HS{NEXT}{N} = $no;
+  $$HS{FILEHANDLE} = $IN;
+  return(%$HS);
+}
+sub summaryAnno{
+  my ($L,$S) = @_;
+  my ($kl,$ks) = (keys %{$$L{MAIN}}, keys %{$$S{MAIN}});
+  if($kl ne "NONE" && $ks ne "NONE"){
+    if($$L{MAIN}{$kl}{A}[0] ne $$S{MAIN}{$ks}{A}[0]){
+      die "different OTU summarised together ($$L{MAIN}{$kl}{A}[0],$$S{MAIN}{$ks}{A}[0]). Need check\n";
+    }else{
+      my $len = $$S{MAIN}{$ks}{A}[3] + $$L{MAIN}{$kl}{A}[3];
+      my $ident = sprintf ("%.3f",($$S{MAIN}{$ks}{A}[2]*$$S{MAIN}{$ks}{A}[3] + $$L{MAIN}{$kl}{A}[2] * $$L{MAIN}{$kl}{A}[3])/$len);
+      my $mismatch = $$S{MAIN}{$ks}{A}[4] + $$L{MAIN}{$kl}{A}[4];
+      my $gap      = $$S{MAIN}{$ks}{A}[5] + $$L{MAIN}{$kl}{A}[5];
+      if($$L{MAIN}{$kl}{rank} eq $$S{MAIN}{$ks}{rank}){
+
+        print OUT "$$S{MAIN}{$ks}{A}[0]\t$$L{MAIN}{$kl}{rank}\t$ident\t$len\t$mismatch\t$gap\t";
+        print OUT "$$S{MAIN}{$ks}{A}[14]\t$$S{MAIN}{$ks}{A}[15]\t$$S{MAIN}{$ks}{A}[16]\t$$S{MAIN}{$ks}{A}[17]\n";
+      }
+    }
+  }elsif($kl ne "NONE"){
+    print OUT (join "\t", $$L{MAIN}{$kl}{A}[0], $$L{MAIN}{$kl}{rank}, $$L{MAIN}{$kl}{A}[2], $$L{MAIN}{$kl}{A}[3], $$L{MAIN}{$kl}{A}[4], $$L{MAIN}{$kl}{A}[5], $$L{MAIN}{$kl}{A}[14], $$L{MAIN}{$kl}{A}[15], $$L{MAIN}{$kl}{A}[16], $$L{MAIN}{$kl}{A}[17])."\n";
+  }elsif($ks ne "NONE"){
+    print OUT (join "\t", $$S{MAIN}{$ks}{A}[0], $$S{MAIN}{$ks}{rank}, $$S{MAIN}{$ks}{A}[2], $$S{MAIN}{$ks}{A}[3], $$S{MAIN}{$ks}{A}[4], $$S{MAIN}{$ks}{A}[5], $$S{MAIN}{$ks}{A}[14], $$S{MAIN}{$ks}{A}[15], $$S{MAIN}{$ks}{A}[16], $$S{MAIN}{$ks}{A}[17])."\n";
+  }
+}
+################################################################################
+# mash sketch frequency of bins
+################################################################################
+sub usage4mfreq {
+  my $msg = shift;
+  print <<USAGE;
+$msg
+usage [v0.1] :
+  beadStat freq -i <freq> -o <tsv>
+    -i  msh sketch frequcney file
+    -t  msh sketch tabluar file
+    -o  output, tsv format
+    -v  verbose
+    -h  show help info
+USAGE
+}
+
+sub run_mfreq {
+  &usage4mfreq("Stat sketch bins numbers and top frequency in each bead from mash") && exit unless @ARGV;
+  my ($msh,$tab,$out);
+  GetOptions(
+    "i=s" => \$msh,
+    "t=s" => \$tab,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4mfreq("stat sketch bins numbers and top frequency in each bead from mash") && exit if $help;
+  &verbose("[mfreq] Mode start ... \r");
+  #Init
+  open MSH,"<$msh" or die "Cannot open alignment file: $msh.\n";
+  open TAB,"<$tab" or die "Cannot open alignment file: $tab.\n";
+  open OUT,">$out" or die "Cannot open output file: $out.\n";
+  my ($binsCount,$freqCount,$preBB,%BINS,$line);
+  while(<MSH>){
+    chomp;
+    my @s = split;
+    next if $s[0] =~ /^#|0000/;
+    if($s[0] ne $preBB && $preBB ne ""){
+      &freqWrite($preBB,$binsCount,$freqCount,\%BINS);
+      ($freqCount,$binsCount,%BINS) = (0,0,());
+    }
+    $BINS{$s[1]} = $s[2];
+    $freqCount += $s[2];
+    $binsCount ++;
+    $preBB = $s[0];
+    $line ++;
+    #verbose
+    if($line % 100000 == 0 ){
+      &verbose(sprintf("[mfreq] Processing | line: %9d | BB: %14s ...\r", $line, $preBB));
+    }
+  }
+  &verbose(sprintf("[mfreq] Processed  | line: %9d | BB: %14s ", $line, $preBB));
+  &freqWrite($preBB,$binsCount,$freqCount,\%BINS);
+  close MSH; close TAB;
+  close OUT;
+  &verbose("[DONE]");
+}
+
+sub freqWrite{
+  my $i = shift; my $c = shift; my $f = shift; my $H = shift;
+  my @k = sort { $b <=> $a } values %$H;
+
+  my @s = ("",0,0);
+  while($s[0] ne $i){
+    chomp(my $t = <TAB>);
+    @s = split /\t+|\s+/, $t ;
+  }
+  print OUT "$i\t$s[1]\t$s[2]\t$c\t$f\t$k[0]\t$k[1]\n";
+}
+
+################################################################################
+# mash sketch frequency of bins
+################################################################################
+
+sub usage4ruc {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  $0 ruc -i input -u uc -o output
+    -l  prefix label, default [LOTU]
+    -i  fasta file
+    -u  uc file
+    -o  output fasta file
+    -v  verbose
+    -h  show help info
+USAGE
+  exit;
+}
+
+sub run_ruc {
+  &usage4ruc("Find robust cluster from uc file and export fasta.") unless @ARGV;
+  my (%CLUST);
+  my ($label,$inf,$ucf,$out);
+  GetOptions(
+    "l=s" => \$label,
+    "i=s" => \$inf,
+    "u=s" => \$ucf,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  $label||="LOTU";
+  &usage4ruc("Find robust cluster from uc file and export fasta.") if $help;
+
+  #open INF, ($inf)?"<$inf":"<-" or die $!;
+  open OUT, ($out)?">$out":">-" or die $!;
+  open INF, "< $inf" or die $!;
+  open UCF, "< $ucf"  or die $!;
+  &verbose("[log] Mode [RUC] start ... \n");
+  my(%FASTA, %CLUST);
+  open INF, ($inf)?"<$inf":"<-" or die $!;
+  my $originSymbol = $/;
+  $/ = ">";
+  while(<INF>){
+    chomp;
+    next unless $_;
+    my @s = split /\n/;
+    $FASTA{$s[0]} = $s[1];
+  }
+  close INF;
+  #Here is the shorts for each column. Find more detail in VSEARCH manual.
+  ##   0         1       2            3            4  5  6      7     8        9##
+  ##Type  #Cluster  length  similarity%  orientation  *  *  CIGAR query centroid##
+  $/ = $originSymbol;
+  while(<UCF>){
+    chomp;
+    my @s = split /\t/;
+    if($s[0] eq "S"){
+      $CLUST{$s[1]}{FID} = $s[8];
+      $CLUST{$s[1]}{len} = $s[2];
+      $CLUST{$s[1]}{C00} ++;
+    }elsif($s[0] eq "H"){
+      my $mLen = &cigarMatchLen($s[7]);
+      my $mCov = $mLen/$CLUST{$s[1]}{len};
+      $CLUST{$s[1]}{MAX} = (exists $CLUST{$s[1]}{MAX} && $CLUST{$s[1]}{MAX} > $mLen)?$CLUST{$s[1]}{MAX}:$mLen;
+      $CLUST{$s[1]}{C75} ++ if $mCov>0.75;
+      $CLUST{$s[1]}{C00} ++;
+      $CLUST{$s[1]}{sumMatch} += $mLen;
+    }elsif($s[0] eq "C"){
+      die "C length: $s[2] not equal with count length: $CLUST{$s[1]}{C00} for cluster:$s[1]. Nedd check\n" if $s[2] ne $CLUST{$s[1]}{C00};
+      $CLUST{$s[1]}{meanMatch} = ($s[2]>1)?sprintf("%d",$CLUST{$s[1]}{sumMatch}/($s[2]-1)):0;
+    }
+  }
+  &verbose("[log] Finish read. Writing ... \n");
+  # output
+  my @ckeys = sort {$a<=>$b} keys %CLUST;
+  my $maxCLen = length($ckeys[$#ckeys]);
+  foreach my $c (@ckeys){
+    my $fid = sprintf("$label\_%0".$maxCLen."d size=%d S75=%d CL=%d XM=%d MM=%d",
+    $c+1,$CLUST{$c}{C00},$CLUST{$c}{C75},$CLUST{$c}{len},$CLUST{$c}{MAX},$CLUST{$c}{meanMatch});
+    #output a list of stat fasta
+    print "$fid\n";
+    if($CLUST{$c}{C75}<1){
+      &verbose("Discard: $fid \n");
+    }else{
+      print OUT ">$fid\n$FASTA{$CLUST{$c}{FID}}\n";
+    }
+  }
+  close OUT;
+  &verbose("[log] Mode [UC] done ... \n");
+}
+
+sub cigarMatchLen{
+	my $cigar =shift;
+	my ($mLen,$fLen) = (0,0);
+  if($cigar ne '*'){
+    while($cigar){
+      $cigar =~ s/^(\d*)([MIDNSHP=X])//;
+      my ($mode,$n) = ($2,$1);
+      $n ||=1;
+      if($mode =~/M/){$mLen += $n;}
+    }
+  }
+	return($mLen);
 }

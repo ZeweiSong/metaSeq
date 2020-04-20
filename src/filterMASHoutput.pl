@@ -21,7 +21,10 @@ usage:
     -m  if specified, id will changed by mapping in the id_map file
     -M  if specified, output id will renumbered and the mapping will sotored.
         Skipped when -m specified.
-    -p  flag when distance contained pairwise seq id.
+    -p  [b|p|u]
+          b: bc format, default
+          p: flag when distance contained pairwise seq id.
+          u: universal format
     -v  verbose mode
     -h  show help info
 USAGE
@@ -34,7 +37,7 @@ GetOptions(
   "c=f" => \$cut,
   "m=s" => \$map,
   "M=s" => \$MAP,
-  "p" => \$pair,
+  "p=s" => \$pair,
   "v" => \$verbose,
   "h|help|?" => \$help,
 );
@@ -42,7 +45,7 @@ GetOptions(
 #&usage("[fatal] Essential input is missing") && exit unless defined $inf;
 
 my($nid,%MAP)=(0,());
-
+$pair ||= "b";
 open INF, ($inf)?"<$inf":"-" or die $!;
 open OUT, ($out)?">$out":">STDOUT" or die $!;
 
@@ -71,16 +74,19 @@ while(<INF>){
   my @line = split /\t/;
   if($line[0] ne $line[1] && $line[2] > 0 && $line[2] <= $cut){
     my($src,$dist,$s_p,$d_p) = ();
-    if($pair){
+    if($pair eq "p"){
       $line[0] =~ /(\d\d\d\d_\d\d\d\d_\d\d\d\d.\d)/;
       $src = $1;
       $line[1] =~ /(\d\d\d\d_\d\d\d\d_\d\d\d\d.\d)/;
       $dist = $1;
-    }else{
+    }elsif($pair eq "b"){
       $line[0] =~ /(\d\d\d\d_\d\d\d\d_\d\d\d\d)/;
       $src = $1;
       $line[1] =~ /(\d\d\d\d_\d\d\d\d_\d\d\d\d)/;
       $dist = $1;
+    }elsif($pair eq "u"){
+      $src = $line[0];
+      $dist = $line[1];
     }
 
     if($map){

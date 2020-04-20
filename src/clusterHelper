@@ -23,7 +23,7 @@ usage:
   sub:
     main     pick main clusters
     asmPick  pick assembly fasta
-
+    clipPick run clipPick
 options:  Defined according to the mode and cmd you chosed.
 USAGE
 }
@@ -35,6 +35,7 @@ my $mode = shift @ARGV unless $ARGV[0] =~/^-/;
 # Main start
 &run_main if $mode eq "main";
 &run_asmPick if $mode eq "asmPick";
+&run_clipPick if $mode eq "clipPick";
 # Main end
 exit;
 
@@ -200,9 +201,11 @@ sub run_asmPick {
         ($id,$fg,$cov,$len) = ($1,$2,$3,$4);
       }elsif($_ =~ /^>(NODE_\d+)\_length\_(\d+)\_cov\_(\S+)/){ #spades
         ($id,$fg,$cov,$len) = ($1, 0,$3,$2);
+      }elsif($_ =~ /^>(\S+)_(\d+)_(C\d+)_(\(\S+\))_(\d+)$/){
+        ($id,$fg,$cov,$len) = ($1, $2,5,$5);
       }
-      &verbose(colored("\tCaution: duplicate cov=$cov found by $id and $RC{$cov}\n",'yellow')) if $RC{$cov};
-      &verbose(colored("\tCaution: duplicate len=$len found by $id and $RL{$len}\n",'yellow')) if $RL{$len};
+      #&verbose(colored("\tCaution: duplicate cov=$cov found by $id and $RC{$cov}\n",'yellow')) if $RC{$cov};
+      #&verbose(colored("\tCaution: duplicate len=$len found by $id and $RL{$len}\n",'yellow')) if $RL{$len};
       $RC{$cov} .= $id;
       $RL{$len} .= $id;
       #print head
@@ -230,5 +233,61 @@ sub run_asmPick {
     }
   }
 
+  &verbose("$funcName done. \n");
+}
+
+
+################################################################################
+sub usage4clipPick {
+print <<USAGE;
+usage:
+  $0 asmPick -l minLen -i input -o output
+    -l  minimum length to pick
+    -i  input assembly file
+    -b  bead cluster ID
+    -o  output fasta filename
+    -v  verbose
+    -h  show help info
+USAGE
+}
+sub run_clipPick {
+  &usage4clipPick() && exit unless @ARGV;
+  my $funcName = colored("[asmPick]",'bold blue');
+  my ($inf,$mlen,$single,$out,$bcid);
+  GetOptions(
+    "i:s" => \$inf,
+    "l:s" => \$mlen,
+    "o=s" => \$out,
+    "b=s" => \$bcid,
+    "v"   => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4clipPick() && exit if $help;
+  die colored("[ERR] missing bead cluster ID. Check usage for detail.\n",'red') unless $bcid ;
+
+  $mlen||=0;
+  open INF, ($inf)?"<$inf":"<-" or die $!;
+  open OUT, ($out)?">$out":">-" or die $!;
+
+  &verbose("$funcName start read ... \n");
+  my (%RC,%RL,%FA,$id,$cType,$fg,$len,$read);
+  while(<INF>){
+    #chomp;
+    if($_ =~ /^>/){ # read header
+      if($_ =~ /^>(\S+\_\d+)_(C\S+)_\S*_(\d+)$/){
+        ($id,$cType,$len) = ($1, $2, $3);
+      }elsif($_ =~ /^>(\S+)_flag=(\d+)_multi=(\d+\.\d+)_len=(\d+)_(C\S+)_\S*_(\d+)/){
+        ($id,$cType,$len) = ("$1\_$2\_$3", $5, $6);
+      }
+      #print head
+      if($len >= $mlen ){
+        $read = <INF>;
+        print OUT ">$bcid\_$id\_$cType\_$len\n$read";
+      }else{
+        <INF>;
+      }
+    }
+  }
+  close INF;
   &verbose("$funcName done. \n");
 }
