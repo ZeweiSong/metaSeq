@@ -478,3 +478,64 @@ else:
 		threads: 2
 		shell:
 			"barrnap --threads {threads} --kingdom bac --outseq {output.fa} < {input} > {output.gff} 2> {output.log}\n"
+
+
+#test SOTU mapping to refs
+rule zymo_sotu_2_closeRef:
+    input:
+        SSU = "{sample}/OTU/pred.SSU.clust.fa",
+        LSU = "{sample}/OTU/pred.LSU.clust.fa"
+    output:
+        SSU = "{sample}/OTU/pred.SSU.clust.zymo.m6",
+        LSU = "{sample}/OTU/pred.LSU.clust.zymo.m6"
+    params:
+        LSU = "$LFR/Source/REF/zymo/D6305.rRNA.fa",
+        SSU = "$LFR/Source/REF/zymo/D6305.ssrRNA.fasta"
+    threads: 8
+    shell:
+        "blastn -num_threads {threads} -db {params.LSU} -query {input.LSU} -outfmt '6 std qlen staxid ssciname' -out {output.LSU} &\n"
+        "blastn -num_threads {threads} -db {params.SSU} -query {input.SSU} -outfmt '6 std qlen staxid ssciname' -out {output.SSU} \n"
+
+
+
+##LOTU test mapping to close Ref
+
+if config["sampleType"] == "F":
+    kingdom="euk"
+    LSU="28S"
+    SSU="18S"
+else:
+    kingdom="bac"
+    LSUDB="$STL/Source/REF/silva132/LSU/SILVA_132_LSURef_tax_RNA.fasta"
+    LSUAN="$STL/Source/REF/silva132/LSU/taxmap_embl_lsu_ref_132.tax"
+    SSU="16S"
+
+
+rule LOTU_closeDB_mapping:
+    input: "{sample}/CLIP/all.LOTU.fa"
+    output: "{sample}/CLIP/all.LOTU.map.closeRef.m6"
+    params: config["closeRef"]["bwa_db"]
+    threads: 8
+    shell:
+        "blastn -num_threads {threads} -perc_identity 95 -db {params} "
+        " -query {input} -outfmt '6 std qlen slen' -out {output}\n"
+
+
+
+## CLEAN: randomly downsize:
+rule downsize_50_10:
+    input:
+        fq1="{sample}/clean/fastp.sort.1.fq.gz",
+        fq2="{sample}/clean/fastp.sort.2.fq.gz"
+    output:
+        fq1="{sample}/clean/fastp.sort.1_00.fq.gz",
+        fq2="{sample}/clean/fastp.sort.2_00.fq.gz"
+    params:
+        pfx1 = "{sample}/clean/fastp.sort.1",
+        pfx2 = "{sample}/clean/fastp.sort.2"
+        p = config["clean_ds_pieces"],
+        k  = config["clean_ds_keep_files"]
+    threads: 4
+    shell:
+        "metabbq randomlyPick.pl -i {input.fq1} -o {params.pfx1} -n {params.p} -m {params.keeps} -s {params.p} -t 2 &\n"
+        "metabbq randomlyPick.pl -i {input.fq2} -o {params.pfx2} -n {params.p} -m {params.keeps} -s {params.p} -t 2 -v"
