@@ -214,118 +214,82 @@ rule BIA_4_summary3:
 # 3. pick RCA clip fasta
 for i in `ls {params.outDir}|grep BI`;do
   if [ -s {params.outDir}/$i/{params.mode}/RCAclip.fa ]; then
-    #metabbq clusterHelper clipPick -l {params.mAsm} -b $i -i {params.outDir}/$i/{params.mode}/RCAclip.fa
     awk -v b=$i 'FNR%2==1{{sub(">",">"b"_",$0);id=$0}}FNR%2==0{{if(length($0)>={params.mAsm}){{print id"\\n"$0}}}}' {params.outDir}/$i/{params.mode}/RCAclip.fa
   fi
 done > {output.fa}
         """
-
-outRc= "{sample}/summary.BI." + str(config["method"]["assemble"]["mode"]) + ".rRNA.fasta"
-if config["sampleType"] == "F":
-    kingdom="euk"
-    LSU="28S"
-    SSU="18S"
-else:
-    kingdom="bac"
-    LSU="23S"
-    SSU="16S"
-
-rule BIA_6_rrnadetect:
+#Following were rules for Bead isolated scaffolding method:
+## 1 discard abnormal contigs and rename sequence id:
+rule BIS_0_filter:
     input: outXc
-    output: outRc
-    log: outRc + ".barrnap"
-    params:
-        k = kingdom,
-    threads: config['thread']['vsearch']
+    output: "{sample}/CLIP/RCA.clip.rename.fasta"
     shell:
-        "barrnap --kingdom {params.k} --threads {threads} --reject 0.1 {input} --outseq {output} &> {log}"
+        "metabbq scafHelper ffa < {input} > {output}"
 
-rule BIA_7_cut_LSU_and_SSU:
-    input: outRc
+rule BIS_1_vsearch_cluster:
+    input: "{sample}/CLIP/RCA.clip.rename.fasta"
     output:
-        S= "{sample}/VSEARCH/barrnap.SSU.fasta",
-        L= "{sample}/VSEARCH/barrnap.LSU.fasta"
+        fa="{sample}/CLIP/RCA.clip.rename.clust.fa",
+        uc="{sample}/CLIP/RCA.clip.rename.clust.uc",
+        log="{sample}/CLIP/RCA.clip.rename.clust.log"
     params:
-        S = SSU,
-        L = LSU
-    threads: 2
+        pct = config['p_BIS_clust_id']
+    threads: 16
     shell:
-        "grep -A1 {params.S} {input} > {output.S} & "
-        "grep -A1 {params.L} {input} > {output.L} & "
-        "wait"
+        "vsearch --threads {threads} --cluster_fast  {input} --strand both --fasta_width 0 "
+        "--centroids {output.fa} --uc  {output.uc} --id {params.pct} --iddef 0 &> {output.log}"
 
-rule VSEARCH_1_SSU_cluster:
-    input: "{sample}/VSEARCH/barrnap.SSU.fasta"
+rule BIS_2_blastn_makedb:
+    input: "{sample}/CLIP/RCA.clip.rename.clust.fa"
     output:
-        fa1="{sample}/VSEARCH/barrnap.preclustS.fasta",
-        uc1="{sample}/VSEARCH/barrnap.preclustS.uc",
-        fa2="{sample}/VSEARCH/barrnap.cdhitS.fasta",
-        uc2="{sample}/VSEARCH/barrnap.cdhitS.fasta.uc"
-    params:
-        pct = config['p_VS_clust_Sid'],
-    threads: config['thread']['vsearch']
+        nsq="{sample}/CLIP/RCA.clip.rename.clust.fa.nsq",
+        nin="{sample}/CLIP/RCA.clip.rename.clust.fa.nin",
+        nhr="{sample}/CLIP/RCA.clip.rename.clust.fa.nhr"
     shell:
-        "vsearch --threads {threads} --cluster_fast {input} "
-        "--id {params.pct} --strand both --fasta_width 0 "
-        "--centroids {output.fa1} -uc {output.uc1}\n"
-        "vsearch --threads {threads} --cluster_fast {output.fa1} "
-        "--iddef 0 --id {params.pct} --strand both --fasta_width 0 "
-        "--relabel SSU_ --relabel_keep "
-        "--centroids {output.fa2} -uc {output.uc2}"
+        "makeblastdb -dbtype nucl -in {input}"
 
-rule VSEARCH_1_LSU_cluster:
-    input: "{sample}/VSEARCH/barrnap.LSU.fasta"
-    output:
-        fa1="{sample}/VSEARCH/barrnap.preclustL.fasta",
-        uc1="{sample}/VSEARCH/barrnap.preclustL.uc",
-        fa2="{sample}/VSEARCH/barrnap.cdhitL.fasta",
-        uc2="{sample}/VSEARCH/barrnap.cdhitL.fasta.uc"
-    params:
-        pct = config['p_VS_clust_Lid']
-    threads: config['thread']['vsearch']
-    shell:
-        "vsearch --threads {threads} --cluster_fast {input} "
-        "--id {params.pct} --strand both --fasta_width 0 "
-        "--centroids {output.fa1} -uc {output.uc1}\n"
-        "vsearch --threads {threads} --cluster_fast {output.fa1} "
-        "--iddef 0 --id {params.pct} --strand both --fasta_width 0 "
-        "--relabel LSU_ --relabel_keep "
-        "--centroids {output.fa2} -uc {output.uc2}"
-
-rule VSEARCH_2_merge:
+rule BIS_2_blastn_mappingEachOther:
     input:
-        S = "{sample}/VSEARCH/barrnap.cdhitS.fasta",
-        L = "{sample}/VSEARCH/barrnap.cdhitL.fasta"
-    output:
-        "{sample}/VSEARCH/barrnap.RSUs.fasta"
+        fa = "{sample}/CLIP/RCA.clip.rename.clust.fa",
+        db = "{sample}/CLIP/RCA.clip.rename.clust.fa.nsq",
+    output: "{sample}/CLIP/RCA.clip.rename.clust.blastn.m6"
+    params:
+        pct = 99
+    threads: 8
     shell:
-        "cat {input.S} {input.L} > {output}"
+        "blastn -num_threads {threads} -db {input.fa} -query {input.fa} -out {output} "
+        "-perc_identity {params.pct}  -outfmt '6 std qlen slen' "
 
-rule CloseRef_1_makeIndex:
-    input: "{sample}/VSEARCH/barrnap.RSUs.fasta"
-    output:"{sample}/VSEARCH/contig.RSUs.fasta.index.sa"
-    params:"{sample}/VSEARCH/contig.RSUs.fasta.index"
-    shell: "bwa index {input} -p {params}"
-
-rule CloseRef_2_mapping:
+rule BIS_2_AdjGet_scaffolding:
     input:
-        R1 = "{sample}/clean/fastp.sort.1.fq.gz",
-        R2 = "{sample}/clean/fastp.sort.2.fq.gz",
-        db = "{sample}/VSEARCH/contig.RSUs.fasta.index.sa"
-    output: "{sample}/VSEARCH/contig.RSUs.bwa.bam"
-    params: "{sample}/VSEARCH/contig.RSUs.fasta.index"
-    threads: config['thread']['blastn']
+        fa = "{sample}/CLIP/RCA.clip.rename.clust.fa",
+        uc = "{sample}/CLIP/RCA.clip.rename.clust.uc",
+        m6 = "{sample}/CLIP/RCA.clip.rename.clust.blastn.m6"
+    output: "{sample}/CLIP/RCA.clip.rename.clust.ADJ.log"
+    params:
+        pfx = "{sample}/CLIP/RCA.clip.rename.clust.adj"
     shell:
-        "bwa mem -t {threads} {params} {input.R1} {input.R2} "
-        "| samtools view -b -@ {threads} > {output}"
+        "metabbq AdjGet -i {input.fa} -u {input.uc} -m {input.m6} -o {params.pfx} -v &> {output}"
 
-rule Quatification:
-    input: "{sample}/VSEARCH/contig.RSUs.bwa.bam"
+rule BIS_3_Scaffold_clust:
+    input: "{sample}/CLIP/RCA.clip.rename.clust.adj.merge.fa"
     output:
-        stat = "{sample}/VSEARCH/contig.RSUs.bwa.stat",
-        sbb1 = "{sample}/VSEARCH/contig.RSUs.bwa.sbb1",
-        prop = "{sample}/VSEARCH/contig.RSUs.bwa.prop"
+        fa="{sample}/CLIP/RCA.clip.rename.clust.adj.merge.clust.fa",
+        uc="{sample}/CLIP/RCA.clip.rename.clust.adj.merge.clust.uc",
+        log="{sample}/CLIP/RCA.clip.rename.clust.adj.merge.clust.log"
+    params:
+        pct = config['p_BIS_clust_id']
+    threads: 16
     shell:
-        "samtools view {input} | metabbq beadStat sam -i - -o {output.stat} -v\n"
-        "metabbq beadStat sam2b -i {output.stat} -o {output.sbb1} -v\n"
-        "awk 'FNR>1{{print $5}}' {output.sbb1}|sort|uniq -c > {output.prop}\n"
+        "sed 's/ /_/g' {input} > {input}.tmp.fa \n"
+        "vsearch --threads {threads} --cluster_fast {input}.tmp.fa --strand both --fasta_width 0 --relabel_keep "
+        "--centroids {output.fa} --uc  {output.uc} --id {params.pct} --iddef 0 &> {output.log}"
+
+rule BIS_4_Scaffold_quast:
+    input: "{sample}/CLIP/RCA.clip.rename.clust.adj.merge.clust.fa"
+    output: "{sample}/CLIP/RCA.clip.rename.clust.adj.merge.clust_quast.log"
+    params:
+        dir = "{sample}/CLIP/RCA.clip.rename.clust.adj.merge.clust_quast"
+    threads: 16
+    shell:
+        "quast.py -m 3000 --min-identity 98 -t {threads} {input} -R $LFR/Source/REF/zymo/D6305.fix.rRNA.fa -o {params.dir} &> {output}"
