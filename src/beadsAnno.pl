@@ -16,7 +16,7 @@ print <<USAGE;
 $msg
 usage:
   $0 -i input -o output
-    -m  mode [uc|tile|bc|bin]
+    -m  mode [uc|tile|bc|bin|otu2b]
     -i  unchime file with 10 column
     -o  output filename
     -v  verbose
@@ -48,6 +48,7 @@ my (%CLUST);
 &run_uc    if $mode eq "uc";
 &run_merge if $mode eq "merge";
 &run_BCent if $mode eq "bc";
+&run_otu2b if $modee eq "otu2b"
 # Main end
 
 &verbose("[log] All done!\n");
@@ -254,4 +255,93 @@ sub writePreCluster{
       print OUT "$CLUST{$BC}{'H'}{$HT}";
     }
   }
+}
+
+
+################################################################################
+# summary SSU and LSU annotation for each otu
+################################################################################
+sub usage4otu2b {
+  my $msg = shift;
+  print <<USAGE;
+$msg
+usage [v0.1] :
+  $0 otu2b -L <LSU annotation file> -S <SSU annotation file> -o output
+    -L  LSU annotation file
+    -S  SSU annotation file
+    -o  output
+    -v  verbose
+    -h  show help info
+USAGE
+}
+
+sub run_otu2b {
+  &verbose("[log] Mode [O2B] start ... \n");
+  my @files = split (",",$inf);
+  &verbose("[err] [O2B] needs two files. Pls check\n") & die $! if @files != 2;
+  open IN1, "<$files[0]" or die $!;
+  open IN2, "<$files[1]" or die $!;
+  #Here is the shorts for each column.
+  ##   0         1         2      3       4##
+  ##Type  Barcode1  Barcode2  count  length##
+  my ($run1, $run2, $count1, $count2) = (1,1,0,0);
+  chomp(my $read1 = <IN1>);
+  my @inf1 = split (/\t/,$read1);
+  chomp(my $read2 = <IN2>);
+  my @inf2 = split (/\t/,$read2);
+
+  while($run1 && $run2){
+
+    while($run1 && "$inf1[1] $inf1[2]" lt "$inf2[1] $inf2[2]"){
+      $count1 ++;
+      print OUT "$read1\n";
+      chomp($read1 = <IN1>);
+      $run1 = 0 && close IN1 if $read1 eq <EOF>;
+      @inf1 = split (/\t/,$read1);
+    }
+
+    while("$inf1[1] $inf1[2]" eq "$inf2[1] $inf2[2]"){
+      my $length = ($inf1[3] * $inf1[4] + $inf2[3] * $inf2[4]) / ($inf1[3] + $inf2[3]);
+      my $output = sprintf("%s\t%s\t%s\t%5d\t%7.2f\n",
+      $inf1[0], $inf1[1], $inf1[2], $inf1[3] + $inf2[3], $length);
+
+      $count1 ++; $count2 ++;
+      print OUT $output;
+
+      chomp($read1 = <IN1>);
+      @inf1 = split (/\t/,$read1);
+      chomp($read2 = <IN2>);
+      @inf2 = split (/\t/,$read2);
+    }
+
+    while($run2 && "$inf1[1] $inf1[2]" gt "$inf2[1] $inf2[2]"){
+      $count2 ++;
+      print OUT "$read2\n";
+      chomp($read2 = <IN2>);
+      $run2 = 0 && close IN2 if $read2 eq <EOF>;
+      @inf2 = split (/\t/,$read2);
+    }
+    if($count1 % 1000000 == 0 || $count2 % 1000000 == 0){
+      &verbose(sprintf("[log] Processing | file1: %9d | file2: %9d\n", $count1, $count2));
+    }
+  }
+  &verbose("[log] file1 closed.\n") unless $run1;
+  &verbose("[log] file2 closed.\n") unless $run2;
+  while($run1){
+    $count1 ++;
+    print OUT "$read1\n";
+    chomp($read1 = <IN1>);
+    $run1 = 0 && close IN2 if $read1 eq <EOF>;
+    @inf1 = split (/\t/,$read1);
+  }
+  while($run2){
+    $count2 ++;
+    print OUT "$read2\n";
+    chomp($read2 = <IN2>);
+    $run2 = 0 && close IN2 if $read2 eq <EOF>;
+    @inf2 = split (/\t/,$read2);
+  }
+
+  close OUT;
+  &verbose("[log] Mode [O2B] done ... \n");
 }
