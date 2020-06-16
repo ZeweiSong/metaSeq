@@ -1,0 +1,154 @@
+#!/usr/bin/env perl
+# (c) 2016 - 2019 Chao IN-HORSE SHARE ONLY
+# ===================================================================
+# Description:       Diveristy Estimation with randomly picked reads
+# Author:            Chao | fangchao@genomics.cn
+# Version:           v0.1
+# Last modified:     03 Jan 2019 (since 03 Jan 2019)
+# ===================================================================
+# see detail below
+use strict;
+use Getopt::Long;
+use List::Util 'shuffle';
+
+sub usage {
+  my $msg = shift;
+  print <<USAGE;
+$msg
+usage:
+  $0 -d sampleDir -o output
+    -d  input sample dir
+    -m  merge sample dir
+    -o  output filename
+    -v  verbose
+    -h  show help info
+USAGE
+}
+&usage && exit unless @ARGV;
+
+our ($dir,$mDir,$times,$samTag,$out,$seed,$covf,$verbose,$help) = (time(),);
+GetOptions(
+  "d:s" => \$dir,
+  "m:s" => \$mDir,
+  "t:s" => \$times,
+  "s:s" => \$samTag,
+  "e:s" => \$seed,
+  "o:s" => \$out,
+  "v" => \$verbose,
+  "h|help|?" => \$help,
+);
+&usage && exit if $help;
+$seed||=0;
+my @dirs = split /,/, $dir;
+my @tags = split /,/, $samTag;
+open U95, ($mDir)?"$mDir/CLIP/id95def4.clust.uc":"$dirs[0]/CLIP/id95def4.clust.uc" or die $!;
+open U99, ($mDir)?"$mDir/CLIP/id995def2.clust.uc":"$dirs[0]/CLIP/id995def2.clust.uc" or die $!;
+open OUT, ($out)?">$out":"> -" or die $!;
+
+our (%LOTU,%CLUST,%ASM,%BEAD,%RES,@steps);
+&verbose(" Reading id995def2.clust.uc ...");
+while(<U99>){
+  chomp;
+  last if /^C/;
+  my @s = split /\t/;
+  $s[8] =~ /^(\S+BI\d+)_/;
+  my $SBID = $1;
+  my $lotu = sprintf("LOTU_%d",$s[1]+1);
+  $LOTU{$SBID} = $lotu;
+}
+close U99;
+&verbose(" done!\n Reading id95def4.clust.uc ...");
+
+while(<U95>){
+  chomp;
+  next unless /^H/;
+  my @s = split /\t/;
+  $s[8] =~ /^(\S+BI\d+)_/;
+  my $SBID = $1;
+  $s[9] =~ /^(\S+BI\d+)_/;
+  $CLUST{B}{$1} = $s[1];
+  $CLUST{B}{$SBID} = $s[1];
+}
+close U95;
+&verbose(" done!\n");
+
+while(@dirs){
+  my $dir = shift @dirs;
+  my $samTag= shift @tags;
+
+  open IDX, "< $dir/clean/fastp.sort.1.fq.idx" or die $!;
+  open IDL, "< $dir/Assemble_BI/ID.lst" or die $!;
+  &verbose(" Reading $samTag: ID.lst ...");
+  while(<IDL>){
+    chomp;
+    my @s = split;
+    my $SBID = sprintf("%sBI%08d",$samTag,$s[0]);
+    $ASM{"$samTag$s[1]"} = $SBID;
+  }
+  close IDL;
+  &verbose(" done!\n Reading $samTag: fastp.sort.1.fq.idx ...");
+
+  while(<IDX>){
+    chomp;
+    my @s = split;
+    next if $s[0] =~ /0000/;
+    $BEAD{"$samTag$s[0]"} =1;
+  }
+  &verbose(" done!\n");
+}
+my $MAXBEAD = scalar keys %BEAD;
+&verbose(" Start randomly pick:\n");
+srand($seed);
+&verbose(" Set seed: srand($seed).");
+foreach my $t (1..$times){
+  my $log = " Randomly pick processing: $t / $times.";
+  &verbose("\n$log shuffling keys\r");
+  my %C = ();
+  my @k = &shuffle(sort keys %BEAD);
+  $log .= "keys shuffled.";
+  verbose("$log\r");
+  for(my $i=0;$i<@k;$i++){
+    #
+    if(exists $ASM{$k[$i]}){
+      if(exists $CLUST{B}{$ASM{$k[$i]}}){
+        $C{C}{$CLUST{B}{$ASM{$k[$i]}}} ++;
+        if($C{C}{$CLUST{B}{$ASM{$k[$i]}}}==1){
+          $C{C1}{$CLUST{B}{$ASM{$k[$i]}}} = $ASM{$k[$i]};
+        }elsif($C{C}{$CLUST{B}{$ASM{$k[$i]}}}==2){
+          $C{L}{$LOTU{$C{C1}{$CLUST{B}{$ASM{$k[$i]}}}}} ++ if exists $LOTU{$C{C1}{$CLUST{B}{$ASM{$k[$i]}}}};
+          $C{L}{$LOTU{$ASM{$k[$i]}}} ++ if exists $LOTU{$ASM{$k[$i]}};
+        }else{
+          $C{L}{$LOTU{$ASM{$k[$i]}}} ++ if exists $LOTU{$ASM{$k[$i]}};
+        }
+      }
+    }
+    if( ($i + 1) % 1000000 == 0){
+      $RES{$t}{$i+1} = keys %{$C{L}};
+      push @steps, $i+1 if $t == 1;
+      &verbose("$log (".($i+1)."\t".$RES{$t}{$i+1}.")\r");
+    }
+  }
+  $RES{$t}{@k} = keys %{$C{L}};
+  push @steps, $#k + 1 if $t == 1;
+  &verbose("$log (".($#k+1)."\t".$RES{$t}{$#k+1}.")\r");
+}
+
+
+&verbose("\nAll done! Writing ... ");
+#print OUT join("\t","TIMES",@steps)."\n";
+foreach my $t (sort {$a<=>$b} keys %RES){
+  foreach my $m (sort {$a<=>$b} keys %{$RES{$t}}){
+    print OUT "$t\t$m\t$RES{$t}{$m}\n";
+  }
+}
+&verbose("done!\nALL DONE!\n");
+
+
+exit;
+################################################################################
+# sub
+
+sub verbose{
+  my $msg = shift;
+  print STDERR $msg if $verbose;
+}
