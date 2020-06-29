@@ -40,7 +40,7 @@ if($anno =~ /silva.*.txt$/){
       $HASH{$a[0]}{T} = $ranks[$lv];
     }
   }
-}elsif($anno =~ /silva.*tax$/){
+}elsif($anno =~ /.*tax$/){
   while(<ANN>){
     chomp; my @a= split(/\t/,$_);
     $HASH{$a[0]}{A} = "$a[1]\t$a[2]\t$a[3]\t$a[5]";
@@ -50,7 +50,6 @@ if($anno =~ /silva.*.txt$/){
       my @ranks = split /;/, $a[5];
       $HASH{$a[0]}{T} = $ranks[$lv];
     }
-
   }
 }else{
   while(<ANN>){

@@ -58,6 +58,7 @@ my (%CLUST);
 &run_F2b   if $mode eq "f2b";
 &run_B2b   if $mode eq "b2b";
 &run_cbr   if $mode eq "cbr"; #check beads region
+&run_otupair if $mode eq "otupair";
 # Main end
 
 &verbose("[log] All done!\n");
@@ -825,7 +826,7 @@ sub read1clip {
 
 sub summaryBead{
   my ($BID,$B) = @_;
-  my (%QP,%BINFO,$fi,%RE,%MAP,%SCORE,%SCOREBAK);
+  my (%QP,%BINFO,$fi,%RE,%MAP,%SCORE,%SCOREBAK,%SUPPORTCNO2TAX);
   return () if $BID eq "";
   my @cNos = sort {$a<=>$b} keys %$B;
   foreach my $cNo (@cNos){
@@ -872,11 +873,18 @@ sub summaryBead{
             $TMPSCOREBAK{S}{$ge}{$sp}{$unit}{$cNo} = $tax;
           }
         }
+        # record supports of clips to this tax
+        if($$B{$cNo}{$tax}{$unit}{A}[11] && $$B{$cNo}{$tax}{$unit}{A}[2] > 99){
+          $SUPPORTCNO2TAX{$cNo}{$sp}{S} += $$B{$cNo}{$tax}{$unit}{A}[11];
+          $SUPPORTCNO2TAX{$cNo}{$sp}{L} += $$B{$cNo}{$tax}{$unit}{A}[3];
+          $SUPPORTCNO2TAX{$cNo}{$sp}{C} = 1;
+          $SUPPORTCNO2TAX{$cNo}{$sp}{G} = $ge;
+        }
         # For unique tax records:
         $SCORE{T}{$tax}{score} += $$B{$cNo}{$tax}{$unit}{A}[11];
       }
     }
-    #sum total score  for each tax from all ref database:
+    #sum total score for each tax from all ref database:
     foreach my $ge (sort keys %{$TMPSCORE{G}}){
       foreach my $unit ("SSU","ITS","LSU"){
         #sum bitscore
@@ -988,7 +996,7 @@ sub summaryBead{
   $score1st = $$SCO{S}{$ge_1st}{$sp_1st}{score};
   $score2nd = (@sp_2nds)?$$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{score}:0;
   $id1st = sprintf("%.2f",100-100*($$SCO{S}{$ge_1st}{$sp_1st}{mis} + 2 * $$SCO{S}{$ge_1st}{$sp_1st}{gap})/$$SCO{S}{$ge_1st}{$sp_1st}{len});
-  $id2nd = (@sp_2nds)?sprintf("%.2f",100-100*(($$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{mis} + 2 * $$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{gap})/$$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{len})):0;
+  $id2nd = ($$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{len})?sprintf("%.2f",100-100*(($$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{mis} + 2 * $$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{gap})/$$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{len})):0;
   if($score1st == $score2nd && $id1st == $id2nd){
     $maxDiffLv2nds = "sameSp."; $uniqAnno = "multi";
     for(my $i=0; $i<@sp_2nds; $i++){
@@ -1010,10 +1018,25 @@ sub summaryBead{
       }
     }
   }
-
+  #estimate the possibility of hybridize bead:
+  my %HYB;
+  foreach my $cNo (@cNos){
+    my @support_sps = keys %{$SUPPORTCNO2TAX{$cNo}};
+    if(not defined $SUPPORTCNO2TAX{$cNo}{$sp_1st}{C}){
+      foreach my $sp (@support_sps){
+        if($SUPPORTCNO2TAX{$cNo}{$sp}{G} ne $ge_1st && $SUPPORTCNO2TAX{$cNo}{$sp}{G} !~ /metagenome|unidentified|uncultured|unknown/){
+          $HYB{hybCNo} ++; $HYB{hybLen} += $SUPPORTCNO2TAX{$cNo}{$sp}{L};
+          last;
+        }
+      }
+    }
+    $HYB{CNoCount} ++
+  }
+  $HYB{hybCNo} ||= 0; $HYB{hybLen}||=0;
+  $HYB{hybPct} = sprintf("%.2f",100* $HYB{hybCNo} / $HYB{CNoCount});
   #sum multi clips into a bead scale:
   my @binfs = ($BID,$BINFO{bLen},$BINFO{piece},0);
-  my @res=("",0,0,0,0,1,0,1,0,0,0,$BINFO{bLen},0,"","","","");
+  my @res=("",0,0,0,0,1,0,1,0,0,0,$BINFO{bLen},0,"","","","","");
   my ($pUnit,$pTax) = ("SSU","");
   foreach my $unit("SSU","ITS","LSU"){
     my ($sLen,%REG,@ctypes,@desc) =(0,,,);
@@ -1032,6 +1055,7 @@ sub summaryBead{
       $res[4]  += $$B{$cNo}{$tax}{$unit}{A}[5];                                 #desc: gap
       $res[13] .= $$B{$cNo}{$tax}{$unit}{std};                                  #desc: qeury strand
       $res[10] += $$B{$cNo}{$tax}{$unit}{A}[11];                                #desc: bitScore
+      $res[17] ||= $$B{$cNo}{$tax}{$unit}{A}[1];
       push @ctypes, "$ctype:$$B{$cNo}{$tax}{$unit}{A}[6]-$$B{$cNo}{$tax}{$unit}{A}[7]";     #desc: query Map desc
       #push @desc, (($pTax ne $tax)?"$$B{$cNo}{$tax}{taxN}:":"")."$$B{$cNo}{$tax}{$unit}{sf}-$$B{$cNo}{$tax}{$unit}{st}";     #desc: subject Map desc
       push @desc, (($pTax ne $tax)?"$tax:":"")."$$B{$cNo}{$tax}{$unit}{sf}-$$B{$cNo}{$tax}{$unit}{st}";     #desc: subject Map desc
@@ -1047,7 +1071,8 @@ sub summaryBead{
   }
   $res[1] = sprintf("%.2f",100*(1-$res[1]/$res[2]));
 
-  print BEAD (join("\t",join("|",@binfs),@res)."\t".join("\t", $uniqAnno, $num2nds, $maxDiffLv2nds, $score1st, $score2nd, $id1st, $id2nd, join(",",((@sp_2nds)?@sp_2nds:""))))."\n";
+  print BEAD (join("\t",join("|",@binfs),@res)."\t".join("\t", $uniqAnno, $num2nds, $maxDiffLv2nds, $score1st, $score2nd, $id1st, $id2nd, join(",",((@sp_2nds)?@sp_2nds:""))));
+  print BEAD "\t$HYB{hybCNo}\t$HYB{hybLen}\t$HYB{hybPct}\n";
 
 }
 
@@ -1067,4 +1092,171 @@ sub calCovRegion{
     }
   }
   return($cov);
+}
+
+
+
+################################################################################
+# For fungi, summary SSU, LSU and UNITE annotation for each otu
+################################################################################
+sub usage4otupair {
+  my $msg = shift;
+  print <<USAGE;
+$msg
+usage [v0.1] :
+  $0 -m otupair -i <lotu fasta>,<taxon tree> -o output
+    -i  LOTU fa , taxon tree, id map
+    -o  output
+    -v  verbose
+    -h  show help info
+USAGE
+}
+
+
+sub run_otupair {
+  &verbose("[otupair] Mode start ... \n");
+  my @files = split (",",$inf);
+  &verbose("[otupair] needs two files. Pls check\n") & die $! if @files != 3;
+  open INF, "<$files[0]" or die $!;
+  open TAX, "<$files[1]" or die $!;
+  open MAP, "<$files[2]" or die $!;
+  open OUT, ">$out" or die $!;
+  ####
+  my (%RANK,%RRANK,%MAP);
+  my ($rs,$ss,)=(10,0);
+  ($RANK{all},$RANK{root},$RANK{major_clade}) = (0,1,99);
+  ($RRANK{0},$RRANK{1},$RRANK{99}) = ("all","root","major_clade");
+  foreach my $r ("domain","kingdom","phylum","class","order","family","genus","species","LOTU"){
+    $ss = -1;
+    foreach my $s ("super","","sub","infra"){
+      $RANK{"$s$r"} = $rs + $ss;
+      $RRANK{$rs+$ss} = "$s$r";
+      $ss ++;
+    }
+    $rs += 10;
+  }
+  ####
+  &verbose("  Reading taxid ... ");
+  while(<MAP>){
+    chomp;
+    my @s = split /\t/;
+    $MAP{$s[1]} = $s[0];
+  }
+  close MAP;
+  ####
+  my(%TREE,%LOTU,%LAST,%UC);
+  &verbose("done\n  Reading tax and run vserach ... ");
+  my $LB = $/; $/ = ">";
+  while(<INF>){
+    chomp; next unless $_;
+    my @s = split;
+    my $id = shift @s;
+    $id =~ s/LOTU_//;
+    $LOTU{$id} = join("\n",@s);
+  }
+  close INF; $/ = $LB;
+  &verbose("done\n  Reading taxon:\n");
+  chomp(my $ramtmp=("-e /dev/shm")?`mktemp -d /dev/shm/otupair.XXXXXXXXXX`:"mktemp -dp $out.XXX");
+  my $summary = 1;
+  while(($_ = <TAX>) || $summary ){
+    my(@s,@t,$rankScore,$findOTU,@lastRs,$d,$sameRank);
+    @lastRs = sort {$a<=>$b} keys %{$LAST{RT}};
+    my $sd = $#lastRs;
+    if($_){
+      if($. == 19846){
+        #print STDERR "checkpoint\n";
+      }
+      chomp;
+      @s = split /\t/;
+      @t = split /;/,$s[0];
+      $rankScore = $RANK{$s[2]};
+      #$findOTU = ($t[-1] =~ s/LOTU_//)?1:0;
+      $findOTU = ($t[-1] =~ s/species__//)?1:0;
+      $sameRank = "";
+      for($d=0;$d<@lastRs;$d ++){
+        if($sameRank eq "" && $LAST{RT}{$lastRs[$d]} ne $t[$d]){
+          $sameRank =  $lastRs[$d-1];
+          $sd = $d-1;
+        }
+      }
+      $LAST{R} = $lastRs[-2];
+      $LAST{T} = $t[-2];
+    }else{
+      $summary = 0;
+      $sd = -1;
+      #summary after end line
+    }
+    #summary previouse taxonomies
+    for(my $i=$#lastRs;$i>$sd;$i--){
+      my $r = $lastRs[$i];
+      my $tax = $LAST{RT}{$r};
+      next if $tax =~ /uncultured|unknown|unidentified/;
+      my @o = sort {$a<=>$b} keys %{$TREE{$r}{$tax}{1}};
+      next unless scalar @o > 1;
+      # prepare fasta belonging to this taxono
+      open LOTU,"> $ramtmp/lotu.fa" or die $!;
+      my $oCount = 0;
+      foreach my $o (@o){
+        print LOTU ">$o\n$LOTU{$MAP{$o}}\n";
+        $oCount ++;
+        last if $oCount > 99;
+      }
+      close LOTU;
+      # run vsearch alignemnt:
+      my $cmd = "vsearch --threads ".((@o <= 50)?1:4)." --allpairs_global $ramtmp/lotu.fa --acceptall --uc - 2> /dev/null ";
+      &verbose(" Processing $RRANK{$r} | $tax: $oCount LOTUs ... ");
+      open UC,"$cmd|" or die $!;
+      my ($minIdent,@idents,@minOtus) = (101,,);
+      if($#lastRs-$sd>2){
+        #print STDERR "checkpoint\n";
+      }
+      while(<UC>){
+        chomp;
+        my @u = split /\t/;
+        next unless $u[0] eq "H";
+        #next if $u[3] < 80;
+        my @ut = sort {$a<=>$b} ($u[8],$u[9]);
+        push @idents, $u[3];
+        @minOtus = ($u[3]<$minIdent)?($ut[0],$ut[1]):@minOtus;
+        $minIdent = ($u[3]<$minIdent)?$u[3]:$minIdent;
+      }
+      close UC;
+      my @sorts = sort {$a<=>$b} @idents;
+      my $snum = $#sorts + 1;
+      my $min = $sorts[0];
+      my $q01 = $sorts[sprintf("%d",$snum/100)];
+      my $q05 = $sorts[sprintf("%d",$snum/20)];
+      my $q25 = $sorts[sprintf("%d",$snum/4)];
+      my $q50 = $sorts[sprintf("%d",$snum/2)];
+      my $q75 = $sorts[sprintf("%d",$snum*3/4)];
+      my $q95 = $sorts[sprintf("%d",$snum*19/20)];
+      my $q99 = $sorts[sprintf("%d",$snum*99/100)];
+      print OUT "$RRANK{$r}\t$tax\t$oCount\t$min\t$q01,$q05,$q25,$q50,$q75,$q95,$q99\n";
+      &verbose("done\n");
+      #pick OTU to next level:
+
+      my $nextR = $lastRs[$i-1];
+      my $nextT = $LAST{RT}{$nextR};
+      if(@minOtus){
+        $TREE{$nextR}{$nextT}{1}{$minOtus[0]} = $nextT;
+        $TREE{$nextR}{$nextT}{1}{$minOtus[1]} = $nextT;
+      }elsif(@o>0){
+        $TREE{$nextR}{$nextT}{1}{$o[0]} = $nextT;
+      }
+      #remove recorded tax:
+      delete $LAST{RT}{$r};
+    }
+    #summary current  taxonomies
+    if($sd != $#t ){
+      print SATDERR "$.. might missing a rank\n";
+    }
+    $TREE{$LAST{R}}{$LAST{T}}{$findOTU}{$s[-2]} = $rankScore;
+    $LAST{R} = $rankScore;
+    $LAST{T} = $t[-1];
+    $LAST{RT}{$rankScore} = $t[-1];
+  }
+  close TAX;
+  close OUT;
+
+  &verbose("done\n");
 }

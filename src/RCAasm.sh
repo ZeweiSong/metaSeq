@@ -12,7 +12,7 @@
 #                    ---------------------------
 # Author:            fangchao@genomics.cn
 # Version:           V0.0
-# Last modified:     05 Jun 2019 (since 05 Jun 2019)
+# Last modified:     03 Jun 2020 (since 05 Jun 2019)
 # ===================================================================
 #
 mode=$1 #[F|B]
@@ -83,7 +83,7 @@ fi
 echo
 if [[ -f $scaf && -z $force ]];
 then
-  echo "[BC] Assemble results exists. Skiped (add \$6 to force re-run)"
+  echo "[BC] Assemble results exists. Skiped (add \$9 to force re-run)"
 else
   if [ $mode == "spades" ]; then
     spaLog="$samDir/$ASB/$subDir/spades/spades.log"
@@ -105,18 +105,34 @@ else
 	$cmd
   elif [ $mode == "megahit" ]; then
     echo "[BC] megahit selected."
+    if [[ -d $samDir/$ASB/$subDir/$rdir ]];
+    then
+      cmd="rm -rf $samDir/$ASB/$subDir/$rdir.old && rename $rdir $rdir.old $samDir/$ASB/$subDir/$rdir"
+      echo "[BC] $cmd";
+      rm -rf "$samDir/$ASB/$subDir/$rdir.old"
+      rename $rdir $rdir.old $samDir/$ASB/$subDir/$rdir
+    fi
 #    megahit --k-min 21 --k-step 22 --k-max 121  -m $mem -t $cpu \
-    megahit --k-step 6 --prune-level 0 --min-count 1 -m $mem -t $cpu \
+    cmd="megahit --k-min 21 --k-step 20 --prune-level 0 --min-count 1 -m $mem -t $cpu \
     -1 $samDir/$ASB/$subDir/sort.1.fq -2 $samDir/$ASB/$subDir/sort.2.fq \
-    -o $samDir/$ASB/$subDir/$rdir &> $samDir/$ASB/$subDir/megahit.log
+    -o $samDir/$ASB/$subDir/$rdir &> $samDir/$ASB/$subDir/megahit.log"
+    echo $cmd;
+    $cmd
   fi
 fi
 
-#read primers from config
-while read line;do eval "$line"; done < $config
+# RUN RCA CLIP
 echo
-echo "Run RCACLIP"
-cmd="metabbq RCACLIPS -i $scaf -o $clip -fwd $FWD -rev $REV -a $Ad -v 2> ${clip/fa/log}"
-echo "exec: $cmd"
-$cmd
-echo "DONE"
+if [[ -f $clip && -z $force ]];
+then
+  echo "[BC] RCACLIP results exists. Skiped (add \$9 to force re-run)"
+else
+  #read primers from config
+  while read line;do eval "$line"; done < $config
+  echo
+  echo "Run RCACLIP"
+  cmd="metabbq RCACLIPS -i $scaf -o $clip -fwd $FWD -rev $REV -a $Ad -v 2> ${clip/fa/log}"
+  echo "exec: $cmd"
+  $cmd
+  echo "DONE"
+fi

@@ -17,6 +17,7 @@ usage:
   $0 -i input -o output -r ref.bed
     -i  blast 6 format alignment file
     -r  reference units position informatino in bed format
+    -f  fasta file. If specified, will detect SNV.
     -o  output beads stat annotation
     -c  output clips best annotation
     -v  verbose
@@ -69,15 +70,24 @@ close REF;
 
 # example of a m6 file:
 # BI00000002_k141_1_flag=1_multi=21.0000_len=1141_C1_()_903       Bacillus_subtilis       97.811  594     11      1       2       595     4516    3925    0.0     1024    903
-our (%BB,$ctB,$ctC,$pB,$pBNo,$pClip);
+our (%BB,$ctB,$segment,$ctC,$pB,$pBNo,$pClip);
+my ($iB,$kmer,$BNo,$flag,$mult,$oLen,$cType,$ads,$cLen);
 while(<INF>){
   chomp;
   my @s = split;
   my ($qi,$si,$ide,$len,$mm,$gap,$qf,$qt,$sf,$st,$ev,$bs,$qlen) = @s;
-  my ($iB,$kmer,$BNo,$flag,$mult,$oLen,$cType,$ads,$cLen) = split(/_/,$s[0]);
+  my @qInfos = split(/_/,$s[0]);
+  if(scalar @qInfos eq 9){
+    ($iB,$kmer,$BNo,$flag,$mult,$oLen,$cType,$ads,$cLen) = @qInfos;
+  }else{
+    ($iB,$kmer,$BNo,$flag,$mult,$oLen,$cType,$ads,$cLen) = ($s[0],0,0,0,0,0,0,0,$s[12]);
+  }
   if ($iB ne $pB){
     &summaryRegion();
     %BB = ();
+    $segment = 0;
+  }else{
+    $segment ++ ;
   }
   my $std = ($sf<$st)?"+":"-";
   my $cNo= "$BNo$cType";
@@ -143,7 +153,7 @@ sub summaryRegion{
     my ($s1,$s2) = ($s[0],$s[1]);
     $RE{N}{$cNo}{'ref'} = $s1;
     $RE{N}{$cNo}{'bs'} = $BB{N}{$cNo}{A}{$s1}{S}{'bs'};
-    $RE{N}{$cNo}{'ref2'} = $2;
+    $RE{N}{$cNo}{'ref2'} = $s2;
     $RE{N}{$cNo}{'bs2'} = $BB{N}{$cNo}{A}{$s2}{S}{'bs'};
     # sort regions on clips
     for(my $i=0;$i<@s;$i++){
@@ -176,6 +186,21 @@ sub summaryRegion{
   # summary
   my @s = (sort {$RE{Q}{$b}{'bs'} <=> $RE{Q}{$a}{'bs'}} keys %{$RE{Q}});
   my ($s1,$s2) = ($s[0],$s[1]);
+  # check whether top score $s1 is unique:
+  my ($num2nds,$uniqAnno,$score1st,$score2nd,$id1st,$id2nd)=(0,"",0,0,0,0);
+  $score1st = $RE{Q}{$s1}{'bs'};
+  my @tmp = @s; shift @tmp;
+  my @sp_2nds = grep { $RE{Q}{$_}{'bs'} == $score1st } @tmp;
+  $score2nd = $RE{Q}{$s2}{'bs'};
+  $num2nds = (scalar @sp_2nds);
+  $id1st = sprintf("%.2f",100-100*($RE{Q}{$s1}{'mm'} + 2 * $RE{Q}{$s1}{'gap'})/$RE{Q}{$s1}{'covLen'});
+  $id2nd = ($s2)?sprintf("%.2f",100-100*($RE{Q}{$s2}{'mm'} + 2 * $RE{Q}{$s2}{'gap'})/$RE{Q}{$s2}{'covLen'}):0;
+  if($score1st == $score2nd && $id1st == $id2nd){
+    $uniqAnno = "multi";
+  }else{
+    $uniqAnno = "unique";
+  }
+  @sp_2nds = ($s2) unless @sp_2nds;
   # sort regions on the ref
   my @f = sort {$a<=>$b} keys %{$QP{$s1}};
   my($f0,$t0);
@@ -203,7 +228,8 @@ sub summaryRegion{
   print OUT (join "\t", $BB{I}, $BB{L}, $BB{A}, $BB{C}, $RE{C}{$s1}, $RE{Q}{$s1}{'pieces'}, $s1,
   $ide, $RE{Q}{$s1}{'covLen'}, $RE{Q}{$s1}{'mm'}, $RE{Q}{$s1}{'gap'}, $RE{Q}{$s1}{'bs'},
   $bs2, $RE{S}{$s1}{'pieces'}, $RE{S}{$s1}{'covLen'}, $unit, (join "",@{$RE{Q}{$s1}{'strand'}}),
-  (join ",", @{$RE{Q}{$s1}{'position'}}), (join ",", @{$RE{S}{$s1}{'position'}}))."\n";
+  (join ",", @{$RE{Q}{$s1}{'position'}}), (join ",", @{$RE{S}{$s1}{'position'}}),
+  join("\t",$uniqAnno,$num2nds,$score1st,$score2nd,$id1st,$id2nd,join(",",@sp_2nds)))."\n";
 }
 
 sub scanBED{
