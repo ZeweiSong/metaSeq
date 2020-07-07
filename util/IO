@@ -68,8 +68,8 @@ usage:
 USAGE
 }
 sub run_getUCH {
-  &usage4uch("Stat the overlap depth between each 2 beads.") && exit unless @ARGV;
-  my ($cut,$ann,$inf,$ucf,$out,$verbose,$help);
+  &usage4uch("Output sequence ID that can be clustered.") && exit unless @ARGV;
+  my ($cut,$ann,$inf,$ucf,$out);
   GetOptions(
     "c=f" => \$cut,
     "a=s" => \$ann,
@@ -108,7 +108,7 @@ sub run_getUCH {
   close ANN;
 
   &verbose("[log] Mode [UCH] start ... \n");
-  my(%CLUST);
+  my(%CLUST,%TMP,%LOG);
   #Here is the shorts for each column. Find more detail in VSEARCH manual.
   ##   0         1       2            3            4  5  6      7     8        9##
   ##Type  #Cluster  length  similarity%  orientation  *  *  CIGAR query centroid##
@@ -116,11 +116,34 @@ sub run_getUCH {
     chomp;
     next unless /^H/;
     my @s = split "\t";
-    my @b8 = split "_",$s[8];
-    my @b9 = split "_",$s[9];
+    if($s[0] eq "S"){
+      $TMP{$s[8]}{L} = $s[2];
+    }elsif($s[0] eq "H"){
+      my @b8 = split "_",$s[8];
+      if($s[2] < $cut){
+        $LOG{LEN} ++;
+      }elsif(defined $HYB{$b8[0]}){
+        $LOG{HYB} ++;
+      }elsif(defined $ABG{$b8[0]}){
+        $LOG{ABG} ++;
+      }else{
+        $LOG{USE} ++;
+        $CLUST{$s[8]} ++;
+      }
+      next unless exists $TMP{$s[9]};
+      if($TMP{$s[9]}{L} < $cut){
+        $LOG{LEN} ++;
+      }elsif(defined $HYB{$b8[0]}){
+        $LOG{HYB} ++;
+      }elsif(defined $ABG{$b8[0]}){
+        $LOG{ABG} ++;
+      }else{
+        $LOG{USE} ++;
+        $CLUST{$s[9]} ++;
+      }
+      delete $TMP{$s[9]};
+    }
 
-    $CLUST{$s[8]} ++ if $s[2] > $cut && not defined $HYB{$b8[0]} && not defined $ABG{$b8[0]};
-    $CLUST{$s[9]} ++ if $s[2] > $cut && not defined $HYB{$b9[0]} && not defined $ABG{$b8[0]};
   }
   close UCF;
   $/=">";
@@ -134,7 +157,12 @@ sub run_getUCH {
   }
   close INF;
   close OUT;
+
   &verbose("[log] Finish read&write.\n");
+  &verbose("[log] Totally write $LOG{USE} sequences.\n");
+  &verbose("[log] Discard $LOG{LEN} due to length < $cut\n") if $LOG{LEN} > 0;
+  &verbose("[log] Discard $LOG{HYB} due to hybridization detected\n") if $LOG{HYB} > 0;
+  &verbose("[log] Discard $LOG{ABG} due to ambiguous classific annotation detected\n") if $LOG{ABG} > 0;
 }
 
 ##############################################################################
@@ -376,7 +404,7 @@ sub run_kk2prf{
       if($BID ne $pID && $tmpCount > 0 ){
         my ($c1st,$c2nd,$dist,%BTMP) = &searchPath(\%TMP);
         my $pct = sprintf("%.2f",$BTMP{$c1st} / $tmpCount);
-        print OTB "$pID\t$tmpCount\t$c1st\t$TMP{$c1st}\t$pct\t$c2nd\t$TMP{$c2nd}\t$dist\n";
+        print OTB "$tmpCount\t$pID\t$c1st\t$TMP{$c1st}\t$pct\t$c2nd\t$TMP{$c2nd}\t$dist\n";
         $KKX{$c1st} ++;
         #
         %TMP = ();
@@ -473,10 +501,11 @@ USAGE
 our(%NAMES);
 sub run_sumprf{
   &usage4kk2prf("summarise kraken2 profile to specific rank") && exit unless @ARGV;
-  my ($rank,$inf,$out);
+  my ($rank,$name,$inf,$out);
   GetOptions(
     "r=s" => \$rank,
     "i=s" => \$inf,
+    "n=s" => \$name,
     "o=s" => \$out,
     "v" => \$verbose,
     "h|help|?" => \$help,
@@ -487,7 +516,17 @@ sub run_sumprf{
   my $pfx = ($out=~/^(.*).prof$/)?$1:$out;
   open KK2, "< $inf" or die $!;
   open OUT, ($out)?">$out":">-" or die $!;
-
+  if($name){
+    open NAME,"<$name" or die $!;
+    while(<NAME>){
+      chomp;
+      my @s = split /[\s\t]*\|[\s\t]*/;
+      $s[1] =~ /(\S+)\__(.*)/;
+      $NAMES{$s[1]}{rank} = $1;
+      $NAMES{$s[1]}{tax} = $2;
+      $NAMES{$s[1]}{id} = $s[0];
+    }
+  }
   my (%KK,%GROUP,%TMP,%LAST,@prePath,$pHID,$tmpCount);
   &verbose("  Reading kraken2 profile ... ");
   while(<KK2>){
@@ -543,14 +582,28 @@ sub sumRank{
 }
 sub addRank{
   my ($c,$d,$r,$T,@curPath) = @_;
-  my $e = ($r)?$r:$#curPath;
+  my $e;
+  if($r){
+    $e = $r;
+  }elsif($curPath[-1] =~ /^(\S+)\_\_(.+)$/){
+    $e = $#curPath;
+  }else{
+    $e= $#curPath -1;
+  }
+  #my $e = ($r)?$r:$#curPath;
   for(my $i=0;$i<$e;$i++){
     $$T{relation}{$curPath[$i]}{ChildMember}{$curPath[$e]} ++;
     $$T{relation}{$curPath[$i]}{ChildCount} += $$c[0];
   }
-  $$T{count}{$curPath[$e]} += $$c[0];
-  $$T{rank}{$curPath[$e]} ||= $$c[2];
-  $$T{uniqID}{$curPath[$e]} ||= $$c[1];
+  if($e < $#curPath && exists $NAMES{$curPath[$e]}){
+    $$T{count}{$curPath[$e]} += $$c[0];
+    $$T{rank}{$curPath[$e]} ||= $NAMES{$curPath[$e]}{rank};
+    $$T{uniqID}{$curPath[$e]} ||= $NAMES{$curPath[$e]}{id};
+  }else{
+    $$T{count}{$curPath[$e]} += $$c[0];
+    $$T{rank}{$curPath[$e]} ||= $$c[2];
+    $$T{uniqID}{$curPath[$e]} ||= $$c[1];
+  }
 }
 
 ##############################################################################
@@ -563,6 +616,7 @@ $msg
 usage:
   $0 sumgff -i <barrnap gff3> -o output.tsv
     -i  barrnap gff3 file
+    -d  domain. [bac|euk]
     -o  output filename
     -v  verbose
     -h  show help info
@@ -571,19 +625,22 @@ USAGE
 our(%NAMES);
 sub run_sumgff{
   &usage4sumgff("summarise gff file from barrnap results") && exit unless @ARGV;
-  my ($rank,$inf,$out);
+  my ($rank,$dom,$inf,$out);
   GetOptions(
     "i=s" => \$inf,
+    "d=s" => \$dom,
     "o=s" => \$out,
     "v" => \$verbose,
     "h|help|?" => \$help,
   );
+  $dom ||= "bac";
+  my @units = ($dom =~ /[Bb]ac/)?("16S","23S","5S"):("18S","28S","5.8S");
   &usage4kk2prf("summarise gff file from barrnap results") && exit if $help;
   #&usage("[fatal] Essential input is missing");
   &verbose("[log] Mode [sumgff] start ... \n");
   open GFF, "< $inf" or die $!;
   open OUT, ($out)?">$out":">-" or die $!;
-  my %SCORE = ('16S'=>1,'18S'=>1,'5.8S'=>2,'23S'=>4,'28S'=>4);
+  my %SCORE = ('16S'=>1,'18S'=>1,'5.8S'=>2,'5S'=>2,'23S'=>4,'28S'=>4);
   my (%BD,$pBI,$pCI);
   &verbose("  Reading gff ... ");
   while(<GFF>){
@@ -595,7 +652,7 @@ sub run_sumgff{
     if($pBI && $pBI ne $b[0]){
       print OUT "$pBI";
       my $score = 0;
-      foreach my $u ("16S","18S","5.8S","23S","28S"){
+      foreach my $u (@units){
         my ($l,$p) = (0,0);
         if($BD{$u}){
           ($l,$p) = ($BD{$u}{L},$BD{$u}{P});
@@ -944,6 +1001,7 @@ usage:
   $0 makeClade -t <tree> -d <identities> -o <output prefix>
     -i  fa file
     -d  identities. [0.9,0.95,0.97,0.99,0.995]
+    -t  threads. default [1]
     -o  output prefix
     -v  verbose
     -h  show help info
@@ -952,10 +1010,11 @@ USAGE
 our(%UC);
 sub run_makeClade{
   &usage4makeClade("cluster SSU/LSU into clades with specific identity of similairty") && exit unless @ARGV;
-  my ($inf,$ids,$ann,$out);
+  my ($inf,$ids,$cpu,$ann,$out);
   GetOptions(
     "i=s" => \$inf,
     "d=s" => \$ids,
+    "t:f" => \$cpu,
     "o=s" => \$out,
     "v" => \$verbose,
     "h|help|?" => \$help,
@@ -964,7 +1023,8 @@ sub run_makeClade{
   #&usage("[fatal] Essential input is missing");
   &verbose("[makeClade] Mode start\n");
   my (%SEQ);
-  $ids ||= "0.4,0.5,0.66,0.72,0.77,0.83,0.89,0.92,0.97,0.99,0.995";
+  $ids ||= "0.4,0.5,0.66,0.72,0.77,0.83,0.89,0.92,0.97,0.99,0.995,0.999,1";
+  $cpu ||= 1;
   my @ids = split /,/,$ids;
   open INF, "< $inf" or die $!;
   &verbose("  Reading $inf ... ");
@@ -984,30 +1044,29 @@ sub run_makeClade{
   my $pid = 0;
   while(@ids){
     my $id = shift @ids;
+    my $inputfile = "";
     open OUT, ($out)?">$out\_$id":">-" or die $!;
     if($pid>0){
       my $counts = scalar (keys %{$UC{$pid}});
       my $count = 0;
+      open TMP, ">$ramtmp/tmp.fa" or die $!;
       foreach my $c (sort {$a<=>$b} keys %{$UC{$pid}}){
-        $count ++;
         next if $UC{$pid}{$c}{N} < 2;
-        open TMP, ">$ramtmp/tmp.fa" or die $!;
+        $count ++;
         print TMP ">$c\n$SEQ{$c}\n";
         foreach my $m (sort keys %{$UC{$pid}{$c}{M}}){
+          $count ++;
           print TMP ">$m\n$SEQ{$m}\n";
         }
-        close TMP;
-        my $cmd = "vsearch --threads 1 --cluster_fast $ramtmp/tmp.fa --id $id --uc - 2> /dev/null ";
-        &verbose("  Clustering at $id [$count / $counts]\r");
-        &readUC($id,$cmd);
       }
-      &verbose("  Clustering at $id [$count / $counts] DONE!\n");
+      close TMP;
+      $inputfile = "$ramtmp/tmp.fa";
     }else{
-      my $cmd = "vsearch --threads 48 --cluster_fast $inf --id $id --uc - 2> /dev/null";
-      &verbose("  Clustering at $id [$cmd] ");
-      &readUC($id,$cmd);
-      &verbose("DONE!\n");
+      $inputfile = $inf;
     }
+    my $cmd = "vsearch --threads $cpu --cluster_fast $inputfile --id $id --uc - ";
+    &verbose("  Clustering at $id [$cmd] \n");
+    &readUC($id,$cmd);
     $pid = $id;
   }
   return();
@@ -1043,89 +1102,140 @@ print <<USAGE;
 $msg
 usage:
   $0 clade2tree -a <annotation file> -d <db path> -s <ssu clusters prefix> -o <output>
+    -i  beads sequence file (just read ID);
     -a  annotation file
     -d  kraken2 database location with custom preprared files:
           <db>/taxonomy/paths.txt
           <db>/seqid2taxid.map
           <db>/data/vsearch.allpair.txt
-    -s  ssu clusters prefix
-    -o  output prefix
+    -s  units clusters prefix
+    -u  units to combine [ssu,its,lsu]
+    -o  output db dir
     -v  verbose
     -h  show help info
 USAGE
 }
-our(%ANNO);
+our(%ANNO,%MAP,%DBTREE,%RANKI,%SEQ,$rankID,%OCC);
 sub run_clade2tree{
   &usage4clade2tree("generate a path tree from vsearch uc file") && exit unless @ARGV;
-  my ($ann,$db,$ssu,$ids,$lsu,$out);
+  my ($seq,$ann,$db,$units,$upfx,$ids,$lsu,$out);
   GetOptions(
+    "i=s" => \$seq,
     "a=s" => \$ann,
     "d=s" => \$db,
-    "s=s" => \$ssu,
-    #"d=s" => \$ids,
+    "s=s" => \$upfx,
+    "u=s" => \$units,
     "o=s" => \$out,
     "v" => \$verbose,
     "h|help|?" => \$help,
   );
   &usage4clade2tree("generate a path tree from vsearch uc file") && exit if $help;
   #&usage("[fatal] Essential input is missing");
-  &verbose("[clade2tree] start\n");
-  my(%RANKI,%MAP,%DBTREE,%TREE,%CLADE,%CLADEINIT);
-  $ids ||= "0.4,0.5,0.66,0.72,0.77,0.83,0.89,0.92,0.97,0.99,0.995";
-  open OUT, ($out)?">$out":">-" or die $!;
-  &verbose("  Reading seqid2taxid.map ... ");
-  open MAP,"< $db/seqid2taxid.map" or die $!;
-  while(<MAP>){
-    chomp;
-    my @s=split /\t/;
-    $MAP{S}{$s[0]} = $s[1];
-    $MAP{D}{$s[1]} = $s[0];
-  }
-  &verbose("done\n  Reading taxonomy/paths.txt ... ");
-  open TRE,"< $db/taxonomy/paths.txt" or die $!;
-  while(<TRE>){
-    chomp;
-    my @s=split /\t/;
-    my @t= split /;/,$s[0];
-    $DBTREE{$s[1]}{path} = $s[0];
-    $DBTREE{$s[1]}{name} = $t[-1];
-    $DBTREE{$s[1]}{rank} = $s[-1];
-    $DBTREE{index}{$t[-1]} = $s[1];
-    #$TREE{$s[1]}{names} = [@t];
-  }
-  &verbose("done\n  Reading data/*.otupair.out ... ");
-  open IDE,"<$db/data/SSU.allpair.txt" or die $!;
-  while(<IDE>){
-    chomp;
-    my @s = split /\t/;
-    my @q = split /,/,$s[4];
-    $RANKI{$s[1]}{Lv} = $s[0];
-    $RANKI{$s[1]}{quants} = [@q];
-  }
-  close IDE;
+  &verbose("[clade2tree] start\n  Initaiating ... ");
+  my(%TREE,%CLADE,%CLADEINIT);
+  $units ||= "ssu,its,lsu";
+  $ids ||= "0.4,0.5,0.66,0.72,0.77,0.83,0.89,0.92,0.97,0.99,0.995,0.999,1";
+  my %DEFAULT_IDENTITY = ("domain",0.66,"kingdom",0.7,"phylum",0.76,"class",0.77,"order",0.83,"family",0.89,"genus",0.97,"species",0.995);
+  if($out){
+    system("mkdir -p $out/{data,library}");
+    open OUT, ">$out/data/added.txt" or die $!;
+    open TID, ">$out/data/added.acc_taxid" or die $!;
+    open FNA, ">$out/library/added.fna" or die $!;
+  }else{
+    mkdir -p "./{data,library}";
+    open OUT, "> data/added.txt" or die $!;
+    open TID, "> data/added.acc_taxid" or die $!;
+    open FNA, "> library/added.fna" or die $!;
 
-  &verbose("done\n  Reading $ann ... ");
-  open ANN, "< $ann" or die $!;
-  while(<ANN>){
-    chomp;
-    my @s = split "\t";
-    my @b = split(/\|/, $s[0]);
-    #$s[0] =~ /^(.*BI\d+)_k\d+_(\d+)_.*(C[0-9\-]+)_/;
-    $ANNO{$b[0]}{A} = $_;
-    $ANNO{$b[0]}{ID} = $s[18];
-    $ANNO{$b[0]}{uniq} = $s[19];
-    $ANNO{$b[0]}{ident} = $s[2];
   }
-  close ANN;
-  &verbose("done\n  Reading cluster UC files ");
+  
+  &verbose("done\n  Reading [com] $seq ... ");
+  open SEQ,"< $seq" or die $!;
+  my $ori = $/; $/ = ">";
+  while(<SEQ>){
+    chomp; next unless $_;
+    my @s = split /\n/;
+    my $id = shift @s;
+    my $seq = join("\n",@s);
+    my $BID = ($id=~/^(.*BI\d+)_k\d+_(\d+)_.*(C[0-9\-]+)_/)?"$1":$id;
+    my $CID = "$1\_$2\_$3";
+    $SEQ{$BID}{$CID} = $seq;
+  }
+  $/ = $ori;
+  close SEQ;
+
+  my @units = split /,/,$units;
+  my $cladeInit = 1;
+  if($db){
+    &verbose("done\n  Reading [com] seqid2taxid.map ... ");
+    open MAP,"< $db/seqid2taxid.map" or die $!;
+    while(<MAP>){
+      chomp;
+      my @s=split /\t/;
+      $MAP{S}{$s[0]} = $s[1];
+      $MAP{D}{$s[1]} = $s[0];
+    }
+    &verbose("done\n  Reading [com] taxonomy/paths.txt ... ");
+    open TRE,"< $db/taxonomy/paths.txt" or die $!;
+    while(<TRE>){
+      chomp;
+      my @s=split /\t/;
+      my @t= split /;/,$s[0];
+      $DBTREE{$s[1]}{path} = $s[0];
+      $DBTREE{$s[1]}{name} = $t[-1];
+      $DBTREE{$s[1]}{rank} = $s[-1];
+      $DBTREE{index}{$t[-1]} = $s[1];
+      $DBTREE{MAXID} = ($s[1] > $DBTREE{MAXID})? $s[1]:$DBTREE{MAXID};
+      #$TREE{$s[1]}{names} = [@t];
+    }
+    close TRE;
+    $rankID = $DBTREE{MAXID};
+
+    foreach my $unit (@units){
+      &verbose("done\n  Reading [$unit] data/$unit.allpair.txt ... ");
+      open IDE,"<$db/data/$unit.allpair.txt" or die $!;
+      while(<IDE>){
+        chomp;
+        my @s = split /\t/;
+        my @q = split /,/,$s[4];
+        $RANKI{$unit}{$s[1]}{Lv} = $s[0];
+        $RANKI{$unit}{$s[1]}{quants} = [@q];
+      }
+      close IDE;
+    }
+  }
+  if($ann){
+    &verbose("done\n  Reading [com] $ann ... ");
+    open ANN, "< $ann" or die $!;
+    while(<ANN>){
+      chomp;
+      my @s = split "\t";
+      my @b = split(/\|/, $s[0]);
+      next unless $s[19] eq "unique";
+      my %TMP;
+      $TMP{ssu} = ($s[17]=~/SSU\((\d+)\)/)?$1:0;
+      $TMP{lsu} = ($s[17]=~/LSU\((\d+)\)/)?$1:0;
+      $TMP{its} = ($s[17]=~/ITS\((\d+)\)/)?$1:0;
+      my @ord = sort {$TMP{$b} <=> $TMP{$a}} keys %TMP;
+      $ANNO{$b[0]}{U} = $ord[0];
+      $ANNO{$b[0]}{A} = $_;
+      $ANNO{$b[0]}{ID} = $s[18];
+      $ANNO{$b[0]}{uniq} = $s[19];
+      $ANNO{$b[0]}{ident} = $s[2];
+    }
+    close ANN;
+  }
+  &verbose("done\n  Reading UC files: ");
   my @ids = split /,/,$ids;
-  my ($pCladeLv,$cladeNo0,$cladeInit)=("",0,$ids[0]);
+  $cladeInit = ($cladeInit<$ids[0])?$cladeInit:$ids[0];
+  my ($pCladeLv,$cladeNo0)=("",0);
+
   while(@ids){
     my $id = shift @ids;
     if($id == 0.5){
       #print STDERR "checkpint\n";
     }
-    open SUC, "<$ssu\_$id" or next;
+    open SUC, "<$upfx\_$id" or next;
     my $cladeLv = "CLADE$id";
     my $cladeLvNext = (@ids)?"CLADE$ids[0]":"CLADEFINAL";
     my $cladeNo = 0;
@@ -1163,7 +1273,9 @@ sub run_clade2tree{
       }elsif($s[0] eq "H"){
         my $BID8 = ($s[8]=~/^(.*BI\d+)_k\d+_(\d+)_.*(C[0-9\-]+)_/)?"$1":$s[8];
         my $BID9 = ($s[9]=~/^(.*BI\d+)_k\d+_(\d+)_.*(C[0-9\-]+)_/)?"$1":$s[9];
-
+        if($BID8 eq "BI00000003"){
+          #print STDERR "checkpiont\n";
+        }
         $CLADE{$cladeLv}{$BID8}{No} = $CLADE{$cladeLv}{$BID9}{No};
         # add unique annotation
         if($ANNO{$BID8}{uniq} eq "unique"){
@@ -1182,6 +1294,8 @@ sub run_clade2tree{
 
         #assign for current level
         $TREE{$cladeNext8}{parent} = $cladeName;
+        # $rankID ++;
+        # $TREE{$cladeName}{rankID} = $rankID;
         $TREE{$cladeName}{cladeLv} = $cladeLv;
         $TREE{$cladeName}{children}{$cladeNext8} ++ unless $cladeNext8 =~ "CLADEFINAL";
 
@@ -1189,6 +1303,9 @@ sub run_clade2tree{
       }elsif($s[0] eq "C"){
         my $BID = ($s[8]=~/^(.*BI\d+)_k\d+_(\d+)_.*(C[0-9\-]+)_/)?"$1":$s[8];
         my $cladeName = $cladeLv."__".$CLADE{$cladeLv}{$BID}{No};
+        if($cladeName eq "CLADE0.99__43691"){
+          my $debug = 1;
+        }
         #pick proper nodes to silva taxon tree
         my %PICKS;
         foreach my $bid (sort keys %{$CLADE{$cladeLv}{$BID}{ANN}}){
@@ -1196,31 +1313,71 @@ sub run_clade2tree{
           next if $ANNO{$bid}{ident} < $id * 100;
           my @trees = split /;/,$DBTREE{$taxid}{path};
           my @nodes;
+          my $unit = $ANNO{$bid}{U};
+          if($DBTREE{$taxid}{rank} eq "species"){
+            if($RANKI{$unit}{$trees[-2]}{quants}[5] > 99){
+              $RANKI{$unit}{$trees[-1]}{quants}[4] = $RANKI{$unit}{$trees[-2]}{quants}[6];
+            }else{
+              $RANKI{$unit}{$trees[-1]}{quants}[4] = 99;
+            }
+          }
+          if($ANNO{$bid}{ident} > 99.5 && $DBTREE{$taxid}{rank} eq "species" && $id > 0.99){
+            #print STDERR "checkpiont\n";
+          }
           for(my $i=0;$i<@trees;$i++){
             my $t = $trees[$i];
+            my $rankCutoff = 0;
+            if($RANKI{$unit}{$t}{quants}[4]){
+              $rankCutoff = $RANKI{$unit}{$t}{quants}[4];
+            }elsif(exists $DEFAULT_IDENTITY{$DBTREE{$DBTREE{index}{$t}}{rank}}){
+              $rankCutoff = $DEFAULT_IDENTITY{$DBTREE{$DBTREE{index}{$t}}{rank}} * 100;
+            }else{
+              next;
+            }
             next if $t =~/uncultured|metagenome|unclassified|unidentified|Incertae Sedis|Unknown|endosymbionts/;
-            push @nodes, $t if $RANKI{$t}{quants}[5] >= $id * 100;
+            if ($rankCutoff <= $id * 100){
+              push @nodes, $t;
+            }
           }
-          $PICKS{$nodes[0]} ++ if @nodes > 0;
+          $PICKS{$nodes[-1]} ++ if @nodes > 0;
         }
         if(keys %PICKS > 0){
-          my @orders = sort {$PICKS{$a} <=> $PICKS{$b}} keys %PICKS;
+          my @orders = sort {$PICKS{$b} <=> $PICKS{$a}} keys %PICKS;
+          next if @orders > 1 && $PICKS{$orders[0]} == $PICKS{$orders[1]};
           $CLADE{$cladeLv}{$BID}{Node} = $orders[0];
           $TREE{$cladeName}{UNDERTAX} = $orders[0];
           $TREE{$cladeName}{UNDERPATH} = $DBTREE{$DBTREE{index}{$orders[0]}}{path};
+          $TREE{$cladeName}{cladeLv} = $DBTREE{$DBTREE{index}{$orders[0]}}{rank};
+          $TREE{$cladeName}{rankID} = $DBTREE{index}{$orders[0]};
           #$CLADE{$cladeLv}{NODES}{$orders[0]} ++;
+        }else{
+          if($id == 0.97){
+            $TREE{$cladeName}{cladeLv} = "genus";
+          }elsif($id == 0.99){
+            $TREE{$cladeName}{cladeLv} = "species";
+          }
+          $rankID ++;
+          $TREE{$cladeName}{rankID} = $rankID;
         }
         $CLADE{$cladeLv}{NODES}{$cladeName} ++;
-
       }
     }
   }
+  #assign all members
+
   &verbose("done\n  Writing ... ");
-  foreach my $c (sort {$a<=>$b} keys %{$CLADE{"CLADE$cladeInit"}{NODES}}){
-    #my $path = ($TREE{$c}{UNDERTAX})?"$TREE{$c}{UNDERTAX};$c":$c;
-    my $path = ($TREE{$c}{UNDERTAX})?"$TREE{$c}{UNDERPATH}$c;":"$c;";
-    &printTree($path,$c,\%TREE);
-  }
+  #@units = split /,/,$units;
+  #while(@units){
+  #  my $unit = shift @units;
+    foreach my $c (sort keys %{$CLADE{"CLADE$cladeInit"}{NODES}}){
+      #my $path = ($TREE{$c}{UNDERTAX})?"$TREE{$c}{UNDERTAX};$c":$c;
+      my $path = ($TREE{$c}{UNDERTAX})?"$TREE{$c}{UNDERPATH}":"";
+      &printTree($path,$c,\%TREE);
+    }
+  #}
+
+  close FNA;
+  close TID;
   close OUT;
   &verbose("done\n");
   return();
@@ -1228,15 +1385,44 @@ sub run_clade2tree{
 
 sub printTree{
   my($path,$clade,$T) = @_;
-  print OUT "$path\t$$T{$clade}{cladeLv}\n";
+  if(exists $$T{$clade}{UNDERTAX}){
+    $path = $$T{$clade}{UNDERPATH};
+  }else{
+    $path .="$clade;";
+    unless($$T{$clade}{rankID}){
+      $rankID ++;
+      $$T{$clade}{rankID} = $rankID;
+    }
+    print OUT "$path\t$$T{$clade}{rankID}\t$$T{$clade}{cladeLv}\n";
+  }
   foreach my $chs (sort keys %{$$T{$clade}{members}}){
     next unless $chs;
-    print OUT "$path$chs;\tBEAD\t$ANNO{$chs}{A}\n";
+    next if exists $OCC{B}{$chs};
+    $rankID ++;
+    if($rankID == 209187){
+      my $debug = 1;
+    }
+    # assign members
+    my $t = (split /;/,$DBTREE{$MAP{S}{$ANNO{$chs}{ID}}}{path})[-1];
+    $t = "" if $t=~/uncultured|metagenome|unclassified|unidentified|Incertae Sedis|Unknown|endosymbionts/;
+    if($t && $ANNO{$chs}{uniq}  eq "unique" && $RANKI{$ANNO{$chs}{U}}{$t}{quants}[4] <= $ANNO{$chs}{ident}){
+      #$DBTREE{$DBTREE{index}{$t}}{path};
+      print OUT "$DBTREE{$DBTREE{index}{$t}}{path}$chs;\t$rankID\tBEAD\t$ANNO{$chs}{A}\n";
+    }else{
+      print OUT "$path$chs;\t$rankID\tBEAD\t$ANNO{$chs}{A}\n";
+    }
+    foreach my $s (sort keys %{$SEQ{$chs}}){
+       print TID "$s\t$rankID\n";
+       print FNA ">$s\n$SEQ{$chs}{$s}\n";
+    }
+    $OCC{B}{$chs} ++;
   }
   foreach my $c (sort keys %{$$T{$clade}{children}}){
+    if($c eq "CLADE0.83__1"){
+      my $debug = 1;
+    }
     next unless exists $$T{$c}{children} or exists $$T{$c}{members};
-    my $pathc = ($$T{$c}{UNDERTAX})?"$$T{$c}{UNDERPATH}$c;":"$path$c;";
-
-    &printTree($pathc,$c,\%$T);
+    #my $pathc = ($$T{$c}{UNDERTAX})?"$$T{$c}{UNDERPATH}":"$path$c;";
+    &printTree($path,$c,\%$T);
   }
 }

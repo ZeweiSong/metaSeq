@@ -17,14 +17,26 @@ KRAKEN2_THREAD_CT=$2
 
 mkdir -p "$KRAKEN2_DB_NAME"
 pushd "$KRAKEN2_DB_NAME"
+if [ -e hash.k2d ]; then
+  rename k2d bak.k2d *.k2d
+fi
 mkdir -p data taxonomy library
 pushd data
-
-cat mergeTaxon.txt added.txt|sort > paths.txt
+if [ -e mergeTaxon.txt ]; then
+	cat mergeTaxon.txt added.txt|sort > paths.txt
+else
+	sort added.txt > paths.txt
+fi
 build_silva_taxonomy.pl paths.txt
 popd
-mv data/names.dmp data/nodes.dmp data/paths.txt taxonomy/
-cp data/added.txt.acc_taxid seqid2taxid.map
+cp data/names.dmp data/nodes.dmp data/paths.txt taxonomy/
+if [ -e data/seqid2taxid.map ];then
+	cat data/{added.acc_taxid,seqid2taxid.map} > seqid2taxid.map
+else
+	cp data/added.acc_taxid seqid2taxid.map
+fi
 popd
 
 kraken2-build --db $KRAKEN2_DB_NAME --build --threads $KRAKEN2_THREAD_CT
+
+bracken-build -d $KRAKEN2_DB_NAME -t $KRAKEN2_THREAD_CT

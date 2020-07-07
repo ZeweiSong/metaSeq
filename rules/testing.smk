@@ -541,9 +541,7 @@ else:
 		output:
 			fa="{sample}/CLIP/all.barrnap.fa",
 			gff="{sample}/CLIP/all.barrnap.gff",
-			log="{sample}/CLIP/all.barrnap.log",
-		params:
-			pfx = "{sample}/CLIP/all.ITS",
+			log="{sample}/CLIP/all.barrnap.log"
 		threads: 8
 		shell:
 			"barrnap --threads {threads} --kingdom bac --outseq {output.fa} < {input} > {output.gff} 2> {output.log}\n"

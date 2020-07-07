@@ -322,60 +322,86 @@ else:
 rule KRAKEN_1_ClipClust:
     input: outXac
     output:
-        uc = "{sample}/CLIP/id95def4.clust.uc"
+        uc = "{sample}/CLIP/id90def4.clust.uc"
     threads: 8
     shell:
         "vsearch --threads {threads} --cluster_fast {input} --strand both "
-        " --fasta_width 0 --sizeout  --uc {output.uc} --id .95 --iddef 4 \n"
+        " --fasta_width 0 --sizeout  --uc {output.uc} --id .90 --iddef 4 \n"
 
 rule KRAKEN_2_listClustBID:
     input:
         fa = outXac,
-        uc = "{sample}/CLIP/id95def4.clust.uc",
-        anno="{sample}/ANNO/CLIP.map.merge.bead.anno"
-    output: "{sample}/CLIP/id95def4.clust.fa"
+        uc = "{sample}/CLIP/id90def4.clust.uc",
+        anno="{sample}/ANNO/CLIP.map.merge.bead.anno",
+    output: "{sample}/CLIP/id90def4.clust.fa"
     threads: 1
     shell:
-        "metabbq IO uch -a {input.anno} -i {input.fa} -u {input.uc} -o {output} -c 999"
+        "metabbq IO uch -a {input.anno} -i {input.fa} -u {input.uc} -o {output} -c 999 -v"
 
+# rule KRAKEN_3_ClipClust995:
+#     input: "{sample}/CLIP/id95def4.clust.fa"
+#     output:
+#         uc = "{sample}/CLIP/id995def2.clust.uc",
+#         ofa = "{sample}/CLIP/id995def2.clust.fa",
+#         cfa = "{sample}/KRAKEN/db/library/added.fna"
+#     threads: 8
+#     shell:
+#         "vsearch --threads {threads} --cluster_fast {input} --strand both --iddef 2 --id .995 "
+#         " --fasta_width 0 --relabel LOTU_ --uc {output.uc}  --centroids {output.ofa} \n"
+#         "cp -r {output.ofa} {output.cfa}"
 rule KRAKEN_3_ClipClust995:
-    input: "{sample}/CLIP/id95def4.clust.fa"
-    output:
-        uc = "{sample}/CLIP/id995def2.clust.uc",
-        ofa = "{sample}/CLIP/id995def2.clust.fa",
-        cfa = "{sample}/KRAKEN/db/library/added.fna"
-    threads: 8
+    input:  "{sample}/CLIP/id90def4.clust.fa",
+    output: "{sample}/CLIP/id90def4.clade.uc_0.995"
+    params: "{sample}/CLIP/id90def4.clade.uc"
     shell:
-        "vsearch --threads {threads} --cluster_fast {input} --strand both --iddef 2 --id .995 "
-        " --fasta_width 0 --relabel LOTU_ --uc {output.uc}  --centroids {output.ofa} \n"
-        "cp -r {output.ofa} {output.cfa}"
-
+        "metabbq IO makeclade -i {input} -o {params} -v"
 
 
 if config["sampleType"] == "F":
     rule KRAKEN_4_makeTaxonomyTree:
         input:
-            uc = "{sample}/CLIP/id995def2.clust.uc",
+            fa = "{sample}/CLIP/id90def4.clust.fa",
+            uc = "{sample}/CLIP/id90def4.clade.uc_0.995",
             anno="{sample}/ANNO/CLIP.map.merge.bead.anno"
-        output: "{sample}/KRAKEN/db/data/added.txt"
-        params: "Eukaryota"
+        output:
+            path = "{sample}/KRAKEN/db/data/added.txt",
+            fna  = "{sample}/KRAKEN/db/library/added.fna"
+        params:
+            db = "{sample}/KRAKEN/db",
+            unit = "Fungi",
+            kk2db  = "$LFR/Source/REF/KRAKEN2/rDNA",
+            ucpfx  = "{sample}/CLIP/id90def4.clade.uc"
         shell:
-            "metabbq IO maketaxon -d {params} -u {input.uc} -a {input.anno} -t $LFR/Source/REF/KRAKEN2/rDNA/data/mergeTaxon.txt -o {output}"
+            "metabbq IO clade2tree -i {input.fa} -a {input.anno} -d {params.kk2db} -s {params.ucpfx} -o {params.db} -v"
 else:
+    # rule KRAKEN_4_makeTaxonomyTree:
+    #     input:
+    #         uc = "{sample}/CLIP/id995def2.clust.uc",
+    #         anno="{sample}/ANNO/CLIP.map.merge.bead.anno"
+    #     output: "{sample}/KRAKEN/db/data/added.txt"
+    #     params: "Bacteria"
+    #     shell:
+    #         "metabbq IO maketaxon -u {input.uc} -a {input.anno} -t $LFR/Source/REF/KRAKEN2/rDNA/data/mergeTaxon.txt -o {output}"
     rule KRAKEN_4_makeTaxonomyTree:
         input:
-            uc = "{sample}/CLIP/id995def2.clust.uc",
+            fa = "{sample}/CLIP/id90def4.clust.fa",
+            uc = "{sample}/CLIP/id90def4.clade.uc_0.995",
             anno="{sample}/ANNO/CLIP.map.merge.bead.anno"
-        output: "{sample}/KRAKEN/db/data/added.txt"
-        params: "Bacteria"
+        output:
+            path = "{sample}/KRAKEN/db/data/added.txt",
+            fna  = "{sample}/KRAKEN/db/library/added.fna"
+        params:
+            db = "{sample}/KRAKEN/db",
+            unit = "Bacteria",
+            kk2db  = "$LFR/Source/REF/KRAKEN2/rDNA",
+            ucpfx  = "{sample}/CLIP/id90def4.clade.uc"
         shell:
-            "metabbq IO maketaxon -u {input.uc} -a {input.anno} -t $LFR/Source/REF/KRAKEN2/rDNA/data/mergeTaxon.txt -o {output}"
-
+            "metabbq IO clade2tree -i {input.fa} -a {input.anno} -d {params.kk2db} -s {params.ucpfx} -o {params.db} -v"
 
 rule KRAKEN_5_makedb:
     input:
-        fa = "{sample}/CLIP/id995def2.clust.fa",
-        ad = "{sample}/KRAKEN/db/data/added.txt"
+        path = "{sample}/KRAKEN/db/data/added.txt",
+        fna = "{sample}/KRAKEN/db/library/added.fna"
     output: "{sample}/KRAKEN/db/hash.k2d"
     params: "{sample}/KRAKEN/db"
     threads: 4
@@ -416,17 +442,35 @@ rule KRAKEN_X_custom_mapping:
         fa2 = "{sample}/clean/fastp.sort.2.fq.gz",
         db  = "{sample}/KRAKEN/" + str(config["kk2_db"])
     output:
-        raw = kkXpfx + ".out",
-        prf = kkXpfx + ".prof"
-    params: "{sample}/KRAKEN/" + str(config["kk2_db"])
+        rpt = kkXpfx + ".kreport2",
+        out = kkXpfx + ".kraken2",
+        prf = kkXpfx + ".k2.prof",
+        bed = kkXpfx + ".k2.bead"
     threads: 4
     shell:
-        "kraken2 --db {params} --threads {threads} --paired {input.fa1} {input.fa2} "
-        " | tee {output.raw} | metabbq IO kk2prf -d {params} -i - -o {output.prf}"
+        "kraken2 --db {input.db} --threads {threads} --paired {input.fa1} {input.fa2} "
+        "--report {output.rpt} | tee {output.out} | metabbq IO kk2prf -d {input.db} -i - -o {output.prf}"
+#        " | tee {output.raw} | metabbq IO kk2prf -d {params} -i - -o {output.prf}"
+#"kraken2 --db=SAM/SBR/KRAKEN/db --threads 4 --report ${SAMPLE}/KRAKEN/reads2SBR.kreport2 \
+#--paired ${SAMPLE}/clean/fastp.sort.1.fq.gz ${SAMPLE}/clean/fastp.sort.2.fq.gz > ${SAMPLE}/KRAKEN/reads2SBR.kraken2"
+rule KRAKEN_X_custom_kreport:
+    input:
+        bed = kkXpfx + ".k2.bead",
+        db  = "{sample}/KRAKEN/" + str(config["kk2_db"])
+    output:
+        rpt = kkXpfx + ".k2.1.kreport2"
+    threads: 4
+    shell:
+        "awk '$5==1' {input.bed}|metabbq kraken-report --d={input.db} - -v > {output.rpt}"
 
 rule KRAKEN_X_sum2species:
-    input: kkXpfx + ".prof"
-    output: kkXpfx + ".sp.prf"
+    input:
+        report = kkXpfx + ".k2.1.kreport2",
+        db  = "{sample}/KRAKEN/" + str(config["kk2_db"])
+    output:
+        profile = kkXpfx + ".k2.1.bracken",
+        report = kkXpfx + ".k2.1.breport2"
     threads: 1
     shell:
-        "metabbq IO sumprf -r species -i {input} -o {output}"
+        "bracken -d {input.db} -i {input.report} -o {output.profile} -l S -w {output.report}"
+#        "metabbq IO sumprf -r species -n {input.db}/taxonomy/names.dmp -i {input.prf} -o {output}"
