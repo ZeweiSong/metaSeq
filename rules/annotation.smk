@@ -458,18 +458,18 @@ rule KRAKEN_X_custom_kreport:
         bed = kkXpfx + ".k2.bead",
         db  = "{sample}/KRAKEN/" + str(config["kk2_db"])
     output:
-        rpt = kkXpfx + ".k2.1.kreport2"
+        rpt = kkXpfx + ".bead.kreport2"
     threads: 4
     shell:
-        "awk '$5==1' {input.bed}|metabbq kraken-report --d={input.db} - -v > {output.rpt}"
+        "metabbq kraken-report --d={input.db} {input.bed} -v > {output.rpt}"
 
 rule KRAKEN_X_sum2species:
     input:
-        report = kkXpfx + ".k2.1.kreport2",
+        report = kkXpfx + ".bead.kreport2",
         db  = "{sample}/KRAKEN/" + str(config["kk2_db"])
     output:
-        profile = kkXpfx + ".k2.1.bracken",
-        report = kkXpfx + ".k2.1.breport2"
+        profile = kkXpfx + ".bead.bracken",
+        report = kkXpfx + ".bead.breport2"
     threads: 1
     shell:
         "bracken -d {input.db} -i {input.report} -o {output.profile} -l S -w {output.report}"
