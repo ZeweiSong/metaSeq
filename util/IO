@@ -1116,6 +1116,7 @@ usage:
 USAGE
 }
 our(%ANNO,%MAP,%DBTREE,%RANKI,%SEQ,$rankID,%OCC);
+$rankID = 1;
 sub run_clade2tree{
   &usage4clade2tree("generate a path tree from vsearch uc file") && exit unless @ARGV;
   my ($seq,$ann,$db,$units,$upfx,$ids,$lsu,$out);
@@ -1148,7 +1149,7 @@ sub run_clade2tree{
     open FNA, "> library/added.fna" or die $!;
 
   }
-  
+
   &verbose("done\n  Reading [com] $seq ... ");
   open SEQ,"< $seq" or die $!;
   my $ori = $/; $/ = ">";
@@ -1221,6 +1222,7 @@ sub run_clade2tree{
       $ANNO{$b[0]}{A} = $_;
       $ANNO{$b[0]}{ID} = $s[18];
       $ANNO{$b[0]}{uniq} = $s[19];
+      $ANNO{$b[0]}{tax} = $s[1];
       $ANNO{$b[0]}{ident} = $s[2];
     }
     close ANN;
@@ -1303,9 +1305,6 @@ sub run_clade2tree{
       }elsif($s[0] eq "C"){
         my $BID = ($s[8]=~/^(.*BI\d+)_k\d+_(\d+)_.*(C[0-9\-]+)_/)?"$1":$s[8];
         my $cladeName = $cladeLv."__".$CLADE{$cladeLv}{$BID}{No};
-        if($cladeName eq "CLADE0.99__43691"){
-          my $debug = 1;
-        }
         #pick proper nodes to silva taxon tree
         my %PICKS;
         foreach my $bid (sort keys %{$CLADE{$cladeLv}{$BID}{ANN}}){
@@ -1336,6 +1335,8 @@ sub run_clade2tree{
             }
             next if $t =~/uncultured|metagenome|unclassified|unidentified|Incertae Sedis|Unknown|endosymbionts/;
             if ($rankCutoff <= $id * 100){
+              push @nodes, $t;
+            }elsif($ANNO{$bid}{ident} > 99.5 && $DBTREE{$taxid}{rank} eq "species" && $id > 0.995){
               push @nodes, $t;
             }
           }
@@ -1371,8 +1372,8 @@ sub run_clade2tree{
   #  my $unit = shift @units;
     foreach my $c (sort keys %{$CLADE{"CLADE$cladeInit"}{NODES}}){
       #my $path = ($TREE{$c}{UNDERTAX})?"$TREE{$c}{UNDERTAX};$c":$c;
-      my $path = ($TREE{$c}{UNDERTAX})?"$TREE{$c}{UNDERPATH}":"";
-      &printTree($path,$c,\%TREE);
+      #my $path = ($TREE{$c}{UNDERTAX})?"$TREE{$c}{UNDERPATH}":"";
+      &printTree("",$c,\%TREE);
     }
   #}
 
@@ -1385,32 +1386,29 @@ sub run_clade2tree{
 
 sub printTree{
   my($path,$clade,$T) = @_;
-  if(exists $$T{$clade}{UNDERTAX}){
-    $path = $$T{$clade}{UNDERPATH};
-  }else{
+  # if(exists $$T{$clade}{UNDERTAX}){
+  #   $path = $$T{$clade}{UNDERPATH};
+  # }else{
     $path .="$clade;";
-    unless($$T{$clade}{rankID}){
+    #unless($$T{$clade}{rankID}){
       $rankID ++;
       $$T{$clade}{rankID} = $rankID;
-    }
-    print OUT "$path\t$$T{$clade}{rankID}\t$$T{$clade}{cladeLv}\n";
-  }
+    #}
+    print OUT "$path\t$$T{$clade}{rankID}\t$$T{$clade}{cladeLv}\t$clade\t$$T{$clade}{UNDERTAX}\n";
+  # }
   foreach my $chs (sort keys %{$$T{$clade}{members}}){
     next unless $chs;
     next if exists $OCC{B}{$chs};
     $rankID ++;
-    if($rankID == 209187){
-      my $debug = 1;
-    }
     # assign members
-    my $t = (split /;/,$DBTREE{$MAP{S}{$ANNO{$chs}{ID}}}{path})[-1];
-    $t = "" if $t=~/uncultured|metagenome|unclassified|unidentified|Incertae Sedis|Unknown|endosymbionts/;
-    if($t && $ANNO{$chs}{uniq}  eq "unique" && $RANKI{$ANNO{$chs}{U}}{$t}{quants}[4] <= $ANNO{$chs}{ident}){
-      #$DBTREE{$DBTREE{index}{$t}}{path};
-      print OUT "$DBTREE{$DBTREE{index}{$t}}{path}$chs;\t$rankID\tBEAD\t$ANNO{$chs}{A}\n";
-    }else{
-      print OUT "$path$chs;\t$rankID\tBEAD\t$ANNO{$chs}{A}\n";
-    }
+    # my $t = (split /;/,$DBTREE{$MAP{S}{$ANNO{$chs}{ID}}}{path})[-1];
+    # $t = "" if $t=~/uncultured|metagenome|unclassified|unidentified|Incertae Sedis|Unknown|endosymbionts/;
+    # if($t && $ANNO{$chs}{uniq}  eq "unique" && $RANKI{$ANNO{$chs}{U}}{$t}{quants}[4] <= $ANNO{$chs}{ident}){
+    #   #$DBTREE{$DBTREE{index}{$t}}{path};
+    #   print OUT "$DBTREE{$DBTREE{index}{$t}}{path}$chs;\t$rankID\tBEAD\t$ANNO{$chs}{A}\n";
+    # }else{
+      print OUT "$path$chs;\t$rankID\tBEAD\t$chs\t$ANNO{$chs}{tax}\t$ANNO{$chs}{A}\n";
+    # }
     foreach my $s (sort keys %{$SEQ{$chs}}){
        print TID "$s\t$rankID\n";
        print FNA ">$s\n$SEQ{$chs}{$s}\n";
@@ -1418,9 +1416,6 @@ sub printTree{
     $OCC{B}{$chs} ++;
   }
   foreach my $c (sort keys %{$$T{$clade}{children}}){
-    if($c eq "CLADE0.83__1"){
-      my $debug = 1;
-    }
     next unless exists $$T{$c}{children} or exists $$T{$c}{members};
     #my $pathc = ($$T{$c}{UNDERTAX})?"$$T{$c}{UNDERPATH}":"$path$c;";
     &printTree($path,$c,\%$T);

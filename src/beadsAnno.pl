@@ -1163,15 +1163,32 @@ sub run_otupair {
     @lastRs = sort {$a<=>$b} keys %{$LAST{RT}};
     my $sd = $#lastRs;
     if($_){
-      if($. == 19846){
-        #print STDERR "checkpoint\n";
+      if($.==7){
+        $debug =1;
       }
       chomp;
       @s = split /\t/;
       @t = split /;/,$s[0];
       $rankScore = $RANK{$s[2]};
       #$findOTU = ($t[-1] =~ s/LOTU_//)?1:0;
-      $findOTU = ($t[-1] =~ s/species__//)?1:0;
+
+      $findOTU = ($t[-1] =~ /species__/)?1:0;
+      if($findOTU && $t[-2] =~ /genus__/){
+        (my $geName = $t[-2]) =~  s/^genus__//;
+        if($t[-1] =~/($geName \S+) (.+)/){
+          my $spName = $1;
+          #record a new species level
+          unless($LAST{RT}{$rankScore} eq $spName){
+            $LAST{R} = $rankScore;
+            $LAST{T} = $spName;
+            $LAST{RT}{$rankScore} = $spName;
+          }
+          #add a level for subspecies
+          push @t, $t[-1];
+          $t[-2] = $spName;
+          $rankScore = $RANK{"subspecies"};
+        }
+      }
       $sameRank = "";
       for($d=0;$d<@lastRs;$d ++){
         if($sameRank eq "" && $LAST{RT}{$lastRs[$d]} ne $t[$d]){
@@ -1179,7 +1196,7 @@ sub run_otupair {
           $sd = $d-1;
         }
       }
-      $LAST{R} = $lastRs[-2];
+      $LAST{R} = $lastRs[-1];
       $LAST{T} = $t[-2];
     }else{
       $summary = 0;
@@ -1204,7 +1221,7 @@ sub run_otupair {
       close LOTU;
       # run vsearch alignemnt:
       my $cmd = "vsearch --threads ".((@o <= 50)?1:4)." --allpairs_global $ramtmp/lotu.fa --acceptall --uc - 2> /dev/null ";
-      &verbose(" Processing $RRANK{$r} | $tax: $oCount LOTUs ... ");
+      &verbose(" Processing $r: $RRANK{$r} | $tax: $oCount LOTUs ... ");
       open UC,"$cmd|" or die $!;
       my ($minIdent,@idents,@minOtus) = (101,,);
       if($#lastRs-$sd>2){
