@@ -1140,7 +1140,7 @@ sub run_otupair {
   while(<MAP>){
     chomp;
     my @s = split /\t/;
-    $MAP{$s[1]} = $s[0];
+    $MAP{$s[1]}{$s[0]} ++;
   }
   close MAP;
   ####
@@ -1163,9 +1163,6 @@ sub run_otupair {
     @lastRs = sort {$a<=>$b} keys %{$LAST{RT}};
     my $sd = $#lastRs;
     if($_){
-      if($.==7){
-        $debug =1;
-      }
       chomp;
       @s = split /\t/;
       @t = split /;/,$s[0];
@@ -1187,6 +1184,11 @@ sub run_otupair {
           push @t, $t[-1];
           $t[-2] = $spName;
           $rankScore = $RANK{"subspecies"};
+        }elsif($t[-1] =~/$geName sp/){
+          #not a valid species rank, regard as a member of genus
+          $TREE{$LAST{R}}{$LAST{T}}{$findOTU}{$s[-2]} = $rankScore;
+          pop @t;
+          $rankScore = $RANK{"genus"};
         }
       }
       $sameRank = "";
@@ -1209,18 +1211,35 @@ sub run_otupair {
       my $tax = $LAST{RT}{$r};
       next if $tax =~ /uncultured|unknown|unidentified/;
       my @o = sort {$a<=>$b} keys %{$TREE{$r}{$tax}{1}};
-      next unless scalar @o > 1;
       # prepare fasta belonging to this taxono
       open LOTU,"> $ramtmp/lotu.fa" or die $!;
       my $oCount = 0;
+      my $fistSeq = "";
       foreach my $o (@o){
-        print LOTU ">$o\n$LOTU{$MAP{$o}}\n";
-        $oCount ++;
+        foreach my $s (sort keys %{$MAP{$o}}){
+          print LOTU ">$o:$s\n$LOTU{$s}\n";
+          $oCount ++;
+          $fistSeq ||= $s;
+          last if $oCount > 9;
+        }
         last if $oCount > 99;
       }
+      my @o2 = sort {$a<=>$b} keys %{$TREE{$r}{$tax}{2}};
+      if(@o2){
+        foreach my $o (@o2){
+          my @s = sort keys %{$MAP{$o}};
+          print LOTU ">$o:$s[0]\n$LOTU{$s[0]}\n";
+          $oCount ++;
+          $fistSeq ||= $s[0];
+          last if $oCount > 99;
+        }
+        push @o,$o2[0];
+      }
       close LOTU;
+      next unless $oCount > 1;
+
       # run vsearch alignemnt:
-      my $cmd = "vsearch --threads ".((@o <= 50)?1:4)." --allpairs_global $ramtmp/lotu.fa --acceptall --uc - 2> /dev/null ";
+      my $cmd = "vsearch --threads ".(($oCount <= 50)?1:4)." --allpairs_global $ramtmp/lotu.fa --acceptall --uc - 2> /dev/null ";
       &verbose(" Processing $r: $RRANK{$r} | $tax: $oCount LOTUs ... ");
       open UC,"$cmd|" or die $!;
       my ($minIdent,@idents,@minOtus) = (101,,);
@@ -1258,7 +1277,7 @@ sub run_otupair {
         $TREE{$nextR}{$nextT}{1}{$minOtus[0]} = $nextT;
         $TREE{$nextR}{$nextT}{1}{$minOtus[1]} = $nextT;
       }elsif(@o>0){
-        $TREE{$nextR}{$nextT}{1}{$o[0]} = $nextT;
+        $TREE{$nextR}{$nextT}{2}{$o[0]} = $nextT;
       }
       #remove recorded tax:
       delete $LAST{RT}{$r};
