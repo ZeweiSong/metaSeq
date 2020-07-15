@@ -692,7 +692,7 @@ sub usage4cbr {
   print <<USAGE;
 $msg
 usage [v0.1] :
-  $0 f2b -m f2b -i SSU,LSU,UNITE -o output
+  $0 f2b -m cbr -i SSU,LSU,UNITE -o output
     -i  LSU,SSU,ITS annotation file
     -l  rank
     -U  UNITE annotation file
@@ -715,15 +715,15 @@ sub run_cbr {
   my %EMPTY = ("MAIN" => {"NONE" => {"A" => [(0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0)]}});
   chomp(my $read1 = <$IN1>);
   my @inf1 = split (/\t/,$read1);
-  my $no1 = ($inf1[0] =~ /^(BI\d+)_k\d+_(\d+)_.*_C(\d+|-)_\(/)?"$1.$2.$3":<EOF>;
+  my $no1 = $inf1[0];#($inf1[0] =~ /^(\S+\d+)_k\d+_(\d+)_.*_C(\d+|-)_\(/)?"$1.$2.$3":($inf1[0])?$inf1[0]:<EOF>;
   $LSU{NEXT}{A} = \@inf1; $LSU{NEXT}{N} = $no1; $LSU{FILEHANDLE} = $IN1;
   chomp(my $read2 = <$IN2>);
   my @inf2 = split (/\t/,$read2);
-  my $no2 = ($inf2[0] =~ /^(BI\d+)_k\d+_(\d+)_.*_C(\d+|-)_\(/)?"$1.$2.$3":<EOF>;
+  my $no2 = $inf2[0];#($inf2[0] =~ /^(\S+\d+)_k\d+_(\d+)_.*_C(\d+|-)_\(/)?"$1.$2.$3":($inf2[0])?$inf2[0]:<EOF>;
   $SSU{NEXT}{A} = \@inf2; $SSU{NEXT}{N} = $no2; $SSU{FILEHANDLE} = $IN2;
   chomp(my $read3 = <$IN3>);
   my @inf3 = split (/\t/,$read3);
-  my $no3 = ($inf3[0] =~ /^(BI\d+)_k\d+_(\d+)_.*_C(\d+|-)_\(/)?"$1.$2.$3":<EOF>;
+  my $no3 = $inf3[0];#($inf3[0] =~ /^(\S+\d+)_k\d+_(\d+)_.*_C(\d+|-)_\(/)?"$1.$2.$3":($inf3[0])?$inf3[0]:<EOF>;
   $ITS{NEXT}{A} = \@inf3; $ITS{NEXT}{N} = $no3; $ITS{FILEHANDLE} = $IN3;
 
   my @pick = &checkOrder($no1,$no2,$no3);
@@ -753,7 +753,10 @@ sub run_cbr {
       %PITS = %EMPTY;
     }
     #summary annotation of this OTU
-    %{$BEADINFO{$pick[4]}} = &summaryAnno(\%PLSU,\%PSSU,\%PITS);
+    if($pick[4] eq "BI00540568"){
+      my $debug = 1;
+    }
+    %{$BEADINFO{$pick[4]}} = &summaryAnno2(\%PLSU,\%PSSU,\%PITS,$pick[4]);
     $count ++;
     #verbose
     if($count % 1000 == 0 ){
@@ -762,9 +765,8 @@ sub run_cbr {
 
     #summary bead if all clips read:
     my @nextpick = &checkOrder($no1,$no2,$no3);
-
-    my $bid_current = ($pick[4]  =~ /(BI\d+).(\d+)/)?$1:$pick[4];
-    my $bid_next = ($nextpick[4] =~ /(BI\d+).(\d+)/)?$1:$nextpick[4];
+    my $bid_current = ($pick[4]  =~ /(\S+\d+)\.(\d+)\.(\S+)/)?$1:$pick[4];
+    my $bid_next = ($nextpick[4] =~ /(\S+\d+)\.(\d+)\.(\S+)/)?$1:$nextpick[4];
     if ($bid_next ne $bid_current){
       &summaryBead($bid_current,\%BEADINFO);
       %BEADINFO = ();
@@ -814,7 +816,7 @@ sub read1clip {
       last;
     }else{
       @inf = split (/\t/,$read);
-      $no = ($inf[0] =~ /^(BI\d+)_k\d+_(\d+)_.*_C(\d+|-)_\(/)?"$1.$2.$3":<EOF>;
+      $no = $inf[0]; #($inf[0] =~ /^(\S+\d+)_k\d+_(\d+)_.*_C(\d+|-)_\(/)?"$1.$2.$3":($inf[0])?$inf[0]:<EOF>;
     }
   }
   $$HS{NEXT}{A} = [@inf];
@@ -823,6 +825,355 @@ sub read1clip {
   return(%$HS);
 }
 
+sub summaryAnno2{
+	my ($L,$S,$I,$CID) = @_;
+	my %MHASH;
+	my ($kl,$ks,$ki) = (keys %{$$L{MAIN}}, keys %{$$S{MAIN}}, keys %{$$I{MAIN}});
+	#check point
+	# if($$L{MAIN}{$kl}{A}[0] eq "LOTU_000080"){
+	#   print "checkpoint. Pause\n";
+	# }
+	my %TMP;
+	my @derep = (keys %{$$L{ALL}}, keys %{$$S{ALL}}, keys %{$$I{ALL}});
+	# dereplicate
+	@derep = grep { ++$TMP{$_} < 2 } @derep;
+	my ($pickTax,$maxScore,$maxOrder,$pickGenus,$maxGscore,$maxGorder,%NAMEID) = ("",0,9999,"",0,9999,);
+	my $identityAchieveGenusThreshold = 0;
+	foreach my $tax (@derep){
+		#log positions info from each database:
+		next unless $tax;
+		my %regions;
+		#SSU:
+		foreach my $unit("SSU","ITS","LSU"){
+			my $U = ($unit eq "SSU")?\%$S:($unit eq "ITS")?\%$I:\%$L;
+			if($$U{ALL}{$tax}{A}){
+				$MHASH{$tax}{$unit}{A}   = $$U{ALL}{$tax}{A};
+				$MHASH{$tax}{$unit}{ord} = $$U{ALL}{$tax}{order};
+				$MHASH{$tax}{$unit}{std} = ($$U{ALL}{$tax}{A}[8]<$$U{ALL}{$tax}{A}[9])?"+":"-";
+				$MHASH{$tax}{$unit}{sf}  = ($$U{ALL}{$tax}{A}[8]<$$U{ALL}{$tax}{A}[9])?$$U{ALL}{$tax}{A}[8]:$$U{ALL}{$tax}{A}[9];
+				$MHASH{$tax}{$unit}{st}  = ($$U{ALL}{$tax}{A}[8]<$$U{ALL}{$tax}{A}[9])?$$U{ALL}{$tax}{A}[9]:$$U{ALL}{$tax}{A}[8];
+				$MHASH{$tax}{$unit}{err} = $$U{ALL}{$tax}{A}[4] + 2* $$U{ALL}{$tax}{A}[5];
+			}
+		}
+
+		$MHASH{$tax}{qlen} = ($$S{ALL}{$tax}{A}[12])?$$S{ALL}{$tax}{A}[12]:($$L{ALL}{$tax}{A}[12])?$$L{ALL}{$tax}{A}[12]:$$I{ALL}{$tax}{A}[12];
+		$MHASH{$tax}{LOTU}  = ($$S{ALL}{$tax}{A}[0])?$$S{ALL}{$tax}{A}[0]:($$L{ALL}{$tax}{A}[0])?$$L{ALL}{$tax}{A}[0]:$$I{ALL}{$tax}{A}[0];
+		$MHASH{$tax}{taxN}  = ($$S{ALL}{$tax}{rank})?$$S{ALL}{$tax}{rank}:($$L{ALL}{$tax}{rank})?$$L{ALL}{$tax}{rank}:$$I{ALL}{$tax}{rank};
+		$MHASH{$tax}{taxN1}  = ($$S{ALL}{$tax}{rank_1})?$$S{ALL}{$tax}{rank_1}:($$L{ALL}{$tax}{rank_1})?$$L{ALL}{$tax}{rank_1}:$$I{ALL}{$tax}{rank_1};
+		$NAMEID{$MHASH{$tax}{taxN1}}{pickTax}  ||= "";
+		$NAMEID{$MHASH{$tax}{taxN1}}{minScore} ||= 5000;
+		$NAMEID{$MHASH{$tax}{taxN1}}{maxOrder} ||= 999;
+
+		$MHASH{$tax}{mLen}  = $$L{ALL}{$tax}{A}[3] + $$S{ALL}{$tax}{A}[3] + $$I{ALL}{$tax}{A}[3];
+		$MHASH{$tax}{mis}   = $$L{ALL}{$tax}{A}[4] + $$S{ALL}{$tax}{A}[4] + $$I{ALL}{$tax}{A}[4];
+		$MHASH{$tax}{gap}   = $$L{ALL}{$tax}{A}[5] + $$S{ALL}{$tax}{A}[5] + $$I{ALL}{$tax}{A}[5];
+		if($MHASH{$tax}{mLen} == 0){
+			die "$MHASH{$tax}{mLen}\n";
+		}
+		my @orders = sort (($$L{ALL}{$tax}{order})?$$L{ALL}{$tax}{order}:999,($$S{ALL}{$tax}{order})?$$S{ALL}{$tax}{order}:999,($$I{ALL}{$tax}{order})?$$I{ALL}{$tax}{order}:999);
+		$MHASH{$tax}{order} = $orders[0];
+		$MHASH{$tax}{ident} = 100 - 100 * ($MHASH{$tax}{mis} + 2 * $MHASH{$tax}{gap}) / $MHASH{$tax}{mLen};
+		$MHASH{$tax}{bit}   = $$L{ALL}{$tax}{A}[11] + $$S{ALL}{$tax}{A}[11] + $$I{ALL}{$tax}{A}[11];
+		$MHASH{$tax}{score} = ($MHASH{$tax}{taxN}=~/metagenome|unidentified|uncultured|unknown/)? $MHASH{$tax}{bit} - 10: $MHASH{$tax}{bit};
+		$MHASH{$tax}{qcov}  = 100 * $MHASH{$tax}{mLen} / $MHASH{$tax}{qlen};
+		$MHASH{$tax}{scov}  = 100 * $MHASH{$tax}{mLen} / ($$L{ALL}{$tax}{A}[13] + $$S{ALL}{$tax}{A}[13] + $$I{ALL}{$tax}{A}[13]);
+		$MHASH{$tax}{scovL} = ($$L{ALL}{$tax}{A}[13])?(100 * $$L{ALL}{$tax}{A}[3] / $$L{ALL}{$tax}{A}[13]):0;
+		$MHASH{$tax}{scovS} = ($$S{ALL}{$tax}{A}[13])?(100 * $$S{ALL}{$tax}{A}[3] / $$S{ALL}{$tax}{A}[13]):0;
+		$MHASH{$tax}{scovI} = ($$I{ALL}{$tax}{A}[13])?(100 * $$I{ALL}{$tax}{A}[3] / $$I{ALL}{$tax}{A}[13]):0;
+		$MHASH{$tax}{anno}  = ($$L{ALL}{$tax}{A}[1])?"$$L{ALL}{$tax}{A}[15]\t$$L{ALL}{$tax}{A}[16]\t$$L{ALL}{$tax}{A}[17]":
+		($$S{ALL}{$tax}{A}[1])?"$$S{ALL}{$tax}{A}[15]\t$$S{ALL}{$tax}{A}[16]\t$$S{ALL}{$tax}{A}[17]":
+		"$$I{ALL}{$tax}{A}[15]\t$$I{ALL}{$tax}{A}[16]\t$$I{ALL}{$tax}{A}[17]";
+		#pick top genus if identity > 97:
+		if($MHASH{$tax}{ident}>97){
+			if($identityAchieveGenusThreshold == 0){
+				$identityAchieveGenusThreshold = 1;
+				($pickTax,$maxScore,$maxOrder) = ("",0,9999);
+			}
+			if($MHASH{$tax}{score} == $maxScore){
+				$pickGenus = ($MHASH{$tax}{order} < $maxGorder)?$MHASH{$tax}{taxN1}:$pickGenus;
+				$maxGscore = ($MHASH{$tax}{order} < $maxGorder)?$MHASH{$tax}{score}:$maxGscore;
+				$maxGorder = ($MHASH{$tax}{order} < $maxGorder)?$MHASH{$tax}{order}:$maxGorder;
+			}else{
+				$pickGenus = ($MHASH{$tax}{score} > $maxGscore)?$MHASH{$tax}{taxN1}:$pickGenus;
+				$maxGscore = ($MHASH{$tax}{score} > $maxGscore)?$MHASH{$tax}{score}:$maxGscore;
+				$maxGorder = ($MHASH{$tax}{score} > $maxGscore)?$MHASH{$tax}{order}:$maxGorder;
+			}
+			#now pick top species under top genus:
+			my $mis = $MHASH{$tax}{mis} + $MHASH{$tax}{gap};
+			$NAMEID{$pickGenus}{pickTax}  = ( $mis < $NAMEID{$pickGenus}{minScore})?$tax:$NAMEID{$pickGenus}{pickTax};
+			$NAMEID{$pickGenus}{minScore} = ( $mis < $NAMEID{$pickGenus}{minScore})?$mis:$NAMEID{$pickGenus}{minScore};
+			$NAMEID{$pickGenus}{maxOrder} = ( $mis < $NAMEID{$pickGenus}{minScore})?$MHASH{$tax}{order}:$NAMEID{$pickGenus}{maxOrder};
+		}elsif($identityAchieveGenusThreshold == 0){
+			if($MHASH{$tax}{score} == $maxScore){
+				$pickTax = ($MHASH{$tax}{order} < $maxOrder)?$tax:$pickTax;
+				$maxScore= ($MHASH{$tax}{order} < $maxOrder)?$MHASH{$tax}{score}:$maxScore;
+				$maxOrder= ($MHASH{$tax}{order} < $maxOrder)?$MHASH{$tax}{order}:$maxOrder;
+			}else{
+				$pickTax = ($MHASH{$tax}{score} > $maxScore)?$tax:$pickTax;
+				$maxScore= ($MHASH{$tax}{score} > $maxScore)?$MHASH{$tax}{score}:$maxScore;
+				$maxOrder= ($MHASH{$tax}{score} > $maxScore)?$MHASH{$tax}{order}:$maxOrder;
+			}
+		}
+		#&verbose("[DEBUG] $MHASH{$tax}{LOTU}: $MHASH{$tax}{taxN}\t$MHASH{$tax}{ident}\t$MHASH{$tax}{mis}\t$MHASH{$tax}{gap}\t$MHASH{$tax}{bit}\t$MHASH{$tax}{score}\n")
+	}
+
+	#part 2: summary
+
+	my $BID = ($CID =~ /^(\S+\d+)\.(\d+)\.([-0-9]+)/)?$1:$CID;
+  my %BI;
+	%{$BI{$CID}} = %MHASH;
+
+  my $B = \%BI;
+	my (%QP,%BINFO,$fi,%RE,%MAP,%SCORE,%SCOREBAK,%SUPPORTCNO2TAX);
+	return () if $BID eq "";
+	my @cNos = ($CID);
+	foreach my $cNo (@cNos){
+		my @s = sort {$$B{$cNo}{$b}{score} <=> $$B{$cNo}{$a}{score}} keys %{$$B{$cNo}};
+		my ($s1,$s2) = ($s[0],$s[1]);
+		$BINFO{piece} ++;
+		$BINFO{bLen}  += $$B{$cNo}{$s1}{qlen};
+		# sort regions on clips
+		my (%TMPSCORE,%TMPSCOREBAK) = ();
+		for(my $i=0;$i<@s;$i++){
+			my $tax = $s[$i]; # the ref ID
+			my $sp = $$B{$cNo}{$tax}{taxN};
+			my $ge = $$B{$cNo}{$tax}{taxN1};
+			my $spPenalty = ($sp =~ /metagenome|unidentified|uncultured|unknown| sp\.$/)?10:0;
+			my $gePenalty = ($ge =~ /metagenome|unidentified|uncultured|unknown/)?10:0;
+			# pick best/alternative score for genus and species(if multiple subspecies were found) level:
+			foreach my $unit ("SSU","ITS","LSU"){
+				#genus
+				# if($cNo eq "BI00004826.1.-" && $sp eq "Bacillus sp. 17376" && $unit eq "LSU"){
+				#   print STDERR "checkpoint\n";
+				# }
+				if($$B{$cNo}{$tax}{$unit}{A}[11] && $$B{$cNo}{$tax}{$unit}{A}[11] > $TMPSCORE{G}{$ge}{$unit}{score}){
+					if($$B{$cNo}{$tax}{$unit}{A}[2] > 97){
+						$TMPSCORE{G}{$ge}{$unit}{score} = $$B{$cNo}{$tax}{$unit}{A}[11];
+						$TMPSCORE{G}{$ge}{$unit}{len} = $$B{$cNo}{$tax}{$unit}{A}[3];
+						$TMPSCORE{G}{$ge}{$unit}{mis} = $$B{$cNo}{$tax}{$unit}{A}[4];
+						$TMPSCORE{G}{$ge}{$unit}{gap} = $$B{$cNo}{$tax}{$unit}{A}[5];
+						$TMPSCORE{G}{$ge}{$unit}{$cNo} = $tax; #needed in later summarise part
+					}else{
+						$TMPSCOREBAK{G}{$ge}{$unit}{score} = $$B{$cNo}{$tax}{$unit}{A}[11];
+						$TMPSCOREBAK{G}{$ge}{$unit}{len} = $$B{$cNo}{$tax}{$unit}{A}[3];
+						$TMPSCOREBAK{G}{$ge}{$unit}{mis} = $$B{$cNo}{$tax}{$unit}{A}[4];
+						$TMPSCOREBAK{G}{$ge}{$unit}{gap} = $$B{$cNo}{$tax}{$unit}{A}[5];
+						$TMPSCOREBAK{G}{$ge}{$unit}{$cNo} = $tax;
+					}
+				}
+				#sp
+				if($$B{$cNo}{$tax}{$unit}{A}[11] && $$B{$cNo}{$tax}{$unit}{A}[11] > $TMPSCORE{S}{$ge}{$sp}{$unit}{score}){
+					if($$B{$cNo}{$tax}{$unit}{A}[2] > 99){
+						$TMPSCORE{S}{$ge}{$sp}{$unit}{score} = $$B{$cNo}{$tax}{$unit}{A}[11];
+						$TMPSCORE{S}{$ge}{$sp}{$unit}{$cNo} = $tax; #needed in later summarise part
+					}else{
+						$TMPSCOREBAK{S}{$ge}{$sp}{$unit}{score} = $$B{$cNo}{$tax}{$unit}{A}[11];
+						$TMPSCOREBAK{S}{$ge}{$sp}{$unit}{$cNo} = $tax;
+					}
+				}
+				# record supports of clips to this tax
+				if($$B{$cNo}{$tax}{$unit}{A}[11] && $$B{$cNo}{$tax}{$unit}{A}[2] > 99){
+					$SUPPORTCNO2TAX{$cNo}{$sp}{S} += $$B{$cNo}{$tax}{$unit}{A}[11];
+					$SUPPORTCNO2TAX{$cNo}{$sp}{L} += $$B{$cNo}{$tax}{$unit}{A}[3];
+					$SUPPORTCNO2TAX{$cNo}{$sp}{C} = 1;
+					$SUPPORTCNO2TAX{$cNo}{$sp}{G} = $ge;
+				}
+				# For unique tax records:
+				$SCORE{T}{$tax}{score} += $$B{$cNo}{$tax}{$unit}{A}[11];
+			}
+		}
+		#sum total score for each tax from all ref database:
+		foreach my $ge (sort keys %{$TMPSCORE{G}}){
+			foreach my $unit ("SSU","ITS","LSU"){
+				#sum bitscore
+				$SCORE{G}{$ge}  += $TMPSCORE{G}{$ge}{$unit}{score};
+			}
+		}
+		foreach my $ge (sort keys %{$TMPSCORE{S}}){
+			foreach my $unit ("SSU","ITS","LSU"){
+				foreach my $sp (sort keys %{$TMPSCORE{S}{$ge}}){
+					# if($cNo eq "BI00004826.1.-" && $sp eq "Bacillus sp. 17376" && $unit eq "LSU"){
+					#   print STDERR "checkpoint\n";
+					# }
+					$SCORE{S}{$ge}{$sp}{score}  += $TMPSCORE{S}{$ge}{$sp}{$unit}{score};
+					# calculate more info for species level
+					if(my $tax = $TMPSCORE{S}{$ge}{$sp}{$unit}{$cNo}){
+						$SCORE{S}{$ge}{$sp}{len} += $$B{$cNo}{$tax}{$unit}{A}[3];
+						$SCORE{S}{$ge}{$sp}{mis} += $$B{$cNo}{$tax}{$unit}{A}[4];
+						$SCORE{S}{$ge}{$sp}{gap} += $$B{$cNo}{$tax}{$unit}{A}[5];
+						$SCORE{S}{$ge}{$sp}{$unit}{$cNo} = $tax;
+					}
+				}
+			}
+		}
+		#bak
+		foreach my $ge (sort keys %{$TMPSCOREBAK{G}}){
+			foreach my $unit ("SSU","ITS","LSU"){
+				#sum bitscore
+				$SCOREBAK{G}{$ge} += $TMPSCOREBAK{G}{$ge}{$unit}{SCOREBAK};
+			}
+		}
+		foreach my $ge (sort keys %{$TMPSCOREBAK{S}}){
+			foreach my $unit ("SSU","ITS","LSU"){
+				foreach my $sp (sort keys %{$TMPSCOREBAK{S}{$ge}}){
+					$SCOREBAK{S}{$ge}{$sp}{score}  += $TMPSCOREBAK{S}{$ge}{$sp}{$unit}{score};
+					# calculate more info for species level
+					if(my $tax = $TMPSCOREBAK{S}{$ge}{$sp}{$unit}{$cNo}){
+						$SCOREBAK{S}{$ge}{$sp}{len} += $$B{$cNo}{$tax}{$unit}{A}[3];
+						$SCOREBAK{S}{$ge}{$sp}{mis} += $$B{$cNo}{$tax}{$unit}{A}[4];
+						$SCOREBAK{S}{$ge}{$sp}{gap} += $$B{$cNo}{$tax}{$unit}{A}[5];
+						$SCOREBAK{S}{$ge}{$sp}{$unit}{$cNo} = $tax;
+					}
+				}
+			}
+		}
+	}
+	# summary
+	############################################################################
+	# pick top tax among top species which belonging to the top genus:
+	my (@genus,@topGenus,@species,@topSpecies,$SCO,$ge_1st,$sp_1st,@ge_2nds,@sp_2nds);
+	@genus = sort {$SCORE{G}{$b} <=> $SCORE{G}{$a}} keys %{$SCORE{G}};
+	if( @genus && $SCORE{G}{$genus[0]} ){
+		@topGenus = grep {$SCORE{G}{$_} == $SCORE{G}{$genus[0]} } @genus;
+	}else{
+		@genus = sort (sort {$SCOREBAK{G}{$b} <=> $SCOREBAK{G}{$a}} keys %{$SCOREBAK{G}});
+		@topGenus = grep {$SCOREBAK{G}{$_} == $SCOREBAK{G}{$genus[0]} } @genus;
+	}
+	# search high confidence score:
+	$SCO = \%SCOREBAK;
+	foreach my $ge (@topGenus){
+		@species = sort {$SCORE{S}{$ge}{$b}{score} <=> $SCORE{S}{$ge}{$a}{score}} keys %{$SCORE{S}{$ge}};
+		if(keys %{$SCORE{S}{$ge}} && $SCORE{S}{$ge}{$species[0]}{score}){
+			$SCO = \%SCORE; last;
+		}
+	}
+	foreach my $ge (@topGenus){
+		@species = sort {$$SCO{S}{$ge}{$b}{score} <=> $$SCO{S}{$ge}{$a}{score}} keys %{$$SCO{S}{$ge}};
+		@topSpecies = grep {$$SCO{S}{$ge}{$_}{score} == $$SCO{S}{$ge}{$species[0]}{score} } @species;
+		foreach my $sp (@topSpecies){
+			next unless $$SCO{S}{$ge}{$sp}{score};
+			#$sp_1st ||= $sp;
+			if($$SCO{S}{$ge}{$sp}{score} > $$SCO{S}{$ge_1st}{$sp_1st}{score}){
+				@sp_2nds = ($sp_1st) if $sp_1st; $sp_1st = $sp;
+				@ge_2nds = ($ge_1st) if $ge_1st; $ge_1st = $ge;
+			}elsif($$SCO{S}{$ge}{$sp}{score} == $$SCO{S}{$ge_1st}{$sp_1st}{score}){
+				my $ident = ($$SCO{S}{$ge}{$sp}{mis} + 2 * $$SCO{S}{$ge}{$sp}{gap})/$$SCO{S}{$ge}{$sp}{len};
+				my $id1st = ($$SCO{S}{$ge_1st}{$sp_1st}{mis} + 2 * $$SCO{S}{$ge_1st}{$sp_1st}{gap})/$$SCO{S}{$ge_1st}{$sp_1st}{len};
+				# if(@sp_2nds && $$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{len} == 0 ){
+				#   print STDERR "checkpoint\n";
+				# }
+				my $id2nd = (@sp_2nds)?(($$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{mis} + 2 * $$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{gap})/$$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{len}):1;
+				if($ident < $id1st ){
+					@sp_2nds = ($sp_1st) if $sp_1st; $sp_1st = $sp;
+					@ge_2nds = ($ge_1st) if $ge_1st; $ge_1st = $ge;
+				}elsif($ident < $id2nd){
+					@sp_2nds = ($sp);
+					@ge_2nds = ($ge);
+				}elsif($ident == $id2nd){
+					push @sp_2nds, $sp;
+					push @ge_2nds, $ge;
+				}
+			}elsif($$SCO{S}{$ge}{$sp} > $$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}){
+				@sp_2nds = ($sp);
+				@ge_2nds = ($ge);
+			}elsif($$SCO{S}{$ge}{$sp} == $$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}){
+				my $ident = ($$SCO{S}{$ge}{$sp}{mis} + 2 * $$SCO{S}{$ge}{$sp}{gap})/$$SCO{S}{$ge}{$sp}{len};
+				my $id2nd = (@sp_2nds)?(($$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{mis} + 2 * $$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{gap})/$$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{len}):1;
+				if($ident < $id2nd){
+					@sp_2nds = ($sp);
+					@ge_2nds = ($ge);
+				}elsif($ident == $id2nd){
+					push @sp_2nds, $sp;
+					push @ge_2nds, $ge;
+				}
+			}
+		}
+	}
+	# check whether sp_1st is unique:
+	my ($num2nds,$uniqAnno,$maxDiffLv2nds,$score1st,$score2nd,$id1st,$id2nd) = ((scalar @sp_2nds),"","",);
+	$score1st = $$SCO{S}{$ge_1st}{$sp_1st}{score};
+	$score2nd = (@sp_2nds)?$$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{score}:0;
+	$id1st = sprintf("%.2f",100-100*($$SCO{S}{$ge_1st}{$sp_1st}{mis} + 2 * $$SCO{S}{$ge_1st}{$sp_1st}{gap})/$$SCO{S}{$ge_1st}{$sp_1st}{len});
+	$id2nd = ($$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{len})?sprintf("%.2f",100-100*(($$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{mis} + 2 * $$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{gap})/$$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{len})):0;
+	if($score1st == $score2nd && $id1st == $id2nd){
+		$maxDiffLv2nds = "sameSp."; $uniqAnno = "multi";
+		for(my $i=0; $i<@sp_2nds; $i++){
+			if($ge_2nds[$i] ne $ge_1st){
+				$maxDiffLv2nds = "diffGe.";
+				last;
+			}elsif($sp_2nds[$i] ne $sp_1st){
+				$maxDiffLv2nds = "diffSp.";
+			}
+		}
+	}else{
+		$maxDiffLv2nds = "diffGe.";  $uniqAnno = "unique";
+		for(my $i=0; $i<@sp_2nds; $i++){
+			if($sp_2nds[$i] eq $sp_1st){
+				$maxDiffLv2nds = "sameSp.";
+				last;
+			}elsif($ge_2nds[$i] eq $ge_1st){
+				$maxDiffLv2nds = "sameGe.";
+			}
+		}
+	}
+	#estimate the possibility of hybridize bead:
+	my %HYB;
+	foreach my $cNo (@cNos){
+		my @support_sps = keys %{$SUPPORTCNO2TAX{$cNo}};
+		if(not defined $SUPPORTCNO2TAX{$cNo}{$sp_1st}{C}){
+			foreach my $sp (@support_sps){
+				if($SUPPORTCNO2TAX{$cNo}{$sp}{G} ne $ge_1st && $SUPPORTCNO2TAX{$cNo}{$sp}{G} !~ /metagenome|unidentified|uncultured|unknown/){
+					$HYB{hybCNo} ++; $HYB{hybLen} += $SUPPORTCNO2TAX{$cNo}{$sp}{L};
+					last;
+				}
+			}
+		}
+		$HYB{CNoCount} ++
+	}
+	$HYB{hybCNo} ||= 0; $HYB{hybLen}||=0;
+	$HYB{hybPct} = sprintf("%.2f",100* $HYB{hybCNo} / $HYB{CNoCount});
+	#sum multi clips into a bead scale:
+	my @binfs = ($CID,$BINFO{bLen},$BINFO{piece},0);
+	my @res=("",0,0,0,0,1,0,1,0,0,0,$BINFO{bLen},0,"","","","","");
+	my ($pUnit,$pTax) = ("SSU","");
+	foreach my $unit("SSU","ITS","LSU"){
+		my ($sLen,%REG,@ctypes,@desc) =(0,,,);
+		if ($pUnit ne $unit){$res[13] .=","};
+		foreach my $cNo (@cNos){
+			my $tax = ($SCORE{S}{$ge_1st}{$sp_1st}{score})?$SCORE{S}{$ge_1st}{$sp_1st}{$unit}{$cNo}:$SCOREBAK{S}{$ge_1st}{$sp_1st}{$unit}{$cNo};
+			next unless exists $$B{$cNo}{$tax}{$unit}{A}[0];
+			$sLen ||= $$B{$cNo}{$tax}{$unit}{A}[13];
+			$$B{$cNo}{$tax}{LOTU}=~/^(BI\d+)_k\d+_(\d+)_.+_(C[0-9\-]+)_/;
+			my $ctype = "$2$3";
+			$binfs[3] ++;                                                             #desc: hits of references
+			$res[0]  ||=$sp_1st;                                                      #desc: taxonomy name
+			$res[1]  += $$B{$cNo}{$tax}{$unit}{err};                                  #desc: identity (intermediate value)
+			$res[2]  += $$B{$cNo}{$tax}{$unit}{A}[3];                                 #sum of mapped base (may contained overlaped region in multi fragments)
+			$res[3]  += $$B{$cNo}{$tax}{$unit}{A}[4];                                 #desc: mismatch
+			$res[4]  += $$B{$cNo}{$tax}{$unit}{A}[5];                                 #desc: gap
+			$res[13] .= $$B{$cNo}{$tax}{$unit}{std};                                  #desc: qeury strand
+			$res[10] += $$B{$cNo}{$tax}{$unit}{A}[11];                                #desc: bitScore
+			$res[17] ||= $$B{$cNo}{$tax}{$unit}{A}[1];
+			push @ctypes, "$ctype:$$B{$cNo}{$tax}{$unit}{A}[6]-$$B{$cNo}{$tax}{$unit}{A}[7]";     #desc: query Map desc
+			#push @desc, (($pTax ne $tax)?"$$B{$cNo}{$tax}{taxN}:":"")."$$B{$cNo}{$tax}{$unit}{sf}-$$B{$cNo}{$tax}{$unit}{st}";     #desc: subject Map desc
+			push @desc, (($pTax ne $tax)?"$tax:":"")."$$B{$cNo}{$tax}{$unit}{sf}-$$B{$cNo}{$tax}{$unit}{st}";     #desc: subject Map desc
+			$REG{$$B{$cNo}{$tax}{$unit}{sf}} = $$B{$cNo}{$tax}{$unit}{st};
+			$pTax = $tax;
+		}
+		my $qMapLen = &calCovRegion(\%REG); $res[6] += $qMapLen;
+		$res[12] += $sLen; $res[8] += $sLen;
+		$res[14] .= (@ctypes)?"$unit(".join(",",@ctypes).")":"";                    #desc of clip types covered in each subunits' refs
+		$res[15] .= (@desc)?"$unit(".join(",",@desc).")":"";                        #desc of ref region be aligned
+		$res[16] .= ($sLen>0)?sprintf("$unit(%d)",100*$qMapLen/$sLen):"";
+		$pUnit = $unit;
+	}
+	$res[1] = sprintf("%.2f",100*(1-$res[1]/$res[2]));
+
+	print OUT (join("\t",join("|",@binfs),@res)."\t".join("\t", $uniqAnno, $num2nds, $maxDiffLv2nds, $score1st, $score2nd, $id1st, $id2nd, join(",",((@sp_2nds)?@sp_2nds:""))));
+	print OUT "\t$HYB{hybCNo}\t$HYB{hybLen}\t$HYB{hybPct}\n";
+
+	return(%MHASH);
+}
 
 sub summaryBead{
   my ($BID,$B) = @_;
@@ -1116,7 +1467,7 @@ USAGE
 sub run_otupair {
   &verbose("[otupair] Mode start ... \n");
   my @files = split (",",$inf);
-  &verbose("[otupair] needs two files. Pls check\n") & die $! if @files != 3;
+  &verbose("[otupair] needs 3 files. Pls check\n") & die $! if @files != 3;
   open INF, "<$files[0]" or die $!;
   open TAX, "<$files[1]" or die $!;
   open MAP, "<$files[2]" or die $!;
@@ -1141,6 +1492,7 @@ sub run_otupair {
     chomp;
     my @s = split /\t/;
     $MAP{$s[1]}{$s[0]} ++;
+    $MAP{$s[0]}{$s[1]} ++;
   }
   close MAP;
   ####
@@ -1149,14 +1501,19 @@ sub run_otupair {
   my $LB = $/; $/ = ">";
   while(<INF>){
     chomp; next unless $_;
-    my @s = split;
-    my $id = shift @s;
-    $id =~ s/LOTU_//;
+    my @s = split /\n/;
+    my $L1 = shift @s;
+    $L1 =~ /^(\S+) (.*)$/;
+    my $id = $1;
+    my @t = split /;/,$2;
+    #$id =~ s/LOTU_//;
     $LOTU{$id} = join("\n",@s);
+    next if exists $MAP{$id};
+    $MAP{$t[-1]}{$id} ++;
   }
   close INF; $/ = $LB;
   &verbose("done\n  Reading taxon:\n");
-  chomp(my $ramtmp=("-e /dev/shm")?`mktemp -d /dev/shm/otupair.XXXXXXXXXX`:"mktemp -dp $out.XXX");
+  chomp(my $ramtmp=("-e /dev/shm")?`mktemp -d /dev/shm/otupair.XXXXXXXXXX`:`mktemp -dp $out.XXX`);
   my $summary = 1;
   while(($_ = <TAX>) || $summary ){
     my(@s,@t,$rankScore,$findOTU,@lastRs,$d,$sameRank);
@@ -1164,16 +1521,23 @@ sub run_otupair {
     my $sd = $#lastRs;
     if($_){
       chomp;
+      if($. == 102673){
+        $debug =1 ;
+      }
       @s = split /\t/;
-      @t = split /;/,$s[0];
+      my @st = split /;/,$s[0];
+      next if $st[-1] =~/major_clade__/;
+      foreach my $i (@st){
+        push @t, $i unless $i =~/major_clade__/;
+      }
       $rankScore = $RANK{$s[2]};
       #$findOTU = ($t[-1] =~ s/LOTU_//)?1:0;
 
       $findOTU = ($t[-1] =~ /species__/)?1:0;
       if($findOTU && $t[-2] =~ /genus__/){
         (my $geName = $t[-2]) =~  s/^genus__//;
-        if($t[-1] =~/($geName \S+) (.+)/){
-          my $spName = $1;
+        if($t[-1] =~/$geName (\S+) (.+)/ && $1 !~ /^sp(\.|)$/){
+          my $spName = "species__$geName $1";
           #record a new species level
           unless($LAST{RT}{$rankScore} eq $spName){
             $LAST{R} = $rankScore;
@@ -1181,10 +1545,10 @@ sub run_otupair {
             $LAST{RT}{$rankScore} = $spName;
           }
           #add a level for subspecies
-          push @t, $t[-1];
+          push @t, "sub$t[-1]";
           $t[-2] = $spName;
           $rankScore = $RANK{"subspecies"};
-        }elsif($t[-1] =~/$geName sp/){
+        }elsif($t[-1] =~/$geName (sp|sp\.)$/){
           #not a valid species rank, regard as a member of genus
           $TREE{$LAST{R}}{$LAST{T}}{$findOTU}{$s[-2]} = $rankScore;
           pop @t;
@@ -1209,75 +1573,76 @@ sub run_otupair {
     for(my $i=$#lastRs;$i>$sd;$i--){
       my $r = $lastRs[$i];
       my $tax = $LAST{RT}{$r};
-      next if $tax =~ /uncultured|unknown|unidentified/;
-      my @o = sort {$a<=>$b} keys %{$TREE{$r}{$tax}{1}};
-      # prepare fasta belonging to this taxono
-      open LOTU,"> $ramtmp/lotu.fa" or die $!;
-      my $oCount = 0;
-      my $fistSeq = "";
-      foreach my $o (@o){
-        foreach my $s (sort keys %{$MAP{$o}}){
-          print LOTU ">$o:$s\n$LOTU{$s}\n";
-          $oCount ++;
-          $fistSeq ||= $s;
-          last if $oCount > 9;
-        }
-        last if $oCount > 99;
+      if($tax =~ "kingdom__Fungi"){
+        $debug = 1;
       }
-      my @o2 = sort {$a<=>$b} keys %{$TREE{$r}{$tax}{2}};
-      if(@o2){
-        foreach my $o (@o2){
-          my @s = sort keys %{$MAP{$o}};
-          print LOTU ">$o:$s[0]\n$LOTU{$s[0]}\n";
-          $oCount ++;
-          $fistSeq ||= $s[0];
-          last if $oCount > 99;
-        }
-        push @o,$o2[0];
-      }
-      close LOTU;
-      next unless $oCount > 1;
+      unless($tax =~ /uncultured|unknown|unidentified/){
 
-      # run vsearch alignemnt:
-      my $cmd = "vsearch --threads ".(($oCount <= 50)?1:4)." --allpairs_global $ramtmp/lotu.fa --acceptall --uc - 2> /dev/null ";
-      &verbose(" Processing $r: $RRANK{$r} | $tax: $oCount LOTUs ... ");
-      open UC,"$cmd|" or die $!;
-      my ($minIdent,@idents,@minOtus) = (101,,);
-      if($#lastRs-$sd>2){
-        #print STDERR "checkpoint\n";
-      }
-      while(<UC>){
-        chomp;
-        my @u = split /\t/;
-        next unless $u[0] eq "H";
-        #next if $u[3] < 80;
-        my @ut = sort {$a<=>$b} ($u[8],$u[9]);
-        push @idents, $u[3];
-        @minOtus = ($u[3]<$minIdent)?($ut[0],$ut[1]):@minOtus;
-        $minIdent = ($u[3]<$minIdent)?$u[3]:$minIdent;
-      }
-      close UC;
-      my @sorts = sort {$a<=>$b} @idents;
-      my $snum = $#sorts + 1;
-      my $min = $sorts[0];
-      my $q01 = $sorts[sprintf("%d",$snum/100)];
-      my $q05 = $sorts[sprintf("%d",$snum/20)];
-      my $q25 = $sorts[sprintf("%d",$snum/4)];
-      my $q50 = $sorts[sprintf("%d",$snum/2)];
-      my $q75 = $sorts[sprintf("%d",$snum*3/4)];
-      my $q95 = $sorts[sprintf("%d",$snum*19/20)];
-      my $q99 = $sorts[sprintf("%d",$snum*99/100)];
-      print OUT "$RRANK{$r}\t$tax\t$oCount\t$min\t$q01,$q05,$q25,$q50,$q75,$q95,$q99\n";
-      &verbose("done\n");
-      #pick OTU to next level:
+        my @o = sort {$a<=>$b} keys %{$TREE{$r}{$tax}{1}};
+        # prepare fasta belonging to this taxono
+        open LOTU,"> $ramtmp/lotu.fa" or die $!;
+        my $oCount = 0;
+        my $firstSeq = "";
+        foreach my $o (@o){
+          foreach my $s (sort keys %{$MAP{$o}}){
+            print LOTU ">$s\n$LOTU{$s}\n";
+            $oCount ++;
+            $firstSeq ||= $s;
+            #last if $oCount > 9;
+          }
+          #last if $oCount > 99;
+        }
+        my @o2 = sort {$a<=>$b} keys %{$TREE{$r}{$tax}{2}};
+        if(@o2){
+          foreach my $o (@o2){
+            print LOTU ">$o\n$LOTU{$o}\n";
+            $oCount ++;
+            $firstSeq ||= $o;
+            #last if $oCount > 99;
+          }
+        }
 
-      my $nextR = $lastRs[$i-1];
-      my $nextT = $LAST{RT}{$nextR};
-      if(@minOtus){
-        $TREE{$nextR}{$nextT}{1}{$minOtus[0]} = $nextT;
-        $TREE{$nextR}{$nextT}{1}{$minOtus[1]} = $nextT;
-      }elsif(@o>0){
-        $TREE{$nextR}{$nextT}{2}{$o[0]} = $nextT;
+        close LOTU;
+        # run vsearch alignemnt:
+        my ($minIdent,@idents,@minOtus) = (101,,);
+        if($oCount > 1){
+          my $cmd = "vsearch --threads ".(($oCount <= 50)?1:($oCount <= 100)?8:24)." --allpairs_global $ramtmp/lotu.fa --acceptall --uc - 2> /dev/null ";
+          &verbose(" Processing $r: $RRANK{$r} | $tax: $oCount LOTUs ... ");
+          open UC,"$cmd|" or die $!;
+          while(<UC>){
+            chomp;
+            my @u = split /\t/;
+            next unless $u[0] eq "H";
+            #next if $u[3] < 80;
+            my @ut = sort {$a<=>$b} ($u[8],$u[9]);
+            push @idents, $u[3];
+            @minOtus = ($u[3]<$minIdent)?($ut[0],$ut[1]):@minOtus;
+            $minIdent = ($u[3]<$minIdent)?$u[3]:$minIdent;
+          }
+          close UC;
+          my @sorts = sort {$a<=>$b} @idents;
+          my $snum = $#sorts + 1;
+          my $min = $sorts[0];
+          my $q01 = $sorts[sprintf("%d",$snum/100)];
+          my $q05 = $sorts[sprintf("%d",$snum/20)];
+          my $q25 = $sorts[sprintf("%d",$snum/4)];
+          my $q50 = $sorts[sprintf("%d",$snum/2)];
+          my $q75 = $sorts[sprintf("%d",$snum*3/4)];
+          my $q95 = $sorts[sprintf("%d",$snum*19/20)];
+          my $q99 = $sorts[sprintf("%d",$snum*99/100)];
+          print OUT "$RRANK{$r}\t$tax\t$oCount\t$min\t$q01,$q05,$q25,$q50,$q75,$q95,$q99\n";
+          &verbose("done\n");
+        }
+        #pick OTU to next level:
+
+        my $nextR = $lastRs[$i-1];
+        my $nextT = $LAST{RT}{$nextR};
+        if(@minOtus){
+          $TREE{$nextR}{$nextT}{2}{$minOtus[0]} = $nextT;
+          $TREE{$nextR}{$nextT}{2}{$minOtus[1]} = $nextT;
+        }elsif($firstSeq){
+          $TREE{$nextR}{$nextT}{2}{$firstSeq} = $nextT;
+        }
       }
       #remove recorded tax:
       delete $LAST{RT}{$r};
@@ -1287,9 +1652,16 @@ sub run_otupair {
       print SATDERR "$.. might missing a rank\n";
     }
     $TREE{$LAST{R}}{$LAST{T}}{$findOTU}{$s[-2]} = $rankScore;
+    if(exists $LAST{RT}{$rankScore}){
+      #duplicate rank found:
+      $rankScore +=1;
+    }
     $LAST{R} = $rankScore;
     $LAST{T} = $t[-1];
     $LAST{RT}{$rankScore} = $t[-1];
+    if(@t - scalar keys %{$LAST{RT}} > 1 ){
+      $debug =1;
+    }
   }
   close TAX;
   close OUT;

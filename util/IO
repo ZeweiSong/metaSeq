@@ -92,14 +92,14 @@ sub run_getUCH {
     my @b = split(/\|/, $s[0]);
     if(@s == 27){
       $HYB{$b[0]} = 0;
-      if($s[-7] eq "multi"){
+      if($s[-7] eq "multi" && $s[-6] ne "sameSp."){
         $ABG{$b[0]} ++;
       }
     }elsif(@s == 30){
       if($s[-3] > 0){
         $HYB{$b[0]} ++;
       }
-      if($s[18] eq "multi"){
+      if($s[19] eq "multi" && $s[20] ne "sameSp."){
         $ABG{$b[0]} ++;
       }
     }
@@ -1046,25 +1046,26 @@ sub run_makeClade{
     my $id = shift @ids;
     my $inputfile = "";
     open OUT, ($out)?">$out\_$id":">-" or die $!;
-    if($pid>0){
-      my $counts = scalar (keys %{$UC{$pid}});
-      my $count = 0;
-      open TMP, ">$ramtmp/tmp.fa" or die $!;
-      foreach my $c (sort {$a<=>$b} keys %{$UC{$pid}}){
-        next if $UC{$pid}{$c}{N} < 2;
-        $count ++;
-        print TMP ">$c\n$SEQ{$c}\n";
-        foreach my $m (sort keys %{$UC{$pid}{$c}{M}}){
-          $count ++;
-          print TMP ">$m\n$SEQ{$m}\n";
-        }
-      }
-      close TMP;
-      $inputfile = "$ramtmp/tmp.fa";
-    }else{
-      $inputfile = $inf;
-    }
-    my $cmd = "vsearch --threads $cpu --cluster_fast $inputfile --id $id --uc - ";
+    # if($pid>0){
+    #   my $counts = scalar (keys %{$UC{$pid}});
+    #   my $count = 0;
+    #   open TMP, ">$ramtmp/tmp.fa" or die $!;
+    #   foreach my $c (sort {$a<=>$b} keys %{$UC{$pid}}){
+    #     next if $UC{$pid}{$c}{N} < 2;
+    #     $count ++;
+    #     print TMP ">$c\n$SEQ{$c}\n";
+    #     foreach my $m (sort keys %{$UC{$pid}{$c}{M}}){
+    #       $count ++;
+    #       print TMP ">$m\n$SEQ{$m}\n";
+    #     }
+    #   }
+    #   close TMP;
+    #   $inputfile = "$ramtmp/tmp.fa";
+    # }else{
+    #   $inputfile = $inf;
+    # }
+    $inputfile = $inf;
+    my $cmd = "vsearch --threads $cpu --cluster_fast $inputfile --iddef 0 --id $id --uc - ";
     &verbose("  Clustering at $id [$cmd] \n");
     &readUC($id,$cmd);
     $pid = $id;
@@ -1158,9 +1159,8 @@ sub run_clade2tree{
     my @s = split /\n/;
     my $id = shift @s;
     my $seq = join("\n",@s);
-    my $BID = ($id=~/^(.*BI\d+)_k\d+_(\d+)_.*(C[0-9\-]+)_/)?"$1":$id;
-    my $CID = "$1\_$2\_$3";
-    $SEQ{$BID}{$CID} = $seq;
+    my $CID = &getBID($id);
+    $SEQ{$CID}{$CID} = $seq;
   }
   $/ = $ori;
   close SEQ;
@@ -1186,6 +1186,8 @@ sub run_clade2tree{
       $DBTREE{$s[1]}{name} = $t[-1];
       $DBTREE{$s[1]}{rank} = $s[-1];
       $DBTREE{index}{$t[-1]} = $s[1];
+      $t[-1] =~s/^(\S+)__//;
+      $DBTREE{quickIndex}{$t[-1]} = ($DBTREE{quickIndex}{$t[-1]})?"":$s[1];
       $DBTREE{MAXID} = ($s[1] > $DBTREE{MAXID})? $s[1]:$DBTREE{MAXID};
       #$TREE{$s[1]}{names} = [@t];
     }
@@ -1224,6 +1226,12 @@ sub run_clade2tree{
       $ANNO{$b[0]}{uniq} = $s[19];
       $ANNO{$b[0]}{tax} = $s[1];
       $ANNO{$b[0]}{ident} = $s[2];
+      #determine similairty of this annotation
+      if($RANKI{$ord[0]}{$s[1]}{quants}[4] < $s[2]){
+        $ANNO{$b[0]}{level} = "species";
+      }else{
+        $ANNO{$b[0]}{level} = "CLIP";
+      }
     }
     close ANN;
   }
@@ -1247,11 +1255,11 @@ sub run_clade2tree{
       #next unless $_ =~ /^H/;
       my @s = split /\t/;
       if($s[0] eq "S"){
-        my $BID = ($s[8]=~/^(.*BI\d+)_k\d+_(\d+)_.*(C[0-9\-]+)_/)?"$1":$s[8];
+        my $BID = &getBID($s[8]);
         #check whether clade previously presented:
         unless(exists $CLADE{$cladeLv}{$BID}{No}){
           $cladeNo0 ++;
-          $CLADE{$cladeLv}{$BID}{No} = $cladeNo0;
+          $CLADE{$cladeLv}{$BID}{No} ||= $cladeNo0;
           $CLADEINIT{$cladeNo0} ++;
         }
         my $cladeName = $cladeLv."__".$CLADE{$cladeLv}{$BID}{No};
@@ -1266,26 +1274,24 @@ sub run_clade2tree{
         #remove members under parent clade
         my $cladeParent = $TREE{$cladeName}{parent};
         delete $TREE{$cladeParent}{members}{$BID};
-        #assign for current level
+        #assign for current levelq
         $TREE{$cladeNext}{parent} = $cladeName;
         $TREE{$cladeName}{cladeLv} = $cladeLv;
         $TREE{$cladeName}{children}{$cladeNext} ++ unless $cladeLvNext =~ "CLADEFINAL";
         $TREE{$cladeName}{members}{$BID} ++;
 
       }elsif($s[0] eq "H"){
-        my $BID8 = ($s[8]=~/^(.*BI\d+)_k\d+_(\d+)_.*(C[0-9\-]+)_/)?"$1":$s[8];
-        my $BID9 = ($s[9]=~/^(.*BI\d+)_k\d+_(\d+)_.*(C[0-9\-]+)_/)?"$1":$s[9];
-        if($BID8 eq "BI00000003"){
-          #print STDERR "checkpiont\n";
-        }
-        $CLADE{$cladeLv}{$BID8}{No} = $CLADE{$cladeLv}{$BID9}{No};
+        my $BID8 = &getBID($s[8]);
+        my $BID9 = &getBID($s[9]);
+
+        $CLADE{$cladeLv}{$BID8}{No} ||= $CLADE{$cladeLv}{$BID9}{No};
         # add unique annotation
         if($ANNO{$BID8}{uniq} eq "unique"){
           $CLADE{$cladeLv}{$BID9}{ANN}{$BID8} = $ANNO{$BID8}{ident};
         }
         # Assign next level clade No.
         $cladeNo ++;
-        $CLADE{$cladeLvNext}{$BID8}{No} = $cladeNo;
+        $CLADE{$cladeLvNext}{$BID8}{No} ||= $cladeNo;
 
         my $cladeName = $cladeLv."__".$CLADE{$cladeLv}{$BID9}{No};
         my $cladeNext8 = $cladeLvNext."__".$CLADE{$cladeLvNext}{$BID8}{No};
@@ -1303,31 +1309,40 @@ sub run_clade2tree{
 
         $TREE{$cladeName}{members}{$BID8} ++;
       }elsif($s[0] eq "C"){
-        my $BID = ($s[8]=~/^(.*BI\d+)_k\d+_(\d+)_.*(C[0-9\-]+)_/)?"$1":$s[8];
+        my $BID = &getBID($s[8]);
         my $cladeName = $cladeLv."__".$CLADE{$cladeLv}{$BID}{No};
+        if(exists $TREE{$cladeName}{BID}){
+          die "Duplicate cladeName ($cladeName by $BID vs. $TREE{$cladeName}{BID}) found! Check your data.\n";
+        }
+        if($cladeName eq "CLADE0.995__28"){
+          my $debug =1 ;
+        }
         #pick proper nodes to silva taxon tree
         my %PICKS;
         foreach my $bid (sort keys %{$CLADE{$cladeLv}{$BID}{ANN}}){
           my $taxid = $MAP{S}{$ANNO{$bid}{ID}};
+          unless($taxid){
+            $taxid = $DBTREE{quickIndex}{$ANNO{$bid}{tax}};
+          }
           next if $ANNO{$bid}{ident} < $id * 100;
           my @trees = split /;/,$DBTREE{$taxid}{path};
           my @nodes;
           my $unit = $ANNO{$bid}{U};
-          if($DBTREE{$taxid}{rank} eq "species"){
-            if($RANKI{$unit}{$trees[-2]}{quants}[5] > 99){
-              $RANKI{$unit}{$trees[-1]}{quants}[4] = $RANKI{$unit}{$trees[-2]}{quants}[6];
-            }else{
-              $RANKI{$unit}{$trees[-1]}{quants}[4] = 99;
-            }
-          }
+          # if($DBTREE{$taxid}{rank} eq "species"){
+          #   if($RANKI{$unit}{$trees[-2]}{quants}[4] > 99){
+          #       $RANKI{$unit}{$trees[-1]}{quants}[3] = $RANKI{$unit}{$trees[-2]}{quants}[5];
+          #   }else{
+          #     $RANKI{$unit}{$trees[-1]}{quants}[3] = 99;
+          #   }
+          # }
           if($ANNO{$bid}{ident} > 99.5 && $DBTREE{$taxid}{rank} eq "species" && $id > 0.99){
             #print STDERR "checkpiont\n";
           }
           for(my $i=0;$i<@trees;$i++){
             my $t = $trees[$i];
             my $rankCutoff = 0;
-            if($RANKI{$unit}{$t}{quants}[4]){
-              $rankCutoff = $RANKI{$unit}{$t}{quants}[4];
+            if($RANKI{$unit}{$t}{quants}[3]){
+              $rankCutoff = $RANKI{$unit}{$t}{quants}[3];
             }elsif(exists $DEFAULT_IDENTITY{$DBTREE{$DBTREE{index}{$t}}{rank}}){
               $rankCutoff = $DEFAULT_IDENTITY{$DBTREE{$DBTREE{index}{$t}}{rank}} * 100;
             }else{
@@ -1346,15 +1361,16 @@ sub run_clade2tree{
           my @orders = sort {$PICKS{$b} <=> $PICKS{$a}} keys %PICKS;
           next if @orders > 1 && $PICKS{$orders[0]} == $PICKS{$orders[1]};
           $CLADE{$cladeLv}{$BID}{Node} = $orders[0];
+          $TREE{$cladeName}{BID} = $BID;
           $TREE{$cladeName}{UNDERTAX} = $orders[0];
           $TREE{$cladeName}{UNDERPATH} = $DBTREE{$DBTREE{index}{$orders[0]}}{path};
           $TREE{$cladeName}{cladeLv} = $DBTREE{$DBTREE{index}{$orders[0]}}{rank};
           $TREE{$cladeName}{rankID} = $DBTREE{index}{$orders[0]};
           #$CLADE{$cladeLv}{NODES}{$orders[0]} ++;
         }else{
-          if($id == 0.97){
+          if($id == 0.99){
             $TREE{$cladeName}{cladeLv} = "genus";
-          }elsif($id == 0.99){
+          }elsif($id == 0.995){
             $TREE{$cladeName}{cladeLv} = "species";
           }
           $rankID ++;
@@ -1384,11 +1400,20 @@ sub run_clade2tree{
   return();
 }
 
+sub getBID{
+  my $i = shift;
+  my $id = ($i =~ /^(.*BI\d+)_k\d+_(\d+)_.*C([0-9]+|-)_/)?"$1\.$2\.$3":$i;
+  return($id);
+}
+
 sub printTree{
   my($path,$clade,$T) = @_;
   # if(exists $$T{$clade}{UNDERTAX}){
   #   $path = $$T{$clade}{UNDERPATH};
   # }else{
+  if($clade eq "CLADE0.995__28"){
+    my $debug = 1;
+  }
     $path .="$clade;";
     #unless($$T{$clade}{rankID}){
       $rankID ++;
@@ -1407,8 +1432,12 @@ sub printTree{
     #   #$DBTREE{$DBTREE{index}{$t}}{path};
     #   print OUT "$DBTREE{$DBTREE{index}{$t}}{path}$chs;\t$rankID\tBEAD\t$ANNO{$chs}{A}\n";
     # }else{
-      print OUT "$path$chs;\t$rankID\tBEAD\t$chs\t$ANNO{$chs}{tax}\t$ANNO{$chs}{A}\n";
+    my $theRank = ($ANNO{$chs}{level})?$ANNO{$chs}{level}:"BEAD";
+      print OUT "$path$chs;\t$rankID\t$theRank\t$chs\t$ANNO{$chs}{tax}\t$ANNO{$chs}{A}\n";
     # }
+    if($chs eq "Aspergillus_ustus"){
+      my $debug = 1;
+    }
     foreach my $s (sort keys %{$SEQ{$chs}}){
        print TID "$s\t$rankID\n";
        print FNA ">$s\n$SEQ{$chs}{$s}\n";

@@ -65,6 +65,9 @@ if($align =~/.(blast6|m6)$/){
   while(<ALN>){
   	chomp;
   	my @a= split(/\t/,$_);
+    if($a[0] eq "Penicillium_expansum" && ($a[1] eq "AB028137.1.1770" or $HASH{$a[1]}{T} eq "Penicillium expansum")){
+      my $debug = 1;
+    }
     %TMPANN = () if $preQuery ne $a[0];
     next if exists $TMPANN{$HASH{$a[1]}{T}};
   	my $ann = $HASH{$a[1]}{A};

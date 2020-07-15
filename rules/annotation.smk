@@ -238,7 +238,7 @@ rule CLIP_assignmentS:
     input: outXac
     output:
         ssu = "{sample}/ANNO/CLIP.map.SSU.m6"
-    threads: 8
+    threads: 16
     params: config["OpenRef"]["silva_SSU_blastdb"]
     shell:
         "blastn -num_threads {threads} -perc_identity 95 -word_size 77 "
@@ -257,7 +257,7 @@ rule CLIP_assignmentL:
     input: outXac
     output:
         lsu = "{sample}/ANNO/CLIP.map.LSU.m6"
-    threads: 8
+    threads: 16
     params: config["OpenRef"]["silva_LSU_blastdb"]
     shell:
         "blastn -num_threads {threads} -perc_identity 95 -word_size 77 "
@@ -276,7 +276,7 @@ rule CLIP_assignmentUNITE:
     input: outXac
     output:
         ssu = "{sample}/ANNO/CLIP.map.UNITE.m6"
-    threads: 8
+    threads: 16
     params: config["OpenRef"]["unite_ITS_blastdb"]
     shell:
         "blastn -num_threads {threads} -perc_identity 95 -word_size 77 "
@@ -472,5 +472,5 @@ rule KRAKEN_X_sum2species:
         report = kkXpfx + ".bead.breport2"
     threads: 1
     shell:
-        "bracken -d {input.db} -i {input.report} -o {output.profile} -l S -w {output.report}"
+        "bracken -d {input.db} -i {input.report} -o {output.profile} -l S > {output.report}"
 #        "metabbq IO sumprf -r species -n {input.db}/taxonomy/names.dmp -i {input.prf} -o {output}"
