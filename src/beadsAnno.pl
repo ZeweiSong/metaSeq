@@ -59,6 +59,7 @@ my (%CLUST);
 &run_B2b   if $mode eq "b2b";
 &run_cbr   if $mode eq "cbr"; #check beads region
 &run_otupair if $mode eq "otupair";
+&run_otuGC if $mode eq "gc";
 # Main end
 
 &verbose("[log] All done!\n");
@@ -1679,6 +1680,193 @@ sub run_otupair {
       $debug =1;
     }
     $TREE{$LAST{R}}{$LAST{T}}{$findOTU}{$s[-2]} = $rankScore;
+
+  }
+  close TAX;
+  close OUT;
+
+  &verbose("done\n");
+}
+
+
+################################################################################
+# OTU GC content calculator
+################################################################################
+
+sub run_otuGC {
+  &verbose("[otuGC] Mode start ... \n");
+  my @files = split (",",$inf);
+  &verbose("[otuGC] needs 3 files. Pls check\n") & die $! if @files != 3;
+  open INF, "<$files[0]" or die $!;
+  open TAX, "<$files[1]" or die $!;
+  open MAP, "<$files[2]" or die $!;
+  open OUT, ">$out" or die $!;
+  ####
+  my (%RANK,%RRANK,%MAP);
+  my ($rs,$ss,)=(10,0);
+  ($RANK{all},$RANK{root},$RANK{major_clade}) = (0,1,99);
+  ($RRANK{0},$RRANK{1},$RRANK{99}) = ("all","root","major_clade");
+  foreach my $r ("domain","kingdom","phylum","class","order","family","genus","species","LOTU"){
+    $ss = -1;
+    foreach my $s ("super","","sub","infra"){
+      $RANK{"$s$r"} = $rs + $ss;
+      $RRANK{$rs+$ss} = "$s$r";
+      $ss ++;
+    }
+    $rs += 10;
+  }
+  ####
+  &verbose("  Reading taxid ... ");
+  while(<MAP>){
+    chomp;
+    my @s = split /\t/;
+    $MAP{$s[1]}{$s[0]} ++;
+    $MAP{$s[0]}{$s[1]} ++;
+  }
+  close MAP;
+  ####
+  my(%TREE,%LOTU,%LAST,%UC);
+  &verbose("done\n  Reading tax ... ");
+  my $LB = $/; $/ = ">";
+  while(<INF>){
+    chomp; next unless $_;
+    my @s = split /\n/;
+    my $L1 = shift @s;
+    my ($id,$tax);
+    if($L1 =~ /^(\S+) (.*)$/){
+      $id = $1;
+      my @t = split /;/,$2;
+      $tax = $t[-1];
+    }else{
+      $id = $L1;
+      $tax = (keys %{$MAP{$id}})[0];
+    }
+    my $str = join("\n",@s);
+    my $cN  = length($str);
+    my $cGC = $str =~ tr/GC/GC/;
+    $LOTU{$id} = $cGC / $cN;
+    next if exists $MAP{$id};
+    $MAP{$tax}{$id} ++;
+  }
+  close INF; $/ = $LB;
+  &verbose("done\n  Reading taxon:\n");
+  my $summary = 1;
+  while(($_ = <TAX>) || $summary ){
+    my(@s,@t,$rankScore,$findOTU,@lastRs,$d,$sameRank);
+    @lastRs = sort {$a<=>$b} keys %{$LAST{RT}};
+    my $sd = $#lastRs;
+    if($_){
+      chomp;
+      @s = split /\t/;
+      my @st = split /;/,$s[0];
+      next if $st[-1] =~/major_clade__/;
+      foreach my $i (@st){
+        push @t, $i unless $i =~/major_clade__/;
+      }
+      if($RANK{$s[3]}){
+        $rankScore = $RANK{$s[3]};
+      }else{
+        if($s[3] =~ /CLADE([0-9.]+)/){
+          $rankScore = $1 * 100;
+        }else{
+          $rankScore = 101;
+        }
+      }
+
+      $findOTU = ($t[-1] =~ /species__/)?1:0;
+      if($findOTU && $t[-2] =~ /genus__/){
+        if($t[-1] =~ /species__Alexandrium ostenfeldii/){
+          my $debug = 1;
+        }
+        (my $geName = $t[-2]) =~  s/^genus__//;
+        #if($t[-1] =~/$geName (\S+) (.+)/ && $1 !~ /^sp(\.|)$/){
+        if($t[-1] =~/$geName (\S+) (.*)/){
+          my $spName = "species__$geName $1";
+          #record a new species level
+          unless($LAST{RT}{$rankScore} eq $spName){
+            $LAST{R} = $rankScore;
+            $LAST{T} = $spName;
+            $LAST{RT}{$rankScore} = $spName;
+          }
+          #add a level for subspecies
+          push @t, "sub$t[-1]";
+          $t[-2] = $spName;
+          $rankScore = $RANK{"subspecies"};
+        }
+      }
+      $sameRank = "";
+      for($d=0;$d<@lastRs;$d ++){
+        if($sameRank eq "" && $LAST{RT}{$lastRs[$d]} ne $t[$d]){
+          $sameRank =  $lastRs[$d-1];
+          $sd = $d-1;
+        }
+      }
+      $LAST{R} = $lastRs[-1];
+      $LAST{T} = $t[-2];
+    }else{
+      $summary = 0;
+      $sd = -1;
+      #summary after end line
+    }
+    #summary previouse taxonomies
+    for(my $i=$#lastRs;$i>$sd;$i--){
+      my $r = $lastRs[$i];
+      my $tax = $LAST{RT}{$r};
+      unless($tax =~ /uncultured|unknown|unidentified/){
+
+        my @o = (sort {$a<=>$b} keys %{$TREE{$r}{$tax}{0}}, sort {$a<=>$b} keys %{$TREE{$r}{$tax}{1}});
+        # prepare fasta belonging to this taxono
+        my %GCSTAT;
+        my $oCount = 0;
+        my $firstSeq = "";
+        foreach my $o (@o){
+          foreach my $s (sort keys %{$MAP{$o}}){
+            $GCSTAT{sum} += $LOTU{$s};
+            $GCSTAT{num} ++;
+            $oCount ++;
+            $firstSeq ||= $s;
+          }
+        }
+
+        if($TREE{$r}{$tax}{2}{num}){
+          $GCSTAT{sum} += $TREE{$r}{$tax}{2}{sum};
+          $GCSTAT{num} += $TREE{$r}{$tax}{2}{num};
+          $oCount ++;
+        }
+
+        # run vsearch alignemnt:
+        my ($minIdent,@idents,@minOtus) = (101,,);
+        if($oCount > 0){
+          my $meanGC = $GCSTAT{sum} / $GCSTAT{num};
+          print OUT sprintf("%d\t%s\t%d\t%.4f\n",$LAST{RI}{$r},$tax,$GCSTAT{num},$meanGC);
+          #&verbose(" Processing $r: $tax | $LAST{RC}{$r} : $oCount LOTUs \n");
+        }
+        my $nextR = $lastRs[$i-1];
+        my $nextT = $LAST{RT}{$nextR};
+        #pick OTU to next level:
+        $TREE{$nextR}{$nextT}{2}{num} = $GCSTAT{num};
+        $TREE{$nextR}{$nextT}{2}{sum} = $GCSTAT{sum};
+      }
+      #remove recorded tax:
+      delete $LAST{RT}{$r};
+    }
+    #summary current  taxonomies
+    if($sd != $#t ){
+      print SATDERR "$.. might missing a rank\n";
+    }
+    if(exists $LAST{RT}{$rankScore}){
+      #duplicate rank found:
+      $rankScore +=1;
+    }
+    $LAST{R} = $rankScore;
+    $LAST{T} = $t[-1];
+    $LAST{RT}{$rankScore} = $t[-1];
+    $LAST{RI}{$rankScore} = $s[1];
+    $LAST{RC}{$rankScore} = $s[4];
+    if(@t - scalar keys %{$LAST{RT}} > 1 ){
+      $debug =1;
+    }
+    $TREE{$LAST{R}}{$LAST{T}}{$findOTU}{$s[1]} = $rankScore;
 
   }
   close TAX;
