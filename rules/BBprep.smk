@@ -38,7 +38,7 @@ if config["AdFw"] and config["AdRv"]:
             "--out1 {output.r1} --out2 {output.r2} "
             "--json {output.json} --html {output.html} "
             "--disable_trim_poly_g --report_title {params.title} "
-            "-w {threads} -V &> {log}\n"
+            "-w {threads} -V -B -W 30 &> {log}\n"
 else:
     rule BB_1_stLFR:
         input:
