@@ -1123,14 +1123,14 @@ our(%ANNO,%MAP,%DBTREE,%RANKI,%SEQ,$rankID,%OCC);
 $rankID = 1;
 sub run_clade2tree{
   &usage4clade2tree("generate a path tree from vsearch uc file") && exit unless @ARGV;
-  my ($seq,$ann,$db,$units,$upfx,$ids,$lsu,$mode,$out);
+  my ($seq,$ann,$db,$units,$upfx,$ids,$lsu,$pmode,$out);
   GetOptions(
     "i=s" => \$seq,
     "a=s" => \$ann,
     "d=s" => \$db,
     "s=s" => \$upfx,
     "u=s" => \$units,
-    "m=s" => \$mode,
+    "m=s" => \$pmode,
     "o=s" => \$out,
     "v" => \$verbose,
     "h|help|?" => \$help,
@@ -1139,9 +1139,10 @@ sub run_clade2tree{
   #&usage("[fatal] Essential input is missing");
   &verbose("[clade2tree] start\n  Initaiating ... ");
   my(%TREE,%CLADE,%CLADEINIT);
-  $mode ||= "bac";
+  $pmode ||= "bac";
   $units ||= "ssu,its,lsu";
   $ids ||= "0.4,0.5,0.66,0.72,0.77,0.83,0.89,0.92,0.95,0.97,0.98,0.99,0.995,0.999,1";
+  &verbose("mode:$pmode | units:$units ... ");
   my %DEFAULT_IDENTITY = ("domain",0.66,"kingdom",0.7,"phylum",0.76,"class",0.77,"order",0.83,"family",0.89,"genus",0.97,"species",0.995);
   if($out){
     system("mkdir -p $out/{data,library}");
@@ -1383,7 +1384,7 @@ sub run_clade2tree{
           $TREE{$cladeName}{rankID} = $DBTREE{index}{$orders[0]};
           #$CLADE{$cladeLv}{NODES}{$orders[0]} ++;
         }else{
-          if($mode eq "bac"){
+          if($pmode eq "bac"){
             #for bac
             if($id == 0.97){
               $TREE{$cladeName}{cladeLv} = "genus";
