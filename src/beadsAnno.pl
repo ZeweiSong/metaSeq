@@ -515,7 +515,7 @@ sub checkOrder{
   $id2=($id2 eq <EOF>)?"~":$id2;
   $id3=($id3 eq <EOF>)?"~":$id3;
   my %HS = ( 1 => $id1, 2 => $id2, 3 => $id3);
-  my @od = sort keys %HS;
+  my @od = sort { $HS{$a} cmp $HS{$b} } keys %HS;
   my @pick = (0,0,0,0,$HS{$od[0]});
     # $pick[0] => number of picked files to read
     # $pick[1] => pick file 1 or not
@@ -753,7 +753,7 @@ sub run_cbr {
       %PITS = %EMPTY;
     }
     #summary annotation of this OTU
-    if($pick[4] eq "BI00540568"){
+    if($pick[4] =~ "BI00000022"){
       my $debug = 1;
     }
     %{$BEADINFO{$pick[4]}} = &summaryAnno2(\%PLSU,\%PSSU,\%PITS,$pick[4]);
@@ -919,7 +919,7 @@ sub summaryAnno2{
 
 	#part 2: summary
 
-	my $BID = ($CID =~ /^(\S+\d+)\.(\d+)\.([-0-9]+)/)?$1:$CID;
+	my $BID = ($CID =~ /^(.*BI\d+)_k\d+_(\d+)_.*C([0-9]+|-)_/)?$1:$CID;
   my %BI;
 	%{$BI{$CID}} = %MHASH;
 
@@ -1062,7 +1062,7 @@ sub summaryAnno2{
 				# if(@sp_2nds && $$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{len} == 0 ){
 				#   print STDERR "checkpoint\n";
 				# }
-				my $id2nd = (@sp_2nds)?(($$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{mis} + 2 * $$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{gap})/$$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{len}):1;
+				my $id2nd = (@sp_2nds && $$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{len}> 0)?(($$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{mis} + 2 * $$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{gap})/$$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{len}):1;
 				if($ident < $id1st ){
 					@sp_2nds = ($sp_1st) if $sp_1st; $sp_1st = $sp;
 					@ge_2nds = ($ge_1st) if $ge_1st; $ge_1st = $ge;
@@ -1315,7 +1315,7 @@ sub summaryBead{
         # if(@sp_2nds && $$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{len} == 0 ){
         #   print STDERR "checkpoint\n";
         # }
-        my $id2nd = (@sp_2nds)?(($$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{mis} + 2 * $$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{gap})/$$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{len}):1;
+        my $id2nd = ($$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{len}>0)?(($$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{mis} + 2 * $$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{gap})/$$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{len}):1;
         if($ident < $id1st ){
           @sp_2nds = ($sp_1st) if $sp_1st; $sp_1st = $sp;
           @ge_2nds = ($ge_1st) if $ge_1st; $ge_1st = $ge;
@@ -1503,13 +1503,19 @@ sub run_otupair {
     chomp; next unless $_;
     my @s = split /\n/;
     my $L1 = shift @s;
-    $L1 =~ /^(\S+) (.*)$/;
-    my $id = $1;
-    my @t = split /;/,$2;
+    my ($id,$tax);
+    if($L1 =~ /^(\S+) (.*)$/){
+      $id = $1;
+      my @t = split /;/,$2;
+      $tax = $t[-1];
+    }else{
+      $id = $L1;
+      $tax = (keys %{$MAP{$id}})[0];
+    }
     #$id =~ s/LOTU_//;
     $LOTU{$id} = join("\n",@s);
     next if exists $MAP{$id};
-    $MAP{$t[-1]}{$id} ++;
+    $MAP{$tax}{$id} ++;
   }
   close INF; $/ = $LB;
   &verbose("done\n  Reading taxon:\n");
@@ -1535,8 +1541,12 @@ sub run_otupair {
 
       $findOTU = ($t[-1] =~ /species__/)?1:0;
       if($findOTU && $t[-2] =~ /genus__/){
+        if($t[-1] =~ /species__Alexandrium ostenfeldii/){
+          my $debug = 1;
+        }
         (my $geName = $t[-2]) =~  s/^genus__//;
-        if($t[-1] =~/$geName (\S+) (.+)/ && $1 !~ /^sp(\.|)$/){
+        #if($t[-1] =~/$geName (\S+) (.+)/ && $1 !~ /^sp(\.|)$/){
+        if($t[-1] =~/$geName (\S+) (.*)/){
           my $spName = "species__$geName $1";
           #record a new species level
           unless($LAST{RT}{$rankScore} eq $spName){
@@ -1548,12 +1558,14 @@ sub run_otupair {
           push @t, "sub$t[-1]";
           $t[-2] = $spName;
           $rankScore = $RANK{"subspecies"};
-        }elsif($t[-1] =~/$geName (sp|sp\.)$/){
-          #not a valid species rank, regard as a member of genus
-          $TREE{$LAST{R}}{$LAST{T}}{$findOTU}{$s[-2]} = $rankScore;
-          pop @t;
-          $rankScore = $RANK{"genus"};
         }
+        #elsif($t[-1] =~/$geName (sp|sp\.)$/){
+        #   #not a valid species rank, cautious
+        #   $TREE{$LAST{R}}{$LAST{T}}{$findOTU}{$s[-2]} = $rankScore;
+        #   pop @t;
+        #   $rankScore = $RANK{"species"};
+        # }
+
       }
       $sameRank = "";
       for($d=0;$d<@lastRs;$d ++){
@@ -1584,13 +1596,15 @@ sub run_otupair {
         my $oCount = 0;
         my $firstSeq = "";
         foreach my $o (@o){
+          if($o == 14501){
+            my $debug = 1;
+          }
           foreach my $s (sort keys %{$MAP{$o}}){
             print LOTU ">$s\n$LOTU{$s}\n";
             $oCount ++;
             $firstSeq ||= $s;
-            #last if $oCount > 9;
+            last if $oCount > 99;
           }
-          #last if $oCount > 99;
         }
         my @o2 = sort {$a<=>$b} keys %{$TREE{$r}{$tax}{2}};
         if(@o2){
@@ -1598,7 +1612,7 @@ sub run_otupair {
             print LOTU ">$o\n$LOTU{$o}\n";
             $oCount ++;
             $firstSeq ||= $o;
-            #last if $oCount > 99;
+            last if $oCount > 99;
           }
         }
 
@@ -1606,6 +1620,9 @@ sub run_otupair {
         # run vsearch alignemnt:
         my ($minIdent,@idents,@minOtus) = (101,,);
         if($oCount > 1){
+          if($tax =~ / sp/){
+            my $debug = 1;
+          }
           my $cmd = "vsearch --threads ".(($oCount <= 50)?1:($oCount <= 100)?8:24)." --allpairs_global $ramtmp/lotu.fa --acceptall --uc - 2> /dev/null ";
           &verbose(" Processing $r: $RRANK{$r} | $tax: $oCount LOTUs ... ");
           open UC,"$cmd|" or die $!;
@@ -1651,7 +1668,6 @@ sub run_otupair {
     if($sd != $#t ){
       print SATDERR "$.. might missing a rank\n";
     }
-    $TREE{$LAST{R}}{$LAST{T}}{$findOTU}{$s[-2]} = $rankScore;
     if(exists $LAST{RT}{$rankScore}){
       #duplicate rank found:
       $rankScore +=1;
@@ -1662,6 +1678,8 @@ sub run_otupair {
     if(@t - scalar keys %{$LAST{RT}} > 1 ){
       $debug =1;
     }
+    $TREE{$LAST{R}}{$LAST{T}}{$findOTU}{$s[-2]} = $rankScore;
+
   }
   close TAX;
   close OUT;
