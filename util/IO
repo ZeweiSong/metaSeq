@@ -1023,7 +1023,7 @@ sub run_makeClade{
   #&usage("[fatal] Essential input is missing");
   &verbose("[makeClade] Mode start\n");
   my (%SEQ);
-  $ids ||= "0.4,0.5,0.66,0.72,0.77,0.83,0.89,0.92,0.97,0.99,0.995,0.999,1";
+  $ids ||= "0.4,0.5,0.66,0.72,0.77,0.83,0.89,0.92,0.95,0.97,0.98,0.99,0.995,0.999,1";
   $cpu ||= 1;
   my @ids = split /,/,$ids;
   open INF, "< $inf" or die $!;
@@ -1111,6 +1111,9 @@ usage:
           <db>/data/vsearch.allpair.txt
     -s  units clusters prefix
     -u  units to combine [ssu,its,lsu]
+    -m  mode of cutoff for default genus and species clade. Default is [bac]
+          bac: 0.99 for genus and 0.995 for species, according to SSU and LSU distribution.
+          euk: 0.95 for genus and 0.97 for species, according to ITS distribution.
     -o  output db dir
     -v  verbose
     -h  show help info
@@ -1120,13 +1123,14 @@ our(%ANNO,%MAP,%DBTREE,%RANKI,%SEQ,$rankID,%OCC);
 $rankID = 1;
 sub run_clade2tree{
   &usage4clade2tree("generate a path tree from vsearch uc file") && exit unless @ARGV;
-  my ($seq,$ann,$db,$units,$upfx,$ids,$lsu,$out);
+  my ($seq,$ann,$db,$units,$upfx,$ids,$lsu,$mode,$out);
   GetOptions(
     "i=s" => \$seq,
     "a=s" => \$ann,
     "d=s" => \$db,
     "s=s" => \$upfx,
     "u=s" => \$units,
+    "m=s" => \$mode,
     "o=s" => \$out,
     "v" => \$verbose,
     "h|help|?" => \$help,
@@ -1135,8 +1139,9 @@ sub run_clade2tree{
   #&usage("[fatal] Essential input is missing");
   &verbose("[clade2tree] start\n  Initaiating ... ");
   my(%TREE,%CLADE,%CLADEINIT);
+  $mode ||= "bac";
   $units ||= "ssu,its,lsu";
-  $ids ||= "0.4,0.5,0.66,0.72,0.77,0.83,0.89,0.92,0.97,0.99,0.995,0.999,1";
+  $ids ||= "0.4,0.5,0.66,0.72,0.77,0.83,0.89,0.92,0.95,0.97,0.98,0.99,0.995,0.999,1";
   my %DEFAULT_IDENTITY = ("domain",0.66,"kingdom",0.7,"phylum",0.76,"class",0.77,"order",0.83,"family",0.89,"genus",0.97,"species",0.995);
   if($out){
     system("mkdir -p $out/{data,library}");
@@ -1214,23 +1219,27 @@ sub run_clade2tree{
       chomp;
       my @s = split "\t";
       my @b = split(/\|/, $s[0]);
+      my $CID = &getBID($b[0]);
       next unless $s[19] eq "unique";
       my %TMP;
       $TMP{ssu} = ($s[17]=~/SSU\((\d+)\)/)?$1:0;
       $TMP{lsu} = ($s[17]=~/LSU\((\d+)\)/)?$1:0;
       $TMP{its} = ($s[17]=~/ITS\((\d+)\)/)?$1:0;
       my @ord = sort {$TMP{$b} <=> $TMP{$a}} keys %TMP;
-      $ANNO{$b[0]}{U} = $ord[0];
-      $ANNO{$b[0]}{A} = $_;
-      $ANNO{$b[0]}{ID} = $s[18];
-      $ANNO{$b[0]}{uniq} = $s[19];
-      $ANNO{$b[0]}{tax} = $s[1];
-      $ANNO{$b[0]}{ident} = $s[2];
+      $ANNO{$CID}{U} = $ord[0];
+      $ANNO{$CID}{A} = $_;
+      $ANNO{$CID}{ID} = $s[18];
+      $ANNO{$CID}{uniq} = $s[19];
+      $ANNO{$CID}{tax} = $s[1];
+      $ANNO{$CID}{ident} = $s[2];
+      if($CID eq "O5BI00017539.1.1"){
+        my $debug = 1;
+      }
       #determine similairty of this annotation
-      if($RANKI{$ord[0]}{$s[1]}{quants}[4] < $s[2]){
-        $ANNO{$b[0]}{level} = "species";
+      if($RANKI{$ord[0]}{$s[1]}{quants}[4] && $RANKI{$ord[0]}{$s[1]}{quants}[4] < $s[2]){
+        $ANNO{$CID}{level} = "species";
       }else{
-        $ANNO{$b[0]}{level} = "CLIP";
+        $ANNO{$CID}{level} = "CLIP";
       }
     }
     close ANN;
@@ -1239,7 +1248,7 @@ sub run_clade2tree{
   my @ids = split /,/,$ids;
   $cladeInit = ($cladeInit<$ids[0])?$cladeInit:$ids[0];
   my ($pCladeLv,$cladeNo0)=("",0);
-
+  my $lastID = 0;
   while(@ids){
     my $id = shift @ids;
     if($id == 0.5){
@@ -1247,6 +1256,7 @@ sub run_clade2tree{
     }
     open SUC, "<$upfx\_$id" or next;
     my $cladeLv = "CLADE$id";
+    my $cladeLvLast = "CLADE$lastID";
     my $cladeLvNext = (@ids)?"CLADE$ids[0]":"CLADEFINAL";
     my $cladeNo = 0;
     &verbose("$id ");
@@ -1256,67 +1266,79 @@ sub run_clade2tree{
       my @s = split /\t/;
       if($s[0] eq "S"){
         my $BID = &getBID($s[8]);
-        #check whether clade previously presented:
-        unless(exists $CLADE{$cladeLv}{$BID}{No}){
-          $cladeNo0 ++;
-          $CLADE{$cladeLv}{$BID}{No} ||= $cladeNo0;
-          $CLADEINIT{$cladeNo0} ++;
-        }
-        my $cladeName = $cladeLv."__".$CLADE{$cladeLv}{$BID}{No};
+
+        $cladeNo ++;
+        $CLADE{$cladeLv}{$BID}{No} = $cladeNo;
         # add unique annotation
         if($ANNO{$BID}{uniq} eq "unique"){
           $CLADE{$cladeLv}{$BID}{ANN}{$BID} = $ANNO{$BID}{ident};
         }
-        # Assign next level clade No.
-        $cladeNo ++;
-        $CLADE{$cladeLvNext}{$BID}{No} = $cladeNo;
-        my $cladeNext = $cladeLvNext."__".$CLADE{$cladeLvNext}{$BID}{No};
+
+        my $cladeName = $cladeLv."__".$CLADE{$cladeLv}{$BID}{No};
+        my $cladeParent = $cladeLvLast."__".$CLADE{$cladeLvLast}{$BID}{No};
+
         #remove members under parent clade
-        my $cladeParent = $TREE{$cladeName}{parent};
         delete $TREE{$cladeParent}{members}{$BID};
+        $TREE{$cladeParent}{children}{$cladeName} ++ ;
+
         #assign for current levelq
-        $TREE{$cladeNext}{parent} = $cladeName;
         $TREE{$cladeName}{cladeLv} = $cladeLv;
-        $TREE{$cladeName}{children}{$cladeNext} ++ unless $cladeLvNext =~ "CLADEFINAL";
         $TREE{$cladeName}{members}{$BID} ++;
+        #mark parent
+        if(exists $TREE{$cladeName}{parent}){
+          my $debug = 1;
+        }
+        $TREE{$cladeName}{parent}{$cladeParent} ++;
 
       }elsif($s[0] eq "H"){
         my $BID8 = &getBID($s[8]);
         my $BID9 = &getBID($s[9]);
-
-        $CLADE{$cladeLv}{$BID8}{No} ||= $CLADE{$cladeLv}{$BID9}{No};
+        if($BID8 =~ /Z1BI00003170/){
+          my $debug =1;
+        }
+        if(exists $CLADE{$cladeLv}{$BID8}{No} ){
+          die "$BID8 already presented. Check again.\n";
+        }
+        $CLADE{$cladeLv}{$BID8}{No} = $CLADE{$cladeLv}{$BID9}{No};
         # add unique annotation
         if($ANNO{$BID8}{uniq} eq "unique"){
           $CLADE{$cladeLv}{$BID9}{ANN}{$BID8} = $ANNO{$BID8}{ident};
         }
-        # Assign next level clade No.
-        $cladeNo ++;
-        $CLADE{$cladeLvNext}{$BID8}{No} ||= $cladeNo;
 
         my $cladeName = $cladeLv."__".$CLADE{$cladeLv}{$BID9}{No};
-        my $cladeNext8 = $cladeLvNext."__".$CLADE{$cladeLvNext}{$BID8}{No};
+        my $cladeParent = $cladeLvLast."__".$CLADE{$cladeLvLast}{$BID8}{No};
+        my $cladeParent9 = $cladeLvLast."__".$CLADE{$cladeLvLast}{$BID9}{No};
 
         #remove members under parent clade
-        my $cladeParent = $TREE{$cladeName}{parent};
-        delete $TREE{$cladeParent}{members}{$BID8};
+        if($cladeParent ne $cladeParent9){
+          my $debug = 1;
+          delete $TREE{$cladeParent}{children}{$cladeName};
+          delete $TREE{$cladeParent}{members}{$BID8};
+          $cladeParent = $cladeParent9;
+        }else{
+          delete $TREE{$cladeParent}{members}{$BID8};
+        }
+        $TREE{$cladeParent}{children}{$cladeName} ++ ;
 
         #assign for current level
-        $TREE{$cladeNext8}{parent} = $cladeName;
-        # $rankID ++;
-        # $TREE{$cladeName}{rankID} = $rankID;
         $TREE{$cladeName}{cladeLv} = $cladeLv;
-        $TREE{$cladeName}{children}{$cladeNext8} ++ unless $cladeNext8 =~ "CLADEFINAL";
-
         $TREE{$cladeName}{members}{$BID8} ++;
+        #mark parent
+        if($id >0.4 && exists $TREE{$cladeName}{parent} && not exists $TREE{$cladeName}{parent}{$cladeParent}){
+          my $debug = 1;
+        }
+        $TREE{$cladeName}{parent}{$cladeParent} ++;
+
       }elsif($s[0] eq "C"){
         my $BID = &getBID($s[8]);
         my $cladeName = $cladeLv."__".$CLADE{$cladeLv}{$BID}{No};
         if(exists $TREE{$cladeName}{BID}){
           die "Duplicate cladeName ($cladeName by $BID vs. $TREE{$cladeName}{BID}) found! Check your data.\n";
         }
-        if($cladeName eq "CLADE0.995__28"){
+        if($id >= 0.99 && ($BID eq "O5BI00017539.1.1" || $cladeName =~ /__1$/)){
           my $debug =1 ;
         }
+
         #pick proper nodes to silva taxon tree
         my %PICKS;
         foreach my $bid (sort keys %{$CLADE{$cladeLv}{$BID}{ANN}}){
@@ -1328,13 +1350,6 @@ sub run_clade2tree{
           my @trees = split /;/,$DBTREE{$taxid}{path};
           my @nodes;
           my $unit = $ANNO{$bid}{U};
-          # if($DBTREE{$taxid}{rank} eq "species"){
-          #   if($RANKI{$unit}{$trees[-2]}{quants}[4] > 99){
-          #       $RANKI{$unit}{$trees[-1]}{quants}[3] = $RANKI{$unit}{$trees[-2]}{quants}[5];
-          #   }else{
-          #     $RANKI{$unit}{$trees[-1]}{quants}[3] = 99;
-          #   }
-          # }
           if($ANNO{$bid}{ident} > 99.5 && $DBTREE{$taxid}{rank} eq "species" && $id > 0.99){
             #print STDERR "checkpiont\n";
           }
@@ -1368,10 +1383,20 @@ sub run_clade2tree{
           $TREE{$cladeName}{rankID} = $DBTREE{index}{$orders[0]};
           #$CLADE{$cladeLv}{NODES}{$orders[0]} ++;
         }else{
-          if($id == 0.99){
-            $TREE{$cladeName}{cladeLv} = "genus";
-          }elsif($id == 0.995){
-            $TREE{$cladeName}{cladeLv} = "species";
+          if($mode eq "bac"){
+            #for bac
+            if($id == 0.97){
+              $TREE{$cladeName}{cladeLv} = "genus";
+            }elsif($id == 0.99){
+              $TREE{$cladeName}{cladeLv} = "species";
+            }
+          }elsif($mode eq "euk"){
+            #for euk
+            if($id == 0.95){
+              $TREE{$cladeName}{cladeLv} = "genus";
+            }elsif($id == 0.97){
+              $TREE{$cladeName}{cladeLv} = "species";
+            }
           }
           $rankID ++;
           $TREE{$cladeName}{rankID} = $rankID;
@@ -1379,6 +1404,7 @@ sub run_clade2tree{
         $CLADE{$cladeLv}{NODES}{$cladeName} ++;
       }
     }
+    $lastID = $id;
   }
   #assign all members
 
@@ -1411,7 +1437,7 @@ sub printTree{
   # if(exists $$T{$clade}{UNDERTAX}){
   #   $path = $$T{$clade}{UNDERPATH};
   # }else{
-  if($clade eq "CLADE0.995__28"){
+  if($clade eq "CLADE1__1"){
     my $debug = 1;
   }
     $path .="$clade;";

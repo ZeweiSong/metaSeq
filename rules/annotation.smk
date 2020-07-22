@@ -368,20 +368,12 @@ if config["sampleType"] == "F":
             fna  = "{sample}/KRAKEN/db/library/added.fna"
         params:
             db = "{sample}/KRAKEN/db",
-            unit = "Fungi",
+            mode = "euk",
             kk2db  = "$LFR/Source/REF/KRAKEN2/rDNA",
             ucpfx  = "{sample}/CLIP/id90def4.clade.uc"
         shell:
-            "metabbq IO clade2tree -i {input.fa} -a {input.anno} -d {params.kk2db} -s {params.ucpfx} -o {params.db} -v"
+            "metabbq IO clade2tree -i {input.fa} -a {input.anno} -d {params.kk2db} -s {params.ucpfx} -m {params.mode} -o {params.db} -v"
 else:
-    # rule KRAKEN_4_makeTaxonomyTree:
-    #     input:
-    #         uc = "{sample}/CLIP/id995def2.clust.uc",
-    #         anno="{sample}/ANNO/CLIP.map.merge.bead.anno"
-    #     output: "{sample}/KRAKEN/db/data/added.txt"
-    #     params: "Bacteria"
-    #     shell:
-    #         "metabbq IO maketaxon -u {input.uc} -a {input.anno} -t $LFR/Source/REF/KRAKEN2/rDNA/data/mergeTaxon.txt -o {output}"
     rule KRAKEN_4_makeTaxonomyTree:
         input:
             fa = "{sample}/CLIP/id90def4.clust.fa",
@@ -392,11 +384,11 @@ else:
             fna  = "{sample}/KRAKEN/db/library/added.fna"
         params:
             db = "{sample}/KRAKEN/db",
-            unit = "Bacteria",
+            mode = "bac",
             kk2db  = "$LFR/Source/REF/KRAKEN2/rDNA",
             ucpfx  = "{sample}/CLIP/id90def4.clade.uc"
         shell:
-            "metabbq IO clade2tree -i {input.fa} -a {input.anno} -d {params.kk2db} -s {params.ucpfx} -o {params.db} -v"
+            "metabbq IO clade2tree -i {input.fa} -a {input.anno} -d {params.kk2db} -s -m {params.mode} {params.ucpfx} -o {params.db} -v"
 
 rule KRAKEN_5_makedb:
     input:
