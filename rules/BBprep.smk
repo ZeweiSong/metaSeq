@@ -38,7 +38,7 @@ if config["AdFw"] and config["AdRv"]:
             "--out1 {output.r1} --out2 {output.r2} "
             "--json {output.json} --html {output.html} "
             "--disable_trim_poly_g --report_title {params.title} "
-            "-w {threads} -V &> {log}\n"
+            "-w {threads} -V -B -W 30 &> {log}\n"
 else:
     rule BB_1_stLFR:
         input:
@@ -67,7 +67,7 @@ else:
             "--in1 {input.r1} --in2 {input.r2} "
             "--out1 {output.r1} --out2 {output.r2} --json {output.json} --html {output.html} "
             "--disable_trim_poly_g --report_title {params.title} "
-            "-w {threads} -V &> {log}\n"
+            "-w {threads} -V -B -W 30 &> {log}\n"
 
 detectedFq1="{sample}/clean/fastp.1.fq"
 detectedFq2="{sample}/clean/fastp.2.fq"
