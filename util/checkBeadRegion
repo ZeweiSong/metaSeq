@@ -165,7 +165,7 @@ sub summaryRegion{
         $fi ||= $f[$i];
         my $ti = $BB{N}{$cNo}{A}{$si}{A}{$f[$i]}{qt};
         if(not defined $f[$i+1] || $ti < $f[$i+1]){
-          $RE{Q}{$si}{all}{$cNo.$f[$i]} = $BB{N}{$cNo}{A}{$si}{A}{$f[$i]}{all};
+          $RE{Q}{$si}{all}{"$cNo.$f[$i]"} = $BB{N}{$cNo}{A}{$si}{A}{$f[$i]}{all};
           $RE{Q}{$si}{'pieces'} ++;
           $RE{Q}{$si}{'covLen'} += $ti - $fi + 1;
           push @{$RE{Q}{$si}{'position'}}, "$fi-$ti";
@@ -179,7 +179,8 @@ sub summaryRegion{
         $QP{$si}{$BB{N}{$cNo}{A}{$si}{A}{$f[$i]}{'sf'}}{'std'} = $BB{N}{$cNo}{A}{$si}{A}{$f[$i]}{'std'};
         #output clip best anno
         if($si eq $s1){ print CLIP $BB{N}{$cNo}{A}{$si}{A}{$f[$i]}{all}."\n";}
-
+        # record species this clip mapped
+        $RE{N}{$cNo}{allRefs}{$si} += $BB{N}{$cNo}{A}{$si}{A}{$f[$i]}{'len'} ;
       }
     }
   }
@@ -218,6 +219,17 @@ sub summaryRegion{
     push @{$RE{S}{$s1}{'position'}}, "$f[$i]-$ti";
     push @{$RE{Q}{$s1}{'strand'}}, $QP{$s1}{$f[$i]}{std};
   };
+  #estimate the possibility of hybridize bead:
+  my %HYB;
+  foreach my $cNo (sort keys %{$RE{N}}){
+    my @support_sps = sort {$BB{N}{$cNo}{A}{$b}{S}{'bs'} <=> $BB{N}{$cNo}{A}{$a}{S}{'bs'}} keys %{$BB{N}{$cNo}{A}};
+    if(not defined $RE{N}{$cNo}{allRefs}{$s1} && $support_sps[0] ne ""){
+      $HYB{hybCNo} ++; $HYB{hybLen} += $RE{N}{$cNo}{allRefs}{$support_sps[0]};
+    }
+    $HYB{CNoCount} ++;
+  }
+  $HYB{hybCNo} ||= 0; $HYB{hybLen}||=0;
+  $HYB{hybPct} = sprintf("%.2f",100* $HYB{hybCNo} / $HYB{CNoCount});
   #Get info from bed
   my $unit = &scanBED($s1,\%QP);
   my $bs2 = ($RE{Q}{$s2}{'bs'})?$RE{Q}{$s2}{'bs'}:0;
@@ -229,7 +241,7 @@ sub summaryRegion{
   $ide, $RE{Q}{$s1}{'covLen'}, $RE{Q}{$s1}{'mm'}, $RE{Q}{$s1}{'gap'}, $RE{Q}{$s1}{'bs'},
   $bs2, $RE{S}{$s1}{'pieces'}, $RE{S}{$s1}{'covLen'}, $unit, (join "",@{$RE{Q}{$s1}{'strand'}}),
   (join ",", @{$RE{Q}{$s1}{'position'}}), (join ",", @{$RE{S}{$s1}{'position'}}),
-  join("\t",$uniqAnno,$num2nds,$score1st,$score2nd,$id1st,$id2nd,join(",",@sp_2nds)))."\n";
+  join("\t",$uniqAnno,$num2nds,$score1st,$score2nd,$id1st,$id2nd,join(",",@sp_2nds),$HYB{hybCNo},$HYB{hybLen},$HYB{hybPct}))."\n";
 }
 
 sub scanBED{

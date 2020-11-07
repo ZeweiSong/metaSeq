@@ -101,7 +101,7 @@ rule TEST_asm_clip_heads:
 
 rule TEST_asm_clip2zymo:
 	input:
-		fa = "{sample}/summary.BI.megahit.clip.fasta"
+		fa = "{sample}/summary.BI.megahit.clip.all.fasta"
 	output: "{sample}/summary.BI.megahit.clip.zymo.bam"
 	threads: 16
 	shell:
@@ -363,7 +363,7 @@ rule STAT_callSNV_clip_2_mock_ref:
 rule STAT_clip_2_mock_ref:
 	input: "{sample}/summary.BI.megahit.clip.all.fasta"
 	output:
-		m6 = "{sample}/ANNO/summary.BI.megahit.clip2MockRef.m6"
+		m6 = "{sample}/ANNO/clip2MockRef.m6"
 	threads: 8
 	params: config['MockRef']['blastdb']
 	shell:
@@ -371,7 +371,7 @@ rule STAT_clip_2_mock_ref:
 		"-query {input} -outfmt '6 std qlen' -out {output.m6}\n"
 
 rule STAT_clip_2_known_bb_stat:
-	input: "{sample}/ANNO/summary.BI.megahit.clip2MockRef.m6"
+	input: "{sample}/ANNO/clip2MockRef.m6"
 	output:
 		b= "{sample}/ANNO/clip2MockRef.bead.anno",
 		c= "{sample}/ANNO/clip2MockRef.clip.anno",
@@ -517,7 +517,7 @@ if config["sampleType"] == "F":
 		output: "{sample}/CLIP/all.barrnap.sum.tsv"
 		threads: 1
 		shell:
-			"metabbq IO sumgff -i {input} -o {output}"
+			"metabbq IO sumgff -d euk -i {input} -o {output}"
 	rule CLIP_3_predict_ITSx:
 		input: outXac
 		output:
@@ -527,13 +527,33 @@ if config["sampleType"] == "F":
 			pfx = "{sample}/CLIP/all.ITS",
 		threads: 8
 		shell:
-			"ITSx --cpu {threads} -i {input} -o {params.pfx} &> {output.log}\n"
+			"ITSx --cpu {threads} --save_regions all -i {input} -o {params.pfx} &> {output.log}\n"
 	rule CLIP_4_sumITSxPos:
 		input: "{sample}/CLIP/all.ITS.positions.txt"
 		output: "{sample}/CLIP/all.ITS.positions.sum.tsv"
 		threads: 1
 		shell:
 			"metabbq IO itsx -i {input} -o {output}"
+	rule PRED_0_getSSU:
+		input: "{sample}/CLIP/all.barrnap.fa"
+		output:"{sample}/PREDICT/barrnap.ssu.fa"
+		shell:
+			"metabbq IO printUniqSubunit -i {input} -t 18S_rRNA -o {output} -v"
+	rule PRED_0_getLSU:
+		input: "{sample}/CLIP/all.barrnap.fa"
+		output:"{sample}/PREDICT/barrnap.lsu.fa"
+		shell:
+			"metabbq IO printUniqSubunit -i {input} -t 28S_rRNA -o {output} -v"
+	rule PRED_0_getITSxSubunits:
+		input:
+			inf = outXcafa,
+			pos = "{sample}/CLIP/all.ITS.positions.txt"
+		output:
+			SSU = "{sample}/CLIP/all.ITS.SSU.fasta",
+			LSU = "{sample}/CLIP/all.ITS.LSU.fasta"
+		params: "{sample}/CLIP/all.ITS"
+		shell:
+			"metabbq IO printITSxSubunit -i {input.inf} -p {input.pos} -o {params} -v"
 
 else:
 	rule CLIP_3_predict:

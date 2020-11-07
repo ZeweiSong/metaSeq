@@ -108,7 +108,7 @@ rule BIA_1_write:
         "--r1 {input.s1}  --r2 {input.s2} &> {output}\n"
 
 rule BIA_1_prepCFG:
-    input: "{sample}/Assemble_BI/log"
+    input: "{sample}/Assemble_BI/ID.lst"
     output: "{sample}/primers.cfg"
     params:
         Ad = config["AdRCA"],
@@ -256,6 +256,25 @@ for i in `awk '{{printf("BI%08d\\n",$1)}}' {params.outDir}/ID.lst`;do
     awk -v b=$i 'FNR%2==1{{sub(">",">"b"_",$0);id=$0}}FNR%2==0{{print id"\\n"$0}}' {params.outDir}/$i/{params.mode}/RCAclip.fa
   fi
 done > {output.fa}
+        """
+
+# 9. clean intermediate files
+rule BIA_4_cleanfiles:
+    input: "{sample}/log/batch.assemble.BI.done"
+    output:
+        log   = "{sample}/log/delete.assemble.BI.done"
+    params:
+        dpfx = "{sample}/sp.BI.",
+        outDir = "{sample}/Assemble_BI",
+        mode   = config["method"]["assemble"]["mode"]
+    shell:
+        """
+# 5. pick RCA clip fasta
+for i in `awk '{{printf("BI%08d\\n",$1)}}' {params.outDir}/ID.lst`;do
+  if [ -s {params.outDir}/$i ]; then
+    rm -rf {params.outDir}/$i
+  fi
+done > {output.log}
         """
 
 #Following were rules for Bead isolated scaffolding method:

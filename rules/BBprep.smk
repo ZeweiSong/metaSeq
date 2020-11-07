@@ -6,7 +6,7 @@
 # Author:            Chao | fangchao@genomics.cn
 # ===================================================================
 
-if config["AdFw"] and config["AdRv"]:
+if config["method"]["QC"]["cutOA"]:
     rule BB_1_stLFR:
         input:
             r1 = "{sample}/input/rawSeq_1.fq.gz",
@@ -14,8 +14,6 @@ if config["AdFw"] and config["AdRv"]:
             bfile = config["BB_LIST"]
         params:
             title = "{sample}",
-            AdF   = config["AdFw"],
-            AdR   = config["AdRv"],
             process=config["fastp_process"],
             pos1  = config["stLFR_pos1"],
             pos2  = config["stLFR_pos2"],
@@ -31,12 +29,10 @@ if config["AdFw"] and config["AdRv"]:
             "benchmarks/{sample}.fp.benchmark.txt"
         threads: config["thread"]["fastp"]
         shell:
-            "fastp --stLFR_barcode_file {input.bfile} --reads_to_process {params.process} "
+            "fastp -L --stLFR_barcode_file {input.bfile} --reads_to_process {params.process} "
             "--stLFR_pos1 {params.pos1} --stLFR_pos2 {params.pos2} --stLFR_pos3 {params.pos3} "
-            "-L --in1 {input.r1} --in2 {input.r2} "
-            "--adapter_sequence {params.AdF} --adapter_sequence_r2 {params.AdR} "
-            "--out1 {output.r1} --out2 {output.r2} "
-            "--json {output.json} --html {output.html} "
+            "--in1 {input.r1} --in2 {input.r2} "
+            "--out1 {output.r1} --out2 {output.r2} --json {output.json} --html {output.html} "
             "--disable_trim_poly_g --report_title {params.title} "
             "-w {threads} -V -B -W 30 &> {log}\n"
 else:
@@ -67,24 +63,10 @@ else:
             "--in1 {input.r1} --in2 {input.r2} "
             "--out1 {output.r1} --out2 {output.r2} --json {output.json} --html {output.html} "
             "--disable_trim_poly_g --report_title {params.title} "
-            "-w {threads} -V -B -W 30 &> {log}\n"
+            "-w {threads} -V &> {log}\n"
 
 detectedFq1="{sample}/clean/fastp.1.fq"
 detectedFq2="{sample}/clean/fastp.2.fq"
-if config["A_primer_list_to_remove"]:
-    detectedFq1="{sample}/clean/fastp.noAd.1.fq"
-    detectedFq2="{sample}/clean/fastp.noAd.2.fq"
-    rule BB_2_delAd:
-        input:
-            r1 = "{sample}/clean/fastp.1.fq",
-            r2 = "{sample}/clean/fastp.2.fq"
-        output:
-            r1 = detectedFq1,
-            r2 = detectedFq2
-        params:
-            lst = config["A_primer_list_to_remove"]
-        shell:
-            "metabbq delAd.pl {params.lst} {input.r1}  {input.r2} {output.r1} {output.r2}"
 
 rule BB_2_sortR1:
     input:
@@ -146,3 +128,13 @@ rule BB_5_gzip:
         x2 = "{sample}/clean/fastp.sort.2.fq.gz"
     shell:
         "gzip {input.s1} {input.s2}"
+
+rule BB_6_removeAd:
+    input:
+        s1 = "{sample}/clean/fastp.sort.1.fq.gz",
+        s2 = "{sample}/clean/fastp.sort.2.fq.gz"
+    output:
+        x1 = "{sample}/clean/fastp.sort.-ad.1.fq.gz",
+        x2 = "{sample}/clean/fastp.sort.-ad.2.fq.gz"
+    shell:
+        "metabbq delAd.pl RCAad.seq {input.s1} {input.s2} {output.s1} {output.s2}"

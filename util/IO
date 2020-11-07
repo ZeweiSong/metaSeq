@@ -39,8 +39,11 @@ my $mode = shift @ARGV unless $ARGV[0] =~/^-/;
 &run_uc2fa if $mode eq "uc2fa";
 &run_treeAnno if $mode eq "treeanno";
 &run_printUniqSubunit if $mode eq "printUniqSubunit";
+&run_printITSxSubunit if $mode eq "printITSxSubunit";
 &run_makeClade if $mode eq "makeclade";
 &run_clade2tree if $mode eq "clade2tree";
+&run_tree2fa if $mode eq "tree2fa";
+&run_observedOTUs if $mode eq "observedOTUs";
 &verbose("[All done!]\n");
 
 exit;
@@ -114,7 +117,7 @@ sub run_getUCH {
   ##Type  #Cluster  length  similarity%  orientation  *  *  CIGAR query centroid##
   while(<UCF>){
     chomp;
-    next unless /^H/;
+    #next unless /^H/;
     my @s = split "\t";
     if($s[0] eq "S"){
       $TMP{$s[8]}{L} = $s[2];
@@ -369,8 +372,8 @@ sub run_kk2prf{
   open DBN, "< $db/taxonomy/names.dmp" or die $!;
   open DBD, "< $db/taxonomy/nodes.dmp" or die $!;
   open TAX, "< $db/taxonomy/paths.txt" or die $!;
-  open OUT, ($out)?">$out":">-" or die $!;
-  open OT0, ($out)?">$pfx.0000":">-" or die $!;
+  open OUT, ($out)?">$out":">/dev/null" or die $!;
+  open OT0, ($out)?">$pfx.0000":">/dev/null" or die $!;
   open OTB, ($out)?">$pfx.bead":">-" or die $!;
 
   my (%KKX,%KKO,%TMP,$pID,$pHID,$tmpCount);
@@ -714,7 +717,7 @@ sub run_itsx{
   &verbose("  Reading ITSx position.txt ... ");
   while(<ITS>){
     chomp;
-    next if /^#/;
+    next if /^#|Chimeric/;
     my @s = split /\t/;
     my @b = split /_/,$s[0];
     $s[1] =~ s/ bp.//;
@@ -732,9 +735,11 @@ sub run_itsx{
         my ($unit,$ulen) = ($1, $3 - $2 + 1);
         my $unit1 = ($unit=~/ITS|5.8S/)?"ITS1-2":$unit;
         if($BD{$unit} == 0){
-          $score += $SCORE{$unit1} if $BD{"ITS1"} + $BD{"5.8S"} + $BD{"ITS2"} == 0;
-          $scoreits += $SCOREITS{$unit} if exists $SCOREITS{$unit};
-          $BD{$unit} = $ulen;
+          unless($unit=~/ITS|5.8S/ && $BD{"ITS1"} + $BD{"5.8S"} + $BD{"ITS2"} > 0){
+             $score += $SCORE{$unit1}
+           }
+           $scoreits += $SCOREITS{$unit} if exists $SCOREITS{$unit};
+           $BD{$unit} = $ulen;
         }else{
           $BD{$unit} = $ulen if $ulen > $BD{$unit};
         }
@@ -949,7 +954,7 @@ sub run_treeAnno{
 }
 
 ##############################################################################
-### printUniqSubunit: remove beads with multiple subunits and print rest
+### printUniqSubunit: print bead's subunits seqs
 ##############################################################################
 sub run_printUniqSubunit{
   my ($inf,$tag,$out);
@@ -976,18 +981,84 @@ sub run_printUniqSubunit{
     my $len = length($seq);
     next unless $len > 999;
     $sid =~ s/^.*:://;
-    $sid =~/^(.*BI\d+)_k\d+_(\d+)_.*_(C[0-9\-])_/;
-    $SEQ{$1}{$sid} = $seq;
-    push @ORDER, $1;
+    #$sid =~/^(.*BI\d+)_k\d+_(\d+)_.*_(C[0-9\-])_/;
+    #$SEQ{"$1.$2.$3"}{$sid} = $seq;
+    #push @ORDER, "$1.$2.$3";
+    print OUT ">$sid\n$seq\n";
   }
   close INF;
-  &verbose("Done\n  writing ... ");
-  while(@ORDER){
-    my $b = shift @ORDER;
-    my @c = keys %{$SEQ{$b}};
-    next if scalar @c > 1;
-    print OUT ">$c[0]\n$SEQ{$b}{$c[0]}\n";
+  # &verbose("Done\n  writing ... ");
+  # while(@ORDER){
+  #   my $b = shift @ORDER;
+  #   #my @c = keys %{$SEQ{$b}};
+  #   #next if scalar @c > 1;
+  #   foreach my $c (sort keys %{$SEQ{$b}}){
+  #     print OUT ">$c\n$SEQ{$b}{$c}\n";
+  #   }
+  # }
+  close OUT;
+  &verbose("DONE!\n");
+}
+##############################################################################
+### extractITSxSubunits: print each subunits from ITSx prediction (for euk)
+##############################################################################
+sub run_printITSxSubunit{
+  my ($inf,$pos,$out);
+  GetOptions(
+    "i=s" => \$inf,
+    "p=s" => \$pos,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  #&usage("[fatal] Essential input is missing");
+  &verbose("[printITSxSubunit] start\n");
+  open INF, "< $inf" or die $!;
+  open POS, "< $pos" or die $!;
+  open SSU, "> $out.SSU.fasta" or die $!;
+  open LSU, "> $out.LSU.fasta" or die $!;
+  &verbose("  Reading $pos ... ");
+  my (%POS,%SEQ,@ORDER);
+  while(<POS>){
+    next if $_ =~ /Chimeric/;
+    chomp;
+    my @s = split /\t/;
+    my $id = shift @s;
+    my $slen = shift @s;
+    next if $slen < 1000;
+    while(@s){
+      my $str = shift @s;
+      if($str =~ /(\S+): (\d+)-(\d+)/ ){
+        my ($unit,$offset,$len) = ($1,$2-1,$3-$2+1);
+        $POS{$id}{$unit}{O} = $offset;
+        $POS{$id}{$unit}{L} = $len;
+      }
+    }
   }
+  close POS;
+  &verbose("done!\n  Reading $inf ... ");
+  my $ori = $/; $/ = ">";
+  while(<INF>){
+    chomp;
+    my @s = split /\n/;
+    my $sid = shift @s;
+    next unless exists $POS{$sid};
+    my $seq = join("\n",@s);
+    my $len = length($seq);
+    #SSU
+    if($POS{$sid}{"SSU"}{L} > 999){
+      my $ssu = substr($seq,$POS{$sid}{"SSU"}{O},$POS{$sid}{"SSU"}{L});
+      print SSU ">$sid\n$ssu\n";
+    }
+    #LSU
+    if($POS{$sid}{"LSU"}{L} > 999){
+      my $lsu = substr($seq,$POS{$sid}{"LSU"}{O},$POS{$sid}{"LSU"}{L});
+      print LSU ">$sid\n$lsu\n";
+    }
+  }
+  close INF;
+  close SSU;
+  close LSU;
   &verbose("DONE!\n");
 }
 ##############################################################################
@@ -1043,28 +1114,28 @@ sub run_makeClade{
   chomp(my $ramtmp=("-e /dev/shm")?`mktemp -d /dev/shm/otupair.XXXXXXXXXX`:"mktemp -dp $out.XXX");
   my $pid = 0;
   while(@ids){
-    my $id = shift @ids;
+    my $id = pop @ids;
     my $inputfile = "";
     open OUT, ($out)?">$out\_$id":">-" or die $!;
-    # if($pid>0){
-    #   my $counts = scalar (keys %{$UC{$pid}});
-    #   my $count = 0;
-    #   open TMP, ">$ramtmp/tmp.fa" or die $!;
-    #   foreach my $c (sort {$a<=>$b} keys %{$UC{$pid}}){
-    #     next if $UC{$pid}{$c}{N} < 2;
-    #     $count ++;
-    #     print TMP ">$c\n$SEQ{$c}\n";
-    #     foreach my $m (sort keys %{$UC{$pid}{$c}{M}}){
-    #       $count ++;
-    #       print TMP ">$m\n$SEQ{$m}\n";
-    #     }
-    #   }
-    #   close TMP;
-    #   $inputfile = "$ramtmp/tmp.fa";
-    # }else{
-    #   $inputfile = $inf;
-    # }
-    $inputfile = $inf;
+    if($pid !=0){
+      my $counts = scalar (keys %{$UC{$pid}});
+      my $count = 0;
+      open TMP, ">$ramtmp/tmp.fa" or die $!;
+      foreach my $c (sort {$a<=>$b} keys %{$UC{$pid}}){
+        #next if $UC{$pid}{$c}{N} < 2;
+        $count ++;
+        print TMP ">$c\n$SEQ{$c}\n";
+        # foreach my $m (sort keys %{$UC{$pid}{$c}{M}}){
+        #   $count ++;
+        #   print TMP ">$m\n$SEQ{$m}\n";
+        # }
+      }
+      close TMP;
+      $inputfile = "$ramtmp/tmp.fa";
+    }else{
+      $inputfile = $inf;
+    }
+    #$inputfile = $inf;
     my $cmd = "vsearch --threads $cpu --cluster_fast $inputfile --iddef 0 --id $id --uc - ";
     &verbose("  Clustering at $id [$cmd] \n");
     &readUC($id,$cmd);
@@ -1143,7 +1214,7 @@ sub run_clade2tree{
   $units ||= "ssu,its,lsu";
   $ids ||= "0.4,0.5,0.66,0.72,0.77,0.83,0.89,0.92,0.95,0.97,0.98,0.99,0.995,0.999,1";
   &verbose("mode:$pmode | units:$units ... ");
-  my %DEFAULT_IDENTITY = ("domain",0.66,"kingdom",0.7,"phylum",0.76,"class",0.77,"order",0.83,"family",0.89,"genus",0.97,"species",0.995);
+  my %DEFAULT_IDENTITY = ("domain",0.66,"major_clade",0.68,"kingdom",0.7,"phylum",0.76,"class",0.77,"order",0.83,"family",0.89,"genus",0.97,"species",0.99);
   if($out){
     system("mkdir -p $out/{data,library}");
     open OUT, ">$out/data/added.txt" or die $!;
@@ -1181,6 +1252,10 @@ sub run_clade2tree{
       my @s=split /\t/;
       $MAP{S}{$s[0]} = $s[1];
       $MAP{D}{$s[1]} = $s[0];
+      #for BEAD+SUS: add pub seqs into tree
+      $ANNO{$s[0]}{uniq} = "unique";
+      $ANNO{$s[0]}{ID} = $s[0];
+      $ANNO{$s[0]}{ident} = 1;
     }
     &verbose("done\n  Reading [com] taxonomy/paths.txt ... ");
     open TRE,"< $db/taxonomy/paths.txt" or die $!;
@@ -1201,16 +1276,16 @@ sub run_clade2tree{
     $rankID = $DBTREE{MAXID};
 
     foreach my $unit (@units){
-      &verbose("done\n  Reading [$unit] data/$unit.allpair.txt ... ");
-      open IDE,"<$db/data/$unit.allpair.txt" or die $!;
-      while(<IDE>){
-        chomp;
-        my @s = split /\t/;
-        my @q = split /,/,$s[4];
-        $RANKI{$unit}{$s[1]}{Lv} = $s[0];
-        $RANKI{$unit}{$s[1]}{quants} = [@q];
-      }
-      close IDE;
+      #&verbose("done\n  Reading [$unit] data/$unit.allpair.txt ... ");
+      #open IDE,"<$db/data/$unit.allpair.txt" or die $!;
+      #while(<IDE>){
+      #  chomp;
+      #  my @s = split /\t/;
+      #  my @q = split /,/,$s[4];
+      #  $RANKI{$unit}{$s[1]}{Lv} = $s[0];
+      #  $RANKI{$unit}{$s[1]}{quants} = [@q];
+      #}
+      #close IDE;
     }
   }
   if($ann){
@@ -1237,11 +1312,11 @@ sub run_clade2tree{
         my $debug = 1;
       }
       #determine similairty of this annotation
-      if($RANKI{$ord[0]}{$s[1]}{quants}[4] && $RANKI{$ord[0]}{$s[1]}{quants}[4] < $s[2]){
-        $ANNO{$CID}{level} = "species";
-      }else{
+      #if($RANKI{$ord[0]}{$s[1]}{quants}[4] && $RANKI{$ord[0]}{$s[1]}{quants}[4] < $s[2]){
+      #  $ANNO{$CID}{level} = "species";
+      #}else{
         $ANNO{$CID}{level} = "CLIP";
-      }
+      #}
     }
     close ANN;
   }
@@ -1251,10 +1326,8 @@ sub run_clade2tree{
   my ($pCladeLv,$cladeNo0)=("",0);
   my $lastID = 0;
   while(@ids){
-    my $id = shift @ids;
-    if($id == 0.5){
-      #print STDERR "checkpint\n";
-    }
+    my $id = pop @ids;
+    my $nextID = ($ids[-1])?$ids[-1]:0;
     open SUC, "<$upfx\_$id" or next;
     my $cladeLv = "CLADE$id";
     my $cladeLvLast = "CLADE$lastID";
@@ -1270,119 +1343,162 @@ sub run_clade2tree{
 
         $cladeNo ++;
         $CLADE{$cladeLv}{$BID}{No} = $cladeNo;
-        # add unique annotation
-        if($ANNO{$BID}{uniq} eq "unique"){
-          $CLADE{$cladeLv}{$BID}{ANN}{$BID} = $ANNO{$BID}{ident};
-        }
-
         my $cladeName = $cladeLv."__".$CLADE{$cladeLv}{$BID}{No};
-        my $cladeParent = $cladeLvLast."__".$CLADE{$cladeLvLast}{$BID}{No};
-
-        #remove members under parent clade
-        delete $TREE{$cladeParent}{members}{$BID};
-        $TREE{$cladeParent}{children}{$cladeName} ++ ;
-
-        #assign for current levelq
+        #assign for current level
         $TREE{$cladeName}{cladeLv} = $cladeLv;
-        $TREE{$cladeName}{members}{$BID} ++;
-        #mark parent
-        if(exists $TREE{$cladeName}{parent}){
-          my $debug = 1;
+        # check whether this clade has a child clade
+        if(exists $CLADE{$cladeLvLast}{$BID}){
+          my $cladeChild = $cladeLvLast."__".$CLADE{$cladeLvLast}{$BID}{No};
+          $TREE{$cladeName}{children}{$cladeChild} ++ ;
+          $TREE{$cladeChild}{parent}{$cladeName} ++;
+          # add child clade's annotation
+          foreach my $b (sort keys %{$CLADE{$cladeLvLast}{$BID}{ANN}}){
+            $CLADE{$cladeLv}{$BID}{ANN}{$b} = $ANNO{$b}{ident};
+          }
+        }else{
+          $TREE{$cladeName}{members}{$BID} ++;
+          # add unique annotation
+          if($ANNO{$BID}{uniq} eq "unique"){
+            $CLADE{$cladeLv}{$BID}{ANN}{$BID} = $ANNO{$BID}{ident};
+          }
         }
-        $TREE{$cladeName}{parent}{$cladeParent} ++;
-
       }elsif($s[0] eq "H"){
         my $BID8 = &getBID($s[8]);
         my $BID9 = &getBID($s[9]);
-        if($BID8 =~ /Z1BI00003170/){
-          my $debug =1;
-        }
+
         if(exists $CLADE{$cladeLv}{$BID8}{No} ){
           die "$BID8 already presented. Check again.\n";
         }
         $CLADE{$cladeLv}{$BID8}{No} = $CLADE{$cladeLv}{$BID9}{No};
-        # add unique annotation
-        if($ANNO{$BID8}{uniq} eq "unique"){
-          $CLADE{$cladeLv}{$BID9}{ANN}{$BID8} = $ANNO{$BID8}{ident};
-        }
-
         my $cladeName = $cladeLv."__".$CLADE{$cladeLv}{$BID9}{No};
-        my $cladeParent = $cladeLvLast."__".$CLADE{$cladeLvLast}{$BID8}{No};
-        my $cladeParent9 = $cladeLvLast."__".$CLADE{$cladeLvLast}{$BID9}{No};
-
-        #remove members under parent clade
-        if($cladeParent ne $cladeParent9){
-          my $debug = 1;
-          delete $TREE{$cladeParent}{children}{$cladeName};
-          delete $TREE{$cladeParent}{members}{$BID8};
-          $cladeParent = $cladeParent9;
+        # check whether this clade has a child clade
+        if(exists $CLADE{$cladeLvLast}{$BID8}){
+          my $cladeChild = $cladeLvLast."__".$CLADE{$cladeLvLast}{$BID8}{No};
+          $TREE{$cladeName}{children}{$cladeChild} ++ ;
+          $TREE{$cladeChild}{parent}{$cladeName} ++;
+          # add child clade's annotation
+          foreach my $b (sort keys %{$CLADE{$cladeLvLast}{$BID8}{ANN}}){
+            $CLADE{$cladeLv}{$BID9}{ANN}{$b} = $ANNO{$b}{ident};
+          }
         }else{
-          delete $TREE{$cladeParent}{members}{$BID8};
+          $TREE{$cladeName}{members}{$BID8} ++;
+          # add unique annotation
+          if($ANNO{$BID8}{uniq} eq "unique"){
+            $CLADE{$cladeLv}{$BID9}{ANN}{$BID8} = $ANNO{$BID8}{ident};
+          }
         }
-        $TREE{$cladeParent}{children}{$cladeName} ++ ;
-
-        #assign for current level
-        $TREE{$cladeName}{cladeLv} = $cladeLv;
-        $TREE{$cladeName}{members}{$BID8} ++;
-        #mark parent
-        if($id >0.4 && exists $TREE{$cladeName}{parent} && not exists $TREE{$cladeName}{parent}{$cladeParent}){
-          my $debug = 1;
-        }
-        $TREE{$cladeName}{parent}{$cladeParent} ++;
-
       }elsif($s[0] eq "C"){
         my $BID = &getBID($s[8]);
         my $cladeName = $cladeLv."__".$CLADE{$cladeLv}{$BID}{No};
+        if($CLADE{$cladeLv}{$BID}{No} eq 1){
+          my $debug = 1;
+        }
         if(exists $TREE{$cladeName}{BID}){
           die "Duplicate cladeName ($cladeName by $BID vs. $TREE{$cladeName}{BID}) found! Check your data.\n";
         }
-        if($id >= 0.99 && ($BID eq "O5BI00017539.1.1" || $cladeName =~ /__1$/)){
+        if($cladeName eq "CLADE0.66__1"){
           my $debug =1 ;
         }
-
-        #pick proper nodes to silva taxon tree
-        my %PICKS;
+        #pick proper nodes from merged taxon tree
+        my (%PICKS,$totalPick,$maxPick);
+        my ($topTax,$topRank,$topRatio,$topChildTax,$topChildRank,$topChildRatio,@topChilds) = ("",0,0,"",2,0.5,());
         foreach my $bid (sort keys %{$CLADE{$cladeLv}{$BID}{ANN}}){
           my $taxid = $MAP{S}{$ANNO{$bid}{ID}};
           unless($taxid){
             $taxid = $DBTREE{quickIndex}{$ANNO{$bid}{tax}};
           }
           next if $ANNO{$bid}{ident} < $id * 100;
+          $totalPick ++;
           my @trees = split /;/,$DBTREE{$taxid}{path};
-          my @nodes;
+          #my @nodes;
           my $unit = $ANNO{$bid}{U};
-          if($ANNO{$bid}{ident} > 99.5 && $DBTREE{$taxid}{rank} eq "species" && $id > 0.99){
-            #print STDERR "checkpiont\n";
-          }
+
           for(my $i=0;$i<@trees;$i++){
             my $t = $trees[$i];
-            my $rankCutoff = 0;
-            if($RANKI{$unit}{$t}{quants}[3]){
-              $rankCutoff = $RANKI{$unit}{$t}{quants}[3];
-            }elsif(exists $DEFAULT_IDENTITY{$DBTREE{$DBTREE{index}{$t}}{rank}}){
-              $rankCutoff = $DEFAULT_IDENTITY{$DBTREE{$DBTREE{index}{$t}}{rank}} * 100;
-            }else{
-              next;
-            }
-            next if $t =~/uncultured|metagenome|unclassified|unidentified|Incertae Sedis|Unknown|endosymbionts/;
-            if ($rankCutoff <= $id * 100){
-              push @nodes, $t;
-            }elsif($ANNO{$bid}{ident} > 99.5 && $DBTREE{$taxid}{rank} eq "species" && $id > 0.995){
-              push @nodes, $t;
+            (my $r = $t) =~ s/__.*$//;
+            next unless $DEFAULT_IDENTITY{$r};
+            $PICKS{$DEFAULT_IDENTITY{$r}}{$t} ++ ;
+            if($PICKS{$DEFAULT_IDENTITY{$r}}{$t} > $maxPick){
+              $maxPick = $PICKS{$DEFAULT_IDENTITY{$r}}{$t};
             }
           }
-          $PICKS{$nodes[-1]} ++ if @nodes > 0;
+          #$PICKS{$nodes[-1]} ++ if @nodes > 0;
+        }
+        # pick top children rank
+        foreach my $child (sort {$TREE{$a}{rankScore}<=>$TREE{$b}{rankScore}} keys %{$TREE{$cladeName}{children}}){
+          if(exists $TREE{$child}{rankScore} && $TREE{$child}{rankScore} < $topChildRank && $TREE{$child}{rankRatio} > $topChildRatio){
+            $topChildRank = $TREE{$child}{rankScore};
+            $topChildTax  = $TREE{$child}{UNDERTAX};
+            $topChildRatio= $TREE{$child}{rankRatio};
+            push @topChilds, $child;
+          }elsif(exists $TREE{$child}{rankScore} && $TREE{$child}{rankScore} eq $topChildRank){
+            push @topChilds, $child;
+          }
         }
         if(keys %PICKS > 0){
-          my @orders = sort {$PICKS{$b} <=> $PICKS{$a}} keys %PICKS;
-          next if @orders > 1 && $PICKS{$orders[0]} == $PICKS{$orders[1]};
-          $CLADE{$cladeLv}{$BID}{Node} = $orders[0];
-          $TREE{$cladeName}{BID} = $BID;
-          $TREE{$cladeName}{UNDERTAX} = $orders[0];
-          $TREE{$cladeName}{UNDERPATH} = $DBTREE{$DBTREE{index}{$orders[0]}}{path};
-          $TREE{$cladeName}{cladeLv} = $DBTREE{$DBTREE{index}{$orders[0]}}{rank};
-          $TREE{$cladeName}{rankID} = $DBTREE{index}{$orders[0]};
-          #$CLADE{$cladeLv}{NODES}{$orders[0]} ++;
+          unless(@topChilds){
+            # pick top children's children rank
+            foreach my $child2 (sort keys %{$TREE{$cladeName}{children}}){
+              foreach my $child (sort {$TREE{$a}{rankScore}<=>$TREE{$b}{rankScore}} @{$TREE{$child2}{children2}}){
+                if(exists $TREE{$child}{rankScore} && $TREE{$child}{rankScore} < $topChildRank && $TREE{$child}{rankRatio} > $topChildRatio){
+                  $topChildRank = $TREE{$child}{rankScore};
+                  $topChildTax  = $TREE{$child}{UNDERTAX};
+                  $topChildRatio= $TREE{$child}{rankRatio};
+                  push @topChilds, $child;
+                }elsif(exists $TREE{$child}{rankScore} && $TREE{$child}{rankScore} eq $topChildRank){
+                  push @topChilds, $child;
+                }
+              }
+            }
+          }
+          foreach my $r (sort {$b <=> $a} keys %PICKS){
+            if($r > $topChildRank){
+              next;
+            }else{
+              foreach my $t (sort keys %{$PICKS{$r}}){
+                # check thether the most picked taxon is dominant
+                my $pickRatio = $PICKS{$r}{$t}/$totalPick;
+                if($r eq $topChildRank){
+                  if($pickRatio >= $topChildRatio * 0.98){
+                    $topTax  = $t;
+                    $topRank = $r;
+                    $topRatio= $pickRatio;
+                    # avoid duplicate ranks
+                    for(@topChilds){
+                      delete $TREE{$_}{rankScore};
+                      delete $TREE{$_}{UNDERTAX};
+                      delete $TREE{$_}{cladeLv};
+                      delete $TREE{$_}{UNDERPATH};
+                      $rankID ++;
+                      $TREE{$_}{rankID} = $rankID;
+                    }
+                    last;
+                  }
+                }else{
+                  if($PICKS{$r}{$t} >= $maxPick * 0.98){
+                    $topTax  = $t;
+                    $topRank = $r;
+                    $topRatio= $pickRatio;
+                    last;
+                  }
+                }
+              }
+              last if $topRatio;
+            }
+          }
+          if($topRatio){
+            $CLADE{$cladeLv}{$BID}{Node} = $topTax;
+            $TREE{$cladeName}{BID} = $BID;
+            $TREE{$cladeName}{UNDERTAX} = $topTax;
+            $TREE{$cladeName}{UNDERPATH} = $DBTREE{$DBTREE{index}{$topTax}}{path};
+            $TREE{$cladeName}{cladeLv} = $DBTREE{$DBTREE{index}{$topTax}}{rank};
+            $TREE{$cladeName}{rankID} = $DBTREE{index}{$topTax};
+            $TREE{$cladeName}{rankScore} = $topRank;
+            $TREE{$cladeName}{rankRatio} = $topRatio;
+          }else{
+            $rankID ++;
+            $TREE{$cladeName}{rankID} = $rankID;
+          }
         }else{
           if($pmode eq "bac"){
             #for bac
@@ -1393,9 +1509,9 @@ sub run_clade2tree{
             }
           }elsif($mode eq "euk"){
             #for euk
-            if($id == 0.95){
+            if($id == 0.97){
               $TREE{$cladeName}{cladeLv} = "genus";
-            }elsif($id == 0.97){
+            }elsif($id == 0.99){
               $TREE{$cladeName}{cladeLv} = "species";
             }
           }
@@ -1403,6 +1519,8 @@ sub run_clade2tree{
           $TREE{$cladeName}{rankID} = $rankID;
         }
         $CLADE{$cladeLv}{NODES}{$cladeName} ++;
+        $TREE{$cladeName}{presentID} = $BID;
+        @{$TREE{$cladeName}{children2}} = @topChilds;
       }
     }
     $lastID = $id;
@@ -1410,15 +1528,10 @@ sub run_clade2tree{
   #assign all members
 
   &verbose("done\n  Writing ... ");
-  #@units = split /,/,$units;
-  #while(@units){
-  #  my $unit = shift @units;
-    foreach my $c (sort keys %{$CLADE{"CLADE$cladeInit"}{NODES}}){
-      #my $path = ($TREE{$c}{UNDERTAX})?"$TREE{$c}{UNDERTAX};$c":$c;
-      #my $path = ($TREE{$c}{UNDERTAX})?"$TREE{$c}{UNDERPATH}":"";
-      &printTree("",$c,\%TREE);
-    }
-  #}
+
+  foreach my $c (sort keys %{$CLADE{"CLADE$cladeInit"}{NODES}}){
+    &printTree("",$c,\%TREE);
+  }
 
   close FNA;
   close TID;
@@ -1433,41 +1546,34 @@ sub getBID{
   return($id);
 }
 
+sub getIDs{
+  my $i = shift;
+  my $cid = ($i =~ /^(.*BI\d+)_k\d+_(\d+)_.*C([0-9]+|-)_/)?"$1\.$2\.$3":$i;
+  my $bid = ($i =~ /^(.*BI\d+)_k\d+_(\d+)_.*C([0-9]+|-)_/)?"$1":$i;
+  return($cid,$bid);
+}
+
 sub printTree{
   my($path,$clade,$T) = @_;
-  # if(exists $$T{$clade}{UNDERTAX}){
-  #   $path = $$T{$clade}{UNDERPATH};
-  # }else{
-  if($clade eq "CLADE1__1"){
+  if($clade eq "CLADE0.995__6842"){
     my $debug = 1;
   }
-    $path .="$clade;";
-    #unless($$T{$clade}{rankID}){
-      $rankID ++;
-      $$T{$clade}{rankID} = $rankID;
-    #}
-    print OUT "$path\t$$T{$clade}{rankID}\t$$T{$clade}{cladeLv}\t$clade\t$$T{$clade}{UNDERTAX}\n";
-  # }
+  $path .="$clade;";
+  $rankID ++;
+  $$T{$clade}{rankID} = $rankID;
+  print OUT "$path\t$$T{$clade}{rankID}\t$$T{$clade}{cladeLv}\t$clade\t$$T{$clade}{UNDERTAX}\t$$T{$clade}{presentID}\n";
   foreach my $chs (sort keys %{$$T{$clade}{members}}){
     next unless $chs;
     next if exists $OCC{B}{$chs};
     $rankID ++;
-    # assign members
-    # my $t = (split /;/,$DBTREE{$MAP{S}{$ANNO{$chs}{ID}}}{path})[-1];
-    # $t = "" if $t=~/uncultured|metagenome|unclassified|unidentified|Incertae Sedis|Unknown|endosymbionts/;
-    # if($t && $ANNO{$chs}{uniq}  eq "unique" && $RANKI{$ANNO{$chs}{U}}{$t}{quants}[4] <= $ANNO{$chs}{ident}){
-    #   #$DBTREE{$DBTREE{index}{$t}}{path};
-    #   print OUT "$DBTREE{$DBTREE{index}{$t}}{path}$chs;\t$rankID\tBEAD\t$ANNO{$chs}{A}\n";
-    # }else{
-    my $theRank = ($ANNO{$chs}{level})?$ANNO{$chs}{level}:"BEAD";
-      print OUT "$path$chs;\t$rankID\t$theRank\t$chs\t$ANNO{$chs}{tax}\t$ANNO{$chs}{A}\n";
-    # }
-    if($chs eq "Aspergillus_ustus"){
-      my $debug = 1;
-    }
+
+    my $theRank = ($ANNO{$chs}{level})?$ANNO{$chs}{level}:"CLIP";
+    #print OUT "$path$chs;\t$rankID\t$theRank\t$chs\t$ANNO{$chs}{tax}\t$ANNO{$chs}{A}\n";
+
     foreach my $s (sort keys %{$SEQ{$chs}}){
-       print TID "$s\t$rankID\n";
-       print FNA ">$s\n$SEQ{$chs}{$s}\n";
+      print OUT "$path$s;\t$rankID\t$theRank\t$s\t$ANNO{$s}{tax}\t$ANNO{$s}{A}\n";
+      print TID "$s\t$rankID\n";
+      print FNA ">$s\n$SEQ{$chs}{$s}\n";
     }
     $OCC{B}{$chs} ++;
   }
@@ -1477,3 +1583,444 @@ sub printTree{
     &printTree($path,$c,\%$T);
   }
 }
+
+##############################################################################
+### tree2fa: get represent sequence of a specific rank level from a tree
+##############################################################################
+sub usage4tree2fa{
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  $0 tree2fa -i <fa> -r <rank> -d <clade> -t <db path> -o <output>
+    -s  ssu fasta input file
+    -l  lsu fasta input file
+    -r  rank
+    -d  clade if rank not available
+    -t  db path tree
+    -o  output file
+    -p  check primer. Only SSU found FWD primer or LSU found REV primer retained.
+    -a  Add annotation to seq id. May cause bug for phylotree generation.
+    -v  verbose
+    -h  show help info
+USAGE
+}
+our(%ANNO,%MAP,%DBTREE,%RANKI,%SEQ,$rankID,%OCC);
+$rankID = 1;
+sub run_tree2fa{
+  &usage4tree2fa("get represent sequence of a specific rank level from a tree") && exit unless @ARGV;
+  my ($ssu,$lsu,$rank,$clade,$treefile,$withAnno,$checkPrimer,$out);
+  GetOptions(
+    "s=s" => \$ssu,
+    "l=s" => \$lsu,
+    "r=s" => \$rank,
+    "d=s" => \$clade,
+    "t=s" => \$treefile,
+    "a"   => \$withAnno,
+    "p"   => \$checkPrimer,
+    "o=s" => \$out,
+    "v"   => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4tree2fa("get represent sequence of a specific rank level from a tree") && exit if $help;
+  my (%SEQ,%PICK,%TREE);
+  open SSU, "< $ssu" or die $!;
+  open LSU, "< $lsu" or die $!;
+  open DBT, "< $treefile" or die $!;
+  (my $outPfx = $out) =~ s/\.(fasta|fa|fna)$//;
+  open OTBL, "> $outPfx.both.LSU.fa" or die $!;
+  open OTBS, "> $outPfx.both.SSU.fa" or die $!;
+  open OTS, "> $outPfx.SSU.fa" or die $!;
+  open OTL, "> $outPfx.LSU.fa" or die $!;
+
+  open IFB, "> $outPfx.both.inf" or die $!;
+  open IFS, "> $outPfx.SSU.inf" or die $!;
+  open IFL, "> $outPfx.LSU.inf" or die $!;
+
+  &verbose("[tree2fa] start\n  Reading $ssu ... ");
+  my $ori = $/;
+  $/ = ">";
+  while(<SSU>){
+    chomp;
+    next unless $_;
+    my @s = split /\n/;
+    my $id = shift @s;
+    my ($cid,$bid) = &getIDs($id);
+    my ($nf,$nr) = &getPmr($id);
+    my $seq = join("",@s);
+    my $len = length($seq);
+    $SEQ{"SSU"}{$cid}{seq} = $seq;
+    $SEQ{"SSU"}{$cid}{len} = $len;
+    $SEQ{"SSU"}{$cid}{pmr} = $nf;
+    $SEQ{"SSU"}{$cid}{score} = $len + ($checkPrimer && $nf)?10000:0;
+    $SEQ{LINK}{$bid}{SSU}{$cid} ++;
+  }
+  close SSU;
+  &verbose("done\n  Reading $lsu ... ");
+  while(<LSU>){
+    chomp;
+    next unless $_;
+    my @s = split /\n/;
+    my $id = shift @s;
+    my ($cid,$bid) = &getIDs($id);
+    my ($nf,$nr) = &getPmr($id);
+    my $seq = join("",@s);
+    my $len = length($seq);
+    $SEQ{"LSU"}{$cid}{seq} = $seq;
+    $SEQ{"LSU"}{$cid}{len} = $len;
+    $SEQ{"LSU"}{$cid}{pmr} = $nr;
+    $SEQ{"LSU"}{$cid}{score} = $len + ($checkPrimer && $nr)?10000:0;
+    $SEQ{LINK}{$bid}{LSU}{$cid} ++;
+
+  }
+  close LSU;
+  $/ = $ori;
+  &verbose("done\n  Reading $treefile ... ");
+  while(<DBT>){
+    #DBT format: path|taxID|rank|clade|taxName|represent bead|anno
+    chomp;
+    my @s = split /\t/;
+    my ($repID,$bid) = &getIDs($s[5]);
+    if($bid eq "S3BI00109150"){
+      my $debug = 1;
+    }
+    $TREE{$s[3]} = ($s[4])?$s[4]:$s[3];
+    my @path = split /;/,$s[0];
+    my @alt = grep {keys %{$PICK{$_}} > 0} @path;
+    if(@alt >1){
+      my $debug =1 ;
+    }
+    die "Multiple picked clade found. Need check:".join(",",@alt)." at $.\n" if @alt > 1;
+    if($s[2] eq $rank && $s[4]){
+      my $findAlt = (@alt >0)?1:0;
+      my $replace = ($findAlt && ($PICK{$alt[0]}{type} eq "clade" || $PICK{$alt[0]}{taxon} ne $s[4]) )?1:0;
+      if($replace){
+        delete $PICK{$alt[0]};
+      }
+      if($replace || $findAlt == 0){
+        $PICK{$s[3]}{type} = "rank";
+        $PICK{$s[3]}{rankID} = $s[1];
+        $PICK{$s[3]}{taxon} = $s[4];
+        $PICK{$s[3]}{path} = [@path];
+        for my $u ("LSU","SSU"){
+          if(exists $SEQ{$u}{$repID}{len}){
+            if( $SEQ{$u}{$PICK{$s[3]}{$u}{ID}}{len} ){
+              if($SEQ{$u}{$repID}{score} > $SEQ{$u}{$PICK{$s[3]}{$u}{ID}}{score}){
+                $PICK{$s[3]}{$u}{ID} = $repID;
+                $PICK{$s[3]}{path} = [@path]; # path of LSU will be overwriten by that of SSU if exists SSU path info
+              }
+            }else{
+              $PICK{$s[3]}{$u}{ID} = $repID;
+              $PICK{$s[3]}{path} = [@path];
+            }
+            $PICK{$s[3]}{BID}{$bid} ++;
+          }
+        }
+      }
+    }elsif( $s[2] =~ /$rank|$clade/){
+      unless(@alt > 0 ){
+        $PICK{$s[3]}{type} = "clade";
+        $PICK{$s[3]}{rankID} = $s[1];
+        $PICK{$s[3]}{taxon} = $s[3];
+        $PICK{$s[3]}{path} = [@path];
+        for my $u ("LSU","SSU"){
+          if( exists $SEQ{$u}{$repID}{len} && (($checkPrimer && ($SEQ{$u}{$repID}{pmr} || $PICK{$s[3]}{type} eq "rank")) || not $checkPrimer) ){
+            if( $SEQ{$u}{$PICK{$s[3]}{$u}{ID}}{len} ){
+              if($SEQ{$u}{$repID}{score} > $SEQ{$u}{$PICK{$s[3]}{$u}{ID}}{score}){
+                $PICK{$s[3]}{$u}{ID} = $repID;
+                $PICK{$s[3]}{path} = [@path]; # LSU will be replaced by SSU if exists SSU path info
+              }
+            }else{
+              $PICK{$s[3]}{$u}{ID} = $repID;
+              $PICK{$s[3]}{path} = [@path];
+            }
+            $PICK{$s[3]}{BID}{$bid} ++;
+          }
+        }
+      }
+    }elsif(@alt > 0){
+      for my $u ("LSU","SSU"){
+        if(exists $SEQ{$u}{$repID}{len} && (($checkPrimer && ($SEQ{$u}{$repID}{pmr} || $PICK{$s[3]}{type} eq "rank")) || not $checkPrimer)){
+          if($SEQ{$u}{$repID}{score} > $SEQ{$u}{$PICK{$alt[-1]}{$u}{ID}}{score}){
+            $PICK{$alt[-1]}{$u}{ID} = $repID;
+          }
+          $PICK{$alt[-1]}{BID}{$bid} ++;
+        }
+      }
+    }
+
+  }
+  close DBT;
+  &verbose("done\n  Writing to $out ...");
+  my (%TAX);
+  my %COUNT = ("LSU",0,"SSU",0,"ALL",0,"MISS",0);
+  foreach my $c (sort keys %PICK){
+
+    my $taxon = $PICK{$c}{taxon};
+    for my $u ("LSU","SSU"){
+      if(exists $TAX{$taxon}{$u}{ID}){
+        my $clade2rank = ($PICK{$c}{type} gt $TAX{$taxon}{type})?1:0;
+        my $findLonger = ($PICK{$c}{type} eq $TAX{$taxon}{type} && $SEQ{$u}{$PICK{$c}{$u}{ID}}{score} > $SEQ{$u}{$TAX{$taxon}{$u}{ID}}{score})?1:0;
+        if($clade2rank || $findLonger){
+          $TAX{$taxon}{$u}{ID} = $PICK{$c}{$u}{ID};
+          $TAX{$taxon}{path} = $PICK{$c}{path};
+          $TAX{$taxon}{rankID} = $PICK{$c}{rankID};
+          $TAX{$taxon}{type} = ($clade2rank)?$PICK{$c}{type}:$TAX{$taxon}{type};
+        }
+      }elsif(exists $PICK{$c}{$u}{ID}){
+        $TAX{$taxon}{$u}{ID} = $PICK{$c}{$u}{ID};
+        $TAX{$taxon}{path} = $PICK{$c}{path};
+        $TAX{$taxon}{rankID} = $PICK{$c}{rankID};
+        $TAX{$taxon}{type} = ($PICK{$c}{type} gt $TAX{$taxon}{type} )?$PICK{$c}{type}:$TAX{$taxon}{type};
+      }else{
+        #check if exist bead covered both SSU and LSU
+        foreach my $b (sort keys %{$PICK{$c}{BID}}){
+          foreach my $i (sort keys %{$SEQ{LINK}{$b}{$u}}){
+            if(exists $SEQ{$u}{$TAX{$taxon}{$u}{ID}}{len}){
+              if($SEQ{$u}{$i}{score} > $SEQ{$u}{$TAX{$taxon}{$u}{ID}}{score}){
+                $TAX{$taxon}{$u}{ID} = $i;
+              }
+            }else{
+              $TAX{$taxon}{$u}{ID} = $i;
+              $TAX{$taxon}{$u}{type} = "sup";
+            }
+          }
+        }
+      }
+      # keep clades for default phylum,genus and species
+      # if($taxon=~/CLADE(0.72|0.97|0.99)/){
+      #   $TAX{$taxon}{path} = $PICK{$c}{path};
+      # }
+    }
+  }
+  foreach my $c (sort keys %TAX){
+    my ($tid,$cn,$cc,%FIND) = ($TAX{$c}{rankID},"","",());
+    for my $u ("SSU","LSU"){
+      if(exists $SEQ{$u}{$TAX{$c}{$u}{ID}}{len}){
+        $FIND{$u} = 1;
+        if ($TAX{$c}{$u}{type} eq "sup"){
+          $FIND{"sup$u"} = 1;
+        }elsif($TAX{$c}{type} eq "rank"){
+          $FIND{"ann$u"} = 1;
+        }elsif($TAX{$c}{type} eq "clade"){
+          $FIND{"cld$u"} = 1;
+        }
+      }
+    }
+    my (@pn,@pc,$lastName,$lastClade);
+    foreach my $p (@{$TAX{$c}{path}}){
+      next if $TREE{$p} eq $lastName;
+      push @pn, ($TREE{$p})?$TREE{$p}:$p;
+      push @pc, $p;
+      $lastName = $TREE{$p};
+    }
+    $cc = join(";",@pc);
+    $cn = join(";",@pn);
+    if($withAnno){
+      #$cn =~ s/[)(:;,']//g;
+      $cn =~ tr/ ()[]';/_<><>"\//;
+    }
+
+    if($FIND{SSU} == 1){
+      print IFS "$tid\t$c\t$TAX{$c}{SSU}{ID}\t$SEQ{SSU}{$TAX{$c}{SSU}{ID}}{len}\t$SEQ{SSU}{$TAX{$c}{SSU}{ID}}{len}\t$cc\t$cn\n";
+      if($withAnno){
+        print OTS ">$cn\n$SEQ{SSU}{$TAX{$c}{SSU}{ID}}{seq}\n";
+      }else{
+        print OTS ">$tid\n$SEQ{SSU}{$TAX{$c}{SSU}{ID}}{seq}\n";
+      }
+      $COUNT{SSU} ++;
+      $COUNT{supSSU} ++ if $FIND{supSSU} == 1;
+      $COUNT{annSSU} ++ if $FIND{annSSU} == 1;
+      $COUNT{cldSSU} ++ if $FIND{cldSSU} == 1;
+    }
+    if($FIND{LSU} == 1){
+      print IFL "$tid\t$c\t$TAX{$c}{LSU}{ID}\t$SEQ{LSU}{$TAX{$c}{LSU}{ID}}{len}\t$SEQ{LSU}{$TAX{$c}{LSU}{ID}}{len}\t$cc\t$cn\n";
+      if($withAnno){
+        print OTL ">$cn\n$SEQ{LSU}{$TAX{$c}{LSU}{ID}}{seq}\n";
+      }else{
+        print OTL ">$tid\n$SEQ{LSU}{$TAX{$c}{LSU}{ID}}{seq}\n";
+      }
+      $COUNT{LSU} ++;
+      $COUNT{supLSU} ++ if $FIND{supLSU} == 1;
+      $COUNT{annLSU} ++ if $FIND{annLSU} == 1;
+      $COUNT{cldLSU} ++ if $FIND{cldLSU} == 1;
+
+    }
+    if($FIND{SSU} + $FIND{LSU} == 2){
+      my $str = join("\n",$SEQ{SSU}{$TAX{$c}{SSU}{ID}}{seq},$SEQ{LSU}{$TAX{$c}{LSU}{ID}}{seq});
+      my $len = $SEQ{SSU}{$TAX{$c}{SSU}{ID}}{len} + $SEQ{LSU}{$TAX{$c}{LSU}{ID}}{len};
+      print IFB "$tid\t$c\t$TAX{$c}{SSU}{ID}+$TAX{$c}{LSU}{ID}\t$SEQ{SSU}{$TAX{$c}{SSU}{ID}}{len}\t$SEQ{LSU}{$TAX{$c}{LSU}{ID}}{len}\t$cc\t$cn\n";
+      if($withAnno){
+        print OTBL ">$cn\n$SEQ{LSU}{$TAX{$c}{LSU}{ID}}{seq}\n";
+        print OTBS ">$cn\n$SEQ{SSU}{$TAX{$c}{SSU}{ID}}{seq}\n";
+      }else{
+        print OTBL ">$tid\n$SEQ{LSU}{$TAX{$c}{LSU}{ID}}{seq}\n";
+        print OTBS ">$tid\n$SEQ{SSU}{$TAX{$c}{SSU}{ID}}{seq}\n";
+      }
+      $COUNT{ALL} ++;
+      $COUNT{valid} ++;
+      $COUNT{supALL} ++ if $FIND{supSSU} + $FIND{supLSU} >= 1;
+      if ($FIND{annSSU} + $FIND{annLSU} >= 1){
+        $COUNT{annALL} ++;
+      }else{
+        $COUNT{cldALL} ++;
+      }
+    }elsif($FIND{SSU} + $FIND{LSU} == 1){
+      $COUNT{valid} ++;
+    }elsif($FIND{SSU} + $FIND{LSU} == 0){
+      $COUNT{MISS} ++;
+    }
+  }
+
+  close OUT;
+  &verbose("done\n  Written $COUNT{valid} clade seqs. $COUNT{MISS} records cannot found seqs.\n");
+  &verbose("  SSU: $COUNT{SSU} ($COUNT{annSSU}+$COUNT{cldSSU}+$COUNT{supSSU}) | LSU: $COUNT{LSU}($COUNT{annLSU}+$COUNT{cldLSU}+$COUNT{supLSU}) | BOTH:$COUNT{ALL}($COUNT{annALL}+$COUNT{cldALL}+$COUNT{supALL})\n");
+  return();
+}
+
+sub getPmr{
+  my $i = shift;
+  my ($f,$r) = (0,0);
+  my @parts = $i =~ /(REV|FWD)/g;
+  foreach my $p (@parts){
+    if($p eq "FWD"){
+      $f ++;
+    }elsif($p eq "REV"){
+      $r ++;
+    }
+  }
+  return($f,$r);
+}
+
+##############################################################################
+### observedOTUs: stat observed OTUs when sampling reads raise
+##############################################################################
+sub usage4observedOTUs{
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  $0 observedOTUs -i <root dir> -o output.tsv sam1 sam2 sam3 ... samN
+    -i  root dir where all samples' dir locate.
+    -d  specific database name to stat
+    -r  specific repeat to stat
+    -o  output filename
+    ..  sample directory tags. read by provide order.
+    -v  verbose
+    -h  show help info
+USAGE
+}
+sub run_observedOTUs{
+  &usage4observedOTUs("stat observed OTUs when sampling reads raise") && exit unless @ARGV;
+  my ($idir,$setdb,$setsize,$setrep,$db,$out);
+  GetOptions(
+    "i=s" => \$idir,
+    "d=s" => \$setdb,
+    "r=i" => \$setrep,
+    "s=i" => \$setsize,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4observedOTUs("stat observed OTUs when sampling reads raise") && exit if $help;
+  #&usage("[fatal] Essential input is missing");
+  &verbose("[log] Mode [observedOTUs] start ... \n  SAM: DB[REP][size] status:\n");
+  open OUT,">$out" or die $!;
+  my(%SAMIMAGE,%STAT);
+  $setdb  ||= '*';
+  $setsize||= '*';
+  $setrep = '*' if $setrep eq "";
+  while(@ARGV){
+    my $sam = shift @ARGV;
+    my @files = `ls $idir/$sam/KRAKEN/rand/$setdb\_$setsize.$setrep.bead.kreport2`;
+    my %INFO = ();
+    for(@files){
+      $_ =~ /rand\/(\S+)_(\d+)\.(\d+)\.bead\.kreport2$/;
+      $INFO{$1}{$3}{$2}{SAM} = $sam;
+      $INFO{$1}{$3}{$2}{FILE} = $_;
+    }
+    my ($dbCount,$repCount,$maxSize) = (0,0,0);
+    foreach my $db (sort keys %INFO){
+      $dbCount ++;
+      foreach my $rep (sort {$a<=>$b} keys %{$INFO{$db}}){
+        $repCount ++;
+        $SAMIMAGE{$db}{$rep}{T}{"psudoTaxForInit"} = 0;
+        my @sizes = sort {$a<=>$b} keys %{$INFO{$db}{$rep}};
+        foreach my $size (@sizes){
+          &verbose("  $sam: $db\[$rep\]\[$size\] ...         \r");
+          my %BASE = %{$SAMIMAGE{$db}{$rep}{T}};
+          my ($count,$rBead,$tBead,$unclassified) = (0,0,0,0);
+          open KK," < $INFO{$db}{$rep}{$size}{FILE}" or die $!;
+          while(<KK>){
+            my @s=split;
+            if($s[3] eq "S"){
+              $BASE{$s[4]} += $s[1];
+              $rBead += $s[1];
+            }elsif($s[3] eq "U"){
+              $unclassified = $s[1];
+            }
+            $tBead += $s[2];
+          }
+          close KK;
+          $count = grep {$BASE{$_} >= 10} %BASE;
+          my $taxSize = keys %BASE;
+          # stat
+          my $cSize = $SAMIMAGE{$db}{$rep}{S} + $size;
+          $STAT{$db}{$rep}{$cSize}{samSize} = $size;
+          $STAT{$db}{$rep}{$cSize}{samName} = $sam;
+          $STAT{$db}{$rep}{$cSize}{countOTUs} = $count;
+          $STAT{$db}{$rep}{$cSize}{rankBeads} = $rBead + $SAMIMAGE{$db}{$rep}{R};
+          $STAT{$db}{$rep}{$cSize}{totalBeads} = $tBead + $SAMIMAGE{$db}{$rep}{B};
+          $STAT{$db}{$rep}{$cSize}{unclassified} = $unclassified + $SAMIMAGE{$db}{$rep}{U};
+          $STAT{$db}{$rep}{$cSize}{taxsize} = $taxSize;
+          # next size or save image of tax from the last size
+          if($size == $sizes[-1]){
+            $SAMIMAGE{$db}{$rep}{B} += $tBead;
+            $SAMIMAGE{$db}{$rep}{R} += $rBead;
+            $SAMIMAGE{$db}{$rep}{U} += $unclassified;
+            $SAMIMAGE{$db}{$rep}{S}  = $cSize;
+            %{$SAMIMAGE{$db}{$rep}{T}}  = %BASE;
+            $maxSize = ($size > $maxSize)?$size:$maxSize;
+          }
+        }
+        # next repeat
+      }
+      # next database
+    }
+    &verbose("  $sam: $dbCount dbs\[$repCount\]\[$maxSize\] pass\n");
+    # next sample
+  }
+  &verbose("[log] pass reading! Now Writing ... ");
+  foreach my $db (sort keys %STAT){
+    foreach my $rep (sort {$a<=>$b} keys %{$STAT{$db}}){
+      foreach my $cSize (sort {$a<=>$b} keys %{$STAT{$db}{$rep}}){
+        print OUT join("\t",$db,$rep,$STAT{$db}{$rep}{$cSize}{samName},$STAT{$db}{$rep}{$cSize}{samSize},
+        $cSize,$STAT{$db}{$rep}{$cSize}{countOTUs},$STAT{$db}{$rep}{$cSize}{totalBeads},
+        $STAT{$db}{$rep}{$cSize}{rankBeads},$STAT{$db}{$rep}{$cSize}{unclassified},$STAT{$db}{$rep}{$cSize}{taxsize})."\n";
+      }
+    }
+  }
+  close OUT;
+  &verbose("done!\n");
+  return();
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#FIN

@@ -20,7 +20,7 @@ rule all:
 include: "rules/BBprep.smk"
 
 # Module #02a: cluster beads assembly solution
-include: "rules/beadsCluster.smk"
+#include: "rules/beadsCluster.smk"
 
 # Module #02b: isolate beads assembly solution
 include: "rules/beadsIsolate.smk"
@@ -34,7 +34,7 @@ include: "rules/annotation.smk"
 include: "rules/quantification.smk"
 
 # Module #99: binning method
-include: "rules/athena.smk"
+#include: "rules/athena.smk"
 
 # Module testing
 include: "rules/testing.smk"

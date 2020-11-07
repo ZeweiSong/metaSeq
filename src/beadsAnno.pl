@@ -766,8 +766,8 @@ sub run_cbr {
 
     #summary bead if all clips read:
     my @nextpick = &checkOrder($no1,$no2,$no3);
-    my $bid_current = ($pick[4]  =~ /(\S+\d+)\.(\d+)\.(\S+)/)?$1:$pick[4];
-    my $bid_next = ($nextpick[4] =~ /(\S+\d+)\.(\d+)\.(\S+)/)?$1:$nextpick[4];
+    my $bid_current = ($pick[4]  =~ /(\S+\d+)\.(\d+)\.(\S+)/)?$1:($pick[4]  =~ /^(.*BI\d+)_k\d+_(\d+)_.*C([0-9]+|-)_/)?$1:$pick[4];
+    my $bid_next = ($nextpick[4] =~ /(\S+\d+)\.(\d+)\.(\S+)/)?$1:($nextpick[4] =~ /^(.*BI\d+)_k\d+_(\d+)_.*C([0-9]+|-)_/)?$1:$nextpick[4];
     if ($bid_next ne $bid_current){
       &summaryBead($bid_current,\%BEADINFO);
       %BEADINFO = ();
@@ -1094,7 +1094,8 @@ sub summaryAnno2{
 	my ($num2nds,$uniqAnno,$maxDiffLv2nds,$score1st,$score2nd,$id1st,$id2nd) = ((scalar @sp_2nds),"","",);
 	$score1st = $$SCO{S}{$ge_1st}{$sp_1st}{score};
 	$score2nd = (@sp_2nds)?$$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{score}:0;
-	$id1st = sprintf("%.2f",100-100*($$SCO{S}{$ge_1st}{$sp_1st}{mis} + 2 * $$SCO{S}{$ge_1st}{$sp_1st}{gap})/$$SCO{S}{$ge_1st}{$sp_1st}{len});
+
+	$id1st = ($$SCO{S}{$ge_1st}{$sp_1st}{len})?sprintf("%.2f",100-100*($$SCO{S}{$ge_1st}{$sp_1st}{mis} + 2 * $$SCO{S}{$ge_1st}{$sp_1st}{gap})/$$SCO{S}{$ge_1st}{$sp_1st}{len}):0;
 	$id2nd = ($$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{len})?sprintf("%.2f",100-100*(($$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{mis} + 2 * $$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{gap})/$$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{len})):0;
 	if($score1st == $score2nd && $id1st == $id2nd){
 		$maxDiffLv2nds = "sameSp."; $uniqAnno = "multi";
@@ -1168,7 +1169,7 @@ sub summaryAnno2{
 		$res[16] .= ($sLen>0)?sprintf("$unit(%d)",100*$qMapLen/$sLen):"";
 		$pUnit = $unit;
 	}
-	$res[1] = sprintf("%.2f",100*(1-$res[1]/$res[2]));
+	$res[1] = $res[2]?sprintf("%.2f",100*(1-$res[1]/$res[2])):0;
 
 	print OUT (join("\t",join("|",@binfs),@res)."\t".join("\t", $uniqAnno, $num2nds, $maxDiffLv2nds, $score1st, $score2nd, $id1st, $id2nd, join(",",((@sp_2nds)?@sp_2nds:""))));
 	print OUT "\t$HYB{hybCNo}\t$HYB{hybLen}\t$HYB{hybPct}\n";
@@ -1347,7 +1348,7 @@ sub summaryBead{
   my ($num2nds,$uniqAnno,$maxDiffLv2nds,$score1st,$score2nd,$id1st,$id2nd) = ((scalar @sp_2nds),"","",);
   $score1st = $$SCO{S}{$ge_1st}{$sp_1st}{score};
   $score2nd = (@sp_2nds)?$$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{score}:0;
-  $id1st = sprintf("%.2f",100-100*($$SCO{S}{$ge_1st}{$sp_1st}{mis} + 2 * $$SCO{S}{$ge_1st}{$sp_1st}{gap})/$$SCO{S}{$ge_1st}{$sp_1st}{len});
+  $id1st = $$SCO{S}{$ge_1st}{$sp_1st}{len}?sprintf("%.2f",100-100*($$SCO{S}{$ge_1st}{$sp_1st}{mis} + 2 * $$SCO{S}{$ge_1st}{$sp_1st}{gap})/$$SCO{S}{$ge_1st}{$sp_1st}{len}):0;
   $id2nd = ($$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{len})?sprintf("%.2f",100-100*(($$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{mis} + 2 * $$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{gap})/$$SCO{S}{$ge_2nds[0]}{$sp_2nds[0]}{len})):0;
   if($score1st == $score2nd && $id1st == $id2nd){
     $maxDiffLv2nds = "sameSp."; $uniqAnno = "multi";
@@ -1421,7 +1422,7 @@ sub summaryBead{
     $res[16] .= ($sLen>0)?sprintf("$unit(%d)",100*$qMapLen/$sLen):"";
     $pUnit = $unit;
   }
-  $res[1] = sprintf("%.2f",100*(1-$res[1]/$res[2]));
+  $res[1] = $res[2]?sprintf("%.2f",100*(1-$res[1]/$res[2])):0;
 
   print BEAD (join("\t",join("|",@binfs),@res)."\t".join("\t", $uniqAnno, $num2nds, $maxDiffLv2nds, $score1st, $score2nd, $id1st, $id2nd, join(",",((@sp_2nds)?@sp_2nds:""))));
   print BEAD "\t$HYB{hybCNo}\t$HYB{hybLen}\t$HYB{hybPct}\n";
@@ -1492,6 +1493,7 @@ sub run_otupair {
   while(<MAP>){
     chomp;
     my @s = split /\t/;
+    next if $s[1] eq "";
     $MAP{$s[1]}{$s[0]} ++;
     $MAP{$s[0]}{$s[1]} ++;
   }
@@ -1505,7 +1507,10 @@ sub run_otupair {
     my @s = split /\n/;
     my $L1 = shift @s;
     my ($id,$tax);
-    if($L1 =~ /^(\S+) (.*)$/){
+    if($L1 =~/^(.*BI\d+)_k\d+_(\d+)_.*C([0-9]+|-)_/){
+      $id = "$1.$2.$3";
+      $tax = (keys %{$MAP{$id}})[0];
+    }elsif($L1 =~ /^(\S+) (.*)$/){
       $id = $1;
       my @t = split /;/,$2;
       $tax = $t[-1];
@@ -1514,6 +1519,9 @@ sub run_otupair {
       $tax = (keys %{$MAP{$id}})[0];
     }
     #$id =~ s/LOTU_//;
+    if($id eq "O4BI00000584.1.-"){
+      my $debug = 1;
+    }
     $LOTU{$id} = join("\n",@s);
     next if exists $MAP{$id};
     $MAP{$tax}{$id} ++;
@@ -1601,6 +1609,7 @@ sub run_otupair {
             my $debug = 1;
           }
           foreach my $s (sort keys %{$MAP{$o}}){
+            next unless $LOTU{$s};
             print LOTU ">$s\n$LOTU{$s}\n";
             $oCount ++;
             $firstSeq ||= $s;
@@ -1610,6 +1619,7 @@ sub run_otupair {
         my @o2 = sort {$a<=>$b} keys %{$TREE{$r}{$tax}{2}};
         if(@o2){
           foreach my $o (@o2){
+            next unless $LOTU{$o};
             print LOTU ">$o\n$LOTU{$o}\n";
             $oCount ++;
             $firstSeq ||= $o;
