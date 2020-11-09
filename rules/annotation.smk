@@ -48,7 +48,7 @@ rule LOTU_assignmentS:
     threads: 8
     params: config["OpenRef"]["silva_SSU_blastdb"]
     shell:
-        "blastn -num_threads {threads} -perc_identity 95 -word_size 141 "
+        "blastn -num_threads {threads} " #-perc_identity 95"
         "-db {params} -query {input} -outfmt '6 std qlen slen' -out {output.ssu}\n"
 
 rule LOTU_assignment_annoS:
@@ -67,7 +67,7 @@ rule LOTU_assignmentL:
     threads: 8
     params: config["OpenRef"]["silva_LSU_blastdb"]
     shell:
-        "blastn -num_threads {threads} -perc_identity 95 "
+        "blastn -num_threads {threads} " # -perc_identity 95 "
         "-db {params} -query {input} -outfmt '6 std qlen slen' -out {output.lsu}\n"
 
 rule LOTU_assignment_annoL:
@@ -86,7 +86,7 @@ rule LOTU_assignmentUNITE:
     threads: 8
     params: config["OpenRef"]["unite_ITS_blastdb"]
     shell:
-        "blastn -num_threads {threads} -perc_identity 95 -word_size 77 "
+        "blastn -num_threads {threads} " #-perc_identity 95 -word_size 77 "
 #        "-db $LFR/Source/REF/UNITE/sh_general_release_all_04.02.2020/sh_general_release_dynamic_all "
         "-db {params} -query {input} -outfmt '6 std qlen slen' -out {output.ssu}\n"
 
@@ -241,7 +241,7 @@ rule CLIP_assignmentS:
     threads: 16
     params: config["OpenRef"]["silva_SSU_blastdb"]
     shell:
-        "blastn -num_threads {threads} -perc_identity 95 -word_size 77 "
+        "blastn -num_threads {threads} -word_size 77 " #"-perc_identity 95 "
         "-db {params} -query {input} -outfmt '6 std qlen slen' -out {output.ssu}\n"
 
 rule CLIP_assignment_annoS:
@@ -260,7 +260,7 @@ rule CLIP_assignmentL:
     threads: 16
     params: config["OpenRef"]["silva_LSU_blastdb"]
     shell:
-        "blastn -num_threads {threads} -perc_identity 95 -word_size 77 "
+        "blastn -num_threads {threads} -word_size 77 " #"-perc_identity 95 "
         "-db {params} -query {input} -outfmt '6 std qlen slen' -out {output.lsu}\n"
 
 rule CLIP_assignment_annoL:
@@ -279,7 +279,7 @@ rule CLIP_assignmentUNITE:
     threads: 16
     params: config["OpenRef"]["unite_ITS_blastdb"]
     shell:
-        "blastn -num_threads {threads} -perc_identity 95 -word_size 77 "
+        "blastn -num_threads {threads} -word_size 77 " #"-perc_identity 95"
 #        "-db $LFR/Source/REF/UNITE/sh_general_release_all_04.02.2020/sh_general_release_dynamic_all "
         "-db {params} -query {input} -outfmt '6 std qlen slen' -out {output.ssu}\n"
 
@@ -337,6 +337,45 @@ rule KRAKEN_2_listClustBID:
     threads: 1
     shell:
         "metabbq IO uch -a {input.anno} -i {input.fa} -u {input.uc} -o {output} -c 800 -v"
+
+if config["sampleType"] == "F":
+    rule KRAKEN_2_validseq:
+        input:
+            fa = outXac,
+            gff = "{sample}/CLIP/all.barrnap.gff",
+            txt = "{sample}/CLIP/all.ITS.positions.txt",
+            anno="{sample}/ANNO/CLIP.map.merge.bead.anno",
+        output: "{sample}/CLIP/validSeqs.clust.fa"
+        threads: 1
+        shell:
+            "metabbq IO validseq -a {input.anno} -i {input.fa} -g {input.gff} -t {input.txt} -m 1200 -M 2500 -o {output} -v"
+    rule KRAKEN_2_hmmseq:
+        input:
+            fa = outXac,
+            gff = "{sample}/CLIP/all.barrnap.gff",
+            txt = "{sample}/CLIP/all.ITS.positions.txt"
+        output: "{sample}/CLIP/hmmSeqs.clust.fa"
+        threads: 1
+        shell:
+            "metabbq IO validseq -i {input.fa} -g {input.gff} -t {input.txt} -m 1200 -M 2500 -o {output} -v"
+else:
+    rule KRAKEN_2_validseq:
+        input:
+            fa = outXac,
+            gff = "{sample}/CLIP/all.barrnap.gff",
+            anno="{sample}/ANNO/CLIP.map.merge.bead.anno",
+        output: "{sample}/CLIP/validSeqs.clust.fa"
+        threads: 1
+        shell:
+            "metabbq IO validseq -a {input.anno} -i {input.fa} -g {input.gff} -m 500 -o {output} -v"
+    rule KRAKEN_2_hmmseq:
+        input:
+            fa = outXac,
+            gff = "{sample}/CLIP/all.barrnap.gff"
+        output: "{sample}/CLIP/hmmSeqs.clust.fa"
+        threads: 1
+        shell:
+            "metabbq IO validseq -i {input.fa} -g {input.gff} -m 500 -o {output} -v"
 
 # rule KRAKEN_3_ClipClust995:
 #     input: "{sample}/CLIP/id95def4.clust.fa"

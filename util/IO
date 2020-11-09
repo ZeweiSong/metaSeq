@@ -30,6 +30,7 @@ my $mode = shift @ARGV unless $ARGV[0] =~/^-/;
 
 # Main start
 &run_getUCH if $mode eq "uch";
+&run_validseq if $mode eq "validseq";
 &run_maketree if $mode eq "maketree";
 &run_maketaxon if $mode eq "maketaxon";
 &run_kk2prf if $mode eq "kk2prf";# Main end
@@ -166,6 +167,121 @@ sub run_getUCH {
   &verbose("[log] Discard $LOG{LEN} due to length < $cut\n") if $LOG{LEN} > 0;
   &verbose("[log] Discard $LOG{HYB} due to hybridization detected\n") if $LOG{HYB} > 0;
   &verbose("[log] Discard $LOG{ABG} due to ambiguous classific annotation detected\n") if $LOG{ABG} > 0;
+}
+
+##############################################################################
+### validseq:  Get domain detected and non-hybridized seqs
+##############################################################################
+sub usage4validseq {
+  my $msg = shift;
+print <<USAGE;
+$msg
+usage:
+  $0 validseq -i fasta -g gff [-t txt] [-a anno] -o output.fa
+    -a  bead annotation file (to remove potential hybridize bead)
+    -i  fasta file
+    -g  barrnap gff
+    -t  ITSx prediction.txt
+    -o  output filename
+    -v  verbose
+    -h  show help info
+USAGE
+}
+sub run_validseq {
+  &usage4uch("Output sequence ID that can be clustered.") && exit unless @ARGV;
+  my ($gff,$txt,$ann,$inf,$min,$max,$out);
+  GetOptions(
+    "g=s" => \$gff,
+    "a=s" => \$ann,
+    "i=s" => \$inf,
+    "t=s" => \$txt,
+    "m=i" => \$min,
+    "M=i" => \$max,
+    "o=s" => \$out,
+    "v" => \$verbose,
+    "h|help|?" => \$help,
+  );
+  &usage4validseq("Get domain detected and non-hybridized seqs") && exit if $help;
+
+  &verbose("[log] Mode [UCH] start ... \n");
+  my(%ANNOPICK,%HMMPICK, %CLUST,%TMP,%LOG);
+  $min||=0;
+  $max||=0;
+  #&usage("[fatal] Essential input is missing");
+  open INF, "< $inf" or die $!;
+  open GFF, "< $gff" or die $!;
+  open OUT, ($out)?">$out":">-" or die $!;
+  #
+  if($ann){
+    &verbose("[log] Read annotation ... ");
+    open ANN, "< $ann" or die $!;
+    while(<ANN>){
+      chomp;
+      my @s = split "\t";
+      my @b = split(/\|/, $s[0]);
+      my($hyb,$abg,$len,$map)=(0,0,0,0);
+      if(@s == 27){
+        if($s[-7] eq "multi" && $s[-6] ne "sameSp."){
+          $abg = 1;
+        }
+      }elsif(@s == 30){
+        if($s[-3] > 0){
+          $hyb = 1;
+        }
+        if($s[19] eq "multi" && $s[20] ne "sameSp."){
+          $abg = 1;
+        }
+      }
+      if($abg+$hyb==0){
+        $ANNOPICK{$b[0]} ++;
+      }
+    }
+    close ANN;
+    &verbose("done\n");
+  }
+  #
+  &verbose("[log] Read barrnap gff ... ");
+  while(<GFF>){
+    $HMMPICK{&getBID($_)} ++;
+  }
+  close GFF;
+  &verbose("done\n");
+  #
+  if($txt){
+    &verbose("[log] Read ITS.positions.txt ... ");
+    open TXT, "<$txt" or die $!;
+    while(<TXT>){
+      $HMMPICK{&getBID($_)} ++;
+    }
+    close TXT;
+    &verbose("done\n");
+  }
+  #
+  &verbose("[log] Start filter and write ... ");
+  my($hpick,$apick,$discard) = (0,0,0);
+  $/=">";
+  while(<INF>){
+    chomp;
+    my @s = split "\n";
+    my ($cid,$bid) = &getIDs($s[0]);
+    my $len = length($s[1]);
+    if($len < $min || ($max && $max < $len)){
+      $discard ++;
+      next;
+    }
+    if(exists $HMMPICK{$cid}){
+      $hpick ++;
+      print OUT ">".join("\n",@s)."\n";
+    }elsif(exists $ANNOPICK{$bid}){
+      $apick ++;
+      print OUT ">".join("\n",@s)."\n";
+    }
+  }
+  close INF;
+  close OUT;
+
+  &verbose("done\n");
+  &verbose("[log] Totally write ".($hpick+$apick)." sequences (hmm: $hpick | ann: $apick | dicard due to length: $discard).\n");
 }
 
 ##############################################################################
@@ -1104,6 +1220,7 @@ sub run_makeClade{
     chomp; next unless $_;
     my @s = split /\n/;
     my $sid = shift @s;
+    $sid = (split /\t|\s/, $sid)[0];
     my $seq = join("\n",@s);
     $SEQ{$sid} = $seq;
   }
@@ -1235,6 +1352,7 @@ sub run_clade2tree{
     chomp; next unless $_;
     my @s = split /\n/;
     my $id = shift @s;
+    $id = (split /\t|\s/,$id)[0];
     my $seq = join("\n",@s);
     my $CID = &getBID($id);
     $SEQ{$CID}{$CID} = $seq;
