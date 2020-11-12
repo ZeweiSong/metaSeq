@@ -8,7 +8,7 @@
 # ===================================================================
 # see detail below
 use strict;
-use Getopt::Long;
+use Getopt::Long qw(:config no_ignore_case);
 our($verbose,$help);
 sub usage {
   my $msg = shift;
@@ -177,11 +177,17 @@ sub usage4validseq {
 print <<USAGE;
 $msg
 usage:
-  $0 validseq -i fasta -g gff [-t txt] [-a anno] -o output.fa
+  $0 validseq -i fasta -g gff [-t txt] [-a anno] [-d domain] -o output.fa
     -a  bead annotation file (to remove potential hybridize bead)
     -i  fasta file
     -g  barrnap gff
     -t  ITSx prediction.txt
+    -d  specific domain required. the str can be one of following:
+          [ALL]  include SSU,ITS1,5.8S,ITS2,LSU for eukaryote or SSU,LSU for bacterial
+          [SSU]  SSU should be detected, including 16S/18S
+          [LSU]  LSU should be detected, including 18S/28S
+          [ITS]  ITS should be detected, including ITS1/ITS2
+          [5.8S] 5.8S should be detected.
     -o  output filename
     -v  verbose
     -h  show help info
@@ -189,12 +195,13 @@ USAGE
 }
 sub run_validseq {
   &usage4uch("Output sequence ID that can be clustered.") && exit unless @ARGV;
-  my ($gff,$txt,$ann,$inf,$min,$max,$out);
+  my ($gff,$txt,$ann,$inf,$dom,$min,$max,$out);
   GetOptions(
     "g=s" => \$gff,
     "a=s" => \$ann,
     "i=s" => \$inf,
     "t=s" => \$txt,
+    "d=s" => \$dom,
     "m=i" => \$min,
     "M=i" => \$max,
     "o=s" => \$out,
@@ -203,8 +210,8 @@ sub run_validseq {
   );
   &usage4validseq("Get domain detected and non-hybridized seqs") && exit if $help;
 
-  &verbose("[log] Mode [UCH] start ... \n");
-  my(%ANNOPICK,%HMMPICK, %CLUST,%TMP,%LOG);
+  &verbose("[log] Mode [validseq] start ... \n");
+  my(%DOMAIN,%ANNOPICK,%ANNODIRTY,%HMMPICK, %CLUST,%TMP,%LOG);
   $min||=0;
   $max||=0;
   #&usage("[fatal] Essential input is missing");
@@ -221,19 +228,21 @@ sub run_validseq {
       my @b = split(/\|/, $s[0]);
       my($hyb,$abg,$len,$map)=(0,0,0,0);
       if(@s == 27){
-        if($s[-7] eq "multi" && $s[-6] ne "sameSp."){
+        if($s[-7] eq "multi" && $s[-6] eq "diffGe."){
           $abg = 1;
         }
       }elsif(@s == 30){
-        if($s[-3] > 0){
+        if($s[-3] > 0 & $s[-2] > 499){
           $hyb = 1;
         }
-        if($s[19] eq "multi" && $s[20] ne "sameSp."){
+        if($s[19] eq "multi" && $s[20] eq "diffGe."){
           $abg = 1;
         }
       }
       if($abg+$hyb==0){
         $ANNOPICK{$b[0]} ++;
+      }else{
+        $ANNODIRTY{$b[0]} ++;
       }
     }
     close ANN;
@@ -242,7 +251,13 @@ sub run_validseq {
   #
   &verbose("[log] Read barrnap gff ... ");
   while(<GFF>){
-    $HMMPICK{&getBID($_)} ++;
+    my $id = &getBID($_);
+    $HMMPICK{$id} ++;
+    $_ =~ /Name=(\S+)_rRNA/;
+    my $domain = $1;
+    $DOMAIN{$id}{$domain} ++;
+    $DOMAIN{$id}{"SSU"} ++ if $domain =~ /16S|18S/;
+    $DOMAIN{$id}{"LSU"} ++ if $domain =~ /18S|25S|28S/;
   }
   close GFF;
   &verbose("done\n");
@@ -251,25 +266,54 @@ sub run_validseq {
     &verbose("[log] Read ITS.positions.txt ... ");
     open TXT, "<$txt" or die $!;
     while(<TXT>){
-      $HMMPICK{&getBID($_)} ++;
+      my $id = &getBID($_);
+      $HMMPICK{$id} ++;
+      $DOMAIN{$id}{"SSU"} ++ if $_ =~ /SSU: (\d+)-(\d+)/;
+      $DOMAIN{$id}{"LSU"} ++ if $_ =~ /LSU: (\d+)-(\d+)/;
+      $DOMAIN{$id}{"ITS1"} ++ if $_ =~ /ITS1: (\d+)-(\d+)/;
+      $DOMAIN{$id}{"ITS2"} ++ if $_ =~ /ITS2: (\d+)-(\d+)/;
+      $DOMAIN{$id}{"5.8S"} ++ if $_ =~ /5.8S: (\d+)-(\d+)/;
     }
     close TXT;
     &verbose("done\n");
   }
   #
   &verbose("[log] Start filter and write ... ");
-  my($hpick,$apick,$discard) = (0,0,0);
+  my($dpick,$hpick,$apick,$dirty,$badSize) = (0,0,0,0,0);
   $/=">";
   while(<INF>){
     chomp;
     my @s = split "\n";
     my ($cid,$bid) = &getIDs($s[0]);
     my $len = length($s[1]);
-    if($len < $min || ($max && $max < $len)){
-      $discard ++;
+    if($len < $min || ($max > 0 && $max < $len)){
+      $badSize ++;
       next;
     }
-    if(exists $HMMPICK{$cid}){
+    if($ANNODIRTY{$bid}>0){
+      $dirty ++;
+      next;
+    }
+    if($dom){
+      # if set domain then set of ANNOPICK and HMMPICK will be overwritten.
+      if($dom eq "ALL"){
+        if($DOMAIN{$cid}{"SSU"} && $DOMAIN{$cid}{"ITS1"} && $DOMAIN{$cid}{"5.8S"} &&
+        $DOMAIN{$cid}{"ITS2"} && $DOMAIN{$cid}{"LSU"} ){
+          $dpick ++;
+          print OUT ">".join("\n",@s)."\n";
+        }
+      }elsif($dom eq "ITS"){
+        if($DOMAIN{$cid}{"ITS1"} && $DOMAIN{$cid}{"ITS2"}){
+          $dpick ++;
+          print OUT ">".join("\n",@s)."\n";
+        }
+      }else{
+        if($DOMAIN{$cid}{$dom}){
+          $dpick ++;
+          print OUT ">".join("\n",@s)."\n";
+        }
+      }
+    }elsif(exists $HMMPICK{$cid}){
       $hpick ++;
       print OUT ">".join("\n",@s)."\n";
     }elsif(exists $ANNOPICK{$bid}){
@@ -281,7 +325,11 @@ sub run_validseq {
   close OUT;
 
   &verbose("done\n");
-  &verbose("[log] Totally write ".($hpick+$apick)." sequences (hmm: $hpick | ann: $apick | dicard due to length: $discard).\n");
+  if($dom){
+    &verbose("[log] Totally write $dpick sequences (dicard due to ambiguous alignment: $dirty | dicard due to length: $badSize).\n");
+  }else{
+    &verbose("[log] Totally write ".($hpick+$apick)." sequences (hmm: $hpick | ann: $apick | dicard due to ambiguous alignment: $dirty | dicard due to length: $badSize).\n");
+  }
 }
 
 ##############################################################################
@@ -1253,7 +1301,7 @@ sub run_makeClade{
       $inputfile = $inf;
     }
     #$inputfile = $inf;
-    my $cmd = "vsearch --threads $cpu --cluster_fast $inputfile --iddef 0 --id $id --uc - ";
+    my $cmd = "vsearch --threads $cpu --cluster_fast $inputfile --iddef 0 --id $id --uc --strand both - ";
     &verbose("  Clustering at $id [$cmd] \n");
     &readUC($id,$cmd);
     $pid = $id;
