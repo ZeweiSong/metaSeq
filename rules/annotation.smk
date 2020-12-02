@@ -348,7 +348,7 @@ if config["sampleType"] == "F":
         output: "{sample}/CLIP/validSeqs.clust.fa"
         threads: 1
         shell:
-            "metabbq IO validseq -a {input.anno} -i {input.fa} -g {input.gff} -t {input.txt} -m 1200 -M 2500 -o {output} -v"
+            "metabbq IO validseq -a {input.anno} -i {input.fa} -g {input.gff} -t {input.txt} -d ALL -m 1000 -M 2500 -o {output} -v"
     rule KRAKEN_2_hmmseq:
         input:
             fa = outXac,
@@ -357,7 +357,7 @@ if config["sampleType"] == "F":
         output: "{sample}/CLIP/hmmSeqs.clust.fa"
         threads: 1
         shell:
-            "metabbq IO validseq -i {input.fa} -g {input.gff} -t {input.txt} -m 1200 -M 2500 -o {output} -v"
+            "metabbq IO validseq -i {input.fa} -g {input.gff} -t {input.txt} -d ALL -m 1500 -M 2500 -o {output} -v"
 else:
     rule KRAKEN_2_validseq:
         input:
@@ -367,7 +367,7 @@ else:
         output: "{sample}/CLIP/validSeqs.clust.fa"
         threads: 1
         shell:
-            "metabbq IO validseq -a {input.anno} -i {input.fa} -g {input.gff} -m 500 -o {output} -v"
+            "metabbq IO validseq -a {input.anno} -i {input.fa} -g {input.gff} -d SSU -m 500 -M 1500 -o {output} -v"
     rule KRAKEN_2_hmmseq:
         input:
             fa = outXac,
@@ -375,7 +375,7 @@ else:
         output: "{sample}/CLIP/hmmSeqs.clust.fa"
         threads: 1
         shell:
-            "metabbq IO validseq -i {input.fa} -g {input.gff} -m 500 -o {output} -v"
+            "metabbq IO validseq -i {input.fa} -g {input.gff} -d SSU -m 500 -M 4500 -o {output} -v"
 
 # rule KRAKEN_3_ClipClust995:
 #     input: "{sample}/CLIP/id95def4.clust.fa"
@@ -492,7 +492,7 @@ rule KRAKEN_Ad_custom_kreport:
         rpt = kkAdpfx + ".bead.kreport2"
     threads: 4
     shell:
-        "metabbq kraken-report --d={input.db} {input.bed} -v > {output.rpt}"
+        "awk '$5>0.9&&$8<10' {input.bed} | metabbq kraken-report --d={input.db} - -v > {output.rpt}"
 
 rule KRAKEN_Ad_sum2species:
     input:
@@ -532,7 +532,7 @@ rule KRAKEN_X_custom_kreport:
         rpt = kkXpfx + ".bead.kreport2"
     threads: 8
     shell:
-        "metabbq kraken-report --d={input.db} {input.bed} -v > {output.rpt}"
+        "awk '$5>0.9&&$8<10' {input.bed} | metabbq kraken-report --d={input.db} - -v > {output.rpt}"
 
 rule KRAKEN_X_sum2species:
     input:
