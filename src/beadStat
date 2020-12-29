@@ -454,7 +454,7 @@ sub run_sam {
         my $xa = shift @XA;
         #XA:Z:chr,pos,CIGAR,NM
         $xa =~ /(\S+),([+-]\d+),(\S+),(\S+)/;
-        $HS{$1} += $3 - $4;
+        $HS{$1} += &cigarMatchLen($3) - $4;
 
       }
       #foreach my $H (keys %HS){
@@ -481,8 +481,8 @@ sub run_sam {
     push @XA, split(/;/,$alter);
     $pRd = $rd; $pBB = $bb;
     #verbose
-    if($. % 100000 == 0 ){
-      &verbose(sprintf("\r[SAM] Processing BB [%s]",$obb));
+    if($. % 10000 == 0 ){
+      &verbose(sprintf("\r[SAM] Read $. lines. Processing BB [%s]",$obb));
     }
     # Next loop
   }
@@ -571,7 +571,7 @@ sub sambout{
   return unless $B;
   my ($k1, $k2,$US,$MS) = ("*","*",0,0);
   $$HS{"*"}{UNIQ} = 0; $$HS{"*"}{MULT} = 0; $$HS{"*"}{NM} = 0;
-  foreach my $H (keys %$HS){
+  foreach my $H (sort keys %$HS){
     $US += $$HS{$H}{UNIQ};
     $MS ++;
     #next if $H eq "*";
@@ -956,14 +956,17 @@ USAGE
   exit;
 }
 
+our($snv);
 sub run_ruc {
   &usage4ruc("Find robust cluster from uc file and export fasta.") unless @ARGV;
   my (%CLUST);
-  my ($label,$inf,$ucf,$out);
+  my ($label,$inf,$link,$ucf,$out);
   GetOptions(
     "l=s" => \$label,
     "i=s" => \$inf,
     "u=s" => \$ucf,
+    "s"   => \$snv,
+    "k"   => \$link,
     "o=s" => \$out,
     "v" => \$verbose,
     "h|help|?" => \$help,
@@ -974,9 +977,11 @@ sub run_ruc {
   #open INF, ($inf)?"<$inf":"<-" or die $!;
   open OUT, ($out)?">$out":">-" or die $!;
   open INF, "< $inf" or die $!;
-  open UCF, "< $ucf"  or die $!;
+  open UCF, "sort -k2,2n -k1,1r -k3,3nr $ucf|" or die $!;
+  open SNV, ">$ucf.snv" if $snv;
+
   &verbose("[log] Mode [RUC] start ... \n");
-  my(%FASTA, %CLUST);
+  my(%FASTA, %CLUST,%SNV,%LINK);
   open INF, ($inf)?"<$inf":"<-" or die $!;
   my $originSymbol = $/;
   $/ = ">";
@@ -998,47 +1003,269 @@ sub run_ruc {
       $CLUST{$s[1]}{FID} = $s[8];
       $CLUST{$s[1]}{len} = $s[2];
       $CLUST{$s[1]}{C00} ++;
+      %SNV = ();
+      &cigarMatchLen($s[7],$FASTA{$s[8]},\%SNV);
+      if($link){
+        my ($BID,$bkmer,$BNo) = &readClipId($s[8]);
+        $LINK{$BID}{$s[1]}{C} ++;
+        $LINK{$BID}{$s[1]}{L} += $s[2];
+      }
     }elsif($s[0] eq "H"){
-      my $mLen = &cigarMatchLen($s[7]);
+      my $tmpSeq = ($s[4] eq "+")?$FASTA{$s[8]}:&xDNA("rc",$FASTA{$s[8]});
+      my $tmpIDs = $s[8];
+      while($tmpIDs =~ s/(FWD|REV)(\+|\-)//){
+        my $tmpstrand = ($2 eq $s[4])?"+":"-";
+        $CLUST{$s[1]}{PRIMER}{"$1$tmpstrand"} ++;
+      }
+      my $mLen = &cigarMatchLen($s[7],$tmpSeq,\%SNV);
       my $mCov = $mLen/$CLUST{$s[1]}{len};
-      $CLUST{$s[1]}{MAX} = (exists $CLUST{$s[1]}{MAX} && $CLUST{$s[1]}{MAX} > $mLen)?$CLUST{$s[1]}{MAX}:$mLen;
+      if( exists $CLUST{$s[1]}{MAX} && $CLUST{$s[1]}{MAX} > $mLen){
+      }else{
+        $CLUST{$s[1]}{MAX} = $mLen;
+        $CLUST{$s[1]}{MAX_FID} = $s[8];
+        $CLUST{$s[1]}{MAX_CIGAR} = $s[7];
+        $CLUST{$s[1]}{MAX_SEQ}   = $tmpSeq;
+      }
       $CLUST{$s[1]}{C75} ++ if $mCov>0.75;
+      $CLUST{$s[1]}{C90} ++ if $mCov>0.90;
       $CLUST{$s[1]}{C00} ++;
       $CLUST{$s[1]}{sumMatch} += $mLen;
+      if($link){
+        my ($BID,$bkmer,$BNo) = &readClipId($s[8]);
+        $LINK{$BID}{$s[1]}{C} ++;
+        $LINK{$BID}{$s[1]}{L} += $s[2];
+      }
     }elsif($s[0] eq "C"){
-      die "C length: $s[2] not equal with count length: $CLUST{$s[1]}{C00} for cluster:$s[1]. Nedd check\n" if $s[2] ne $CLUST{$s[1]}{C00};
+      die "C length: $s[2] not equal with count length: $CLUST{$s[1]}{C00} for cluster:$s[1]. Need check\n" if $s[2] ne $CLUST{$s[1]}{C00};
       $CLUST{$s[1]}{meanMatch} = ($s[2]>1)?sprintf("%d",$CLUST{$s[1]}{sumMatch}/($s[2]-1)):0;
-    }
-  }
-  &verbose("[log] Finish read. Writing ... \n");
-  # output
-  my @ckeys = sort {$a<=>$b} keys %CLUST;
-  my $maxCLen = length($ckeys[$#ckeys]);
-  foreach my $c (@ckeys){
-    my $fid = sprintf("$label\_%0".$maxCLen."d size=%d S75=%d CL=%d XM=%d MM=%d",
-    $c+1,$CLUST{$c}{C00},$CLUST{$c}{C75},$CLUST{$c}{len},$CLUST{$c}{MAX},$CLUST{$c}{meanMatch});
-    #output a list of stat fasta
-    print "$fid\n";
-    if($CLUST{$c}{C75}<1){
-      &verbose("Discard: $fid \n");
-    }else{
-      print OUT ">$fid\n$FASTA{$CLUST{$c}{FID}}\n";
+      #output this cluster
+      my $c = $s[1];
+      my $mLabel = sprintf("$label\_%06d",$c+1);
+      my $fid = sprintf("%s size=%d S75=%d CL=%d XM=%d MM=%d",
+      $mLabel, $CLUST{$c}{C00},$CLUST{$c}{C75},$CLUST{$c}{len},$CLUST{$c}{MAX},$CLUST{$c}{meanMatch});
+      #output a list of stat fasta
+      my ($depth1,$depth9,$totalpos,$corSeq,$start,$end,@findPmr) = (0,0,0,"",0,0,);
+      my @depths;
+      if($snv){
+        #print snv info
+        #&cigarAttach($CLUST{$c}{MAX_CIGAR},$CLUST{$c}{MAX_SEQ},\%SNV);
+        my @posOrders = sort {$a<=>$b} keys %SNV;
+        #my ($lastDepth5mer,$nextDepth5mer) = (0,0);
+        #for(my $i=0;$i<5;$i++){ $nextDepth5mer+=$SNV{$posOrders[$i]}{SUM}) };
+        my $pctQ1 = int(($posOrders[-1]-$posOrders[0])/4);
+        my $pctQ3 = $pctQ1 * 3;
+        foreach my $pos (@posOrders){
+          #my $pctP = sprintf("%.2f", 100 * (($SNV{$pos}{P})?$SNV{$pos}{$SNV{$pos}{P}}/$SNV{$pos}{SUM}:0));
+          my $res = $SNV{$pos}{SUM};
+          my $maxN;
+          foreach my $n ('A','C','G','T'){
+            $res .= ($SNV{$pos}{$n})?"\t$SNV{$pos}{$n}":"\t0";
+            $maxN = ($SNV{$pos}{$maxN}<$SNV{$pos}{$n})?$n:$maxN;
+          }
+          my $pctO = sprintf("%.2f", 100 * $SNV{$pos}{$SNV{$pos}{O}} / $SNV{$pos}{SUM});
+          my $pctN = sprintf("%.2f", 100 * $SNV{$pos}{$maxN} / $SNV{$pos}{SUM});
+          my $ni = ($SNV{$pos}{I})?$SNV{$pos}{I}:0;
+          my $nd = ($SNV{$pos}{D})?$SNV{$pos}{D}:0;
+          # init extending after singleton head:
+          if($start==0 && $SNV{$pos}{SUM}*$pctN >= 200 ){ $start = $pos;}
+          if($SNV{$pos}{O} && $start){
+            if($pctN > $pctO){
+              $corSeq .= $maxN;
+              $depth9 ++ if $pctN < 90;
+            }else{
+              $corSeq .= $SNV{$pos}{O};
+              $depth9 ++ if $pctO < 90;
+            }
+          }elsif($pos<0){
+            $corSeq .= $maxN if $start;
+          }elsif($end == 0 && $start){
+            # Ommit if found low coverage tail:
+            if($pos>$pctQ3 && $SNV{$pos}{SUM}*$pctN < 200){ $end = $pos - 1 }
+            $corSeq .= $maxN unless $end;
+          }
+          #trim low coverage ends
+          if($pos<$pctQ1 && $SNV{$pos}{SUM}*$pctN < 200){
+            # low coverage head, ommit:
+            ($corSeq,$depth9,$depth1,$totalpos,$start,@depths)=("",0,0,-1,0,);
+          }
+
+          $depth1 ++ unless $SNV{$pos}{SUM} > 1;
+          push @depths, $SNV{$pos}{SUM};
+          $totalpos ++;
+          print SNV "$mLabel\t$pos\t$SNV{$pos}{O}\t$pctO\t$maxN\t$pctN\t$ni,$nd\t$res\n";
+        }
+        $end ||= $posOrders[-1];
+        foreach my $pr (sort keys %{$CLUST{$c}{PRIMER}}){
+          push @findPmr, "$pr$CLUST{$c}{PRIMER}{$pr}";
+        }
+      }
+      #if($CLUST{$c}{C75} > 1 || $depth1 / $totalpos < 0.25 ){
+      if($totalpos > 0 ){
+        #print OUT ">$fid\n$CLUST{$c}{MAX_SEQ}\n";
+
+        if($snv){
+          my $singletonBasePct = sprintf("%d", 100 * $depth1 / $totalpos );
+          my $dplength = scalar(@depths);
+          my @sortdepth = sort @depths;
+          my $pct1Depth = $sortdepth[int($dplength/4)];
+          my $corLen = length($corSeq);
+          print "$fid SBP=$singletonBasePct P1D=$pct1Depth P9P=$depth9 COR=$corLen STA=$start END=$end PMR=".(join(",",@findPmr))."\n";
+          print OUT ">$fid SBP=$singletonBasePct P1D=$pct1Depth P9P=$depth9 COR=$corLen PMR=".(join(",",@findPmr))."\n$corSeq\n" if $corSeq;
+        }else{
+          print "$fid\n";
+          print OUT ">$fid COR=".length($FASTA{$CLUST{$c}{FID}})."\n$FASTA{$CLUST{$c}{FID}}\n";
+        }
+      }else{
+        &verbose("Discard: $fid \n");
+      }
     }
   }
   close OUT;
+  &verbose("[log] Finish read & all written ... \n");
+  my %LINKSUM;
+  if($link){
+    foreach my $b (sort keys %LINK){
+      my @cs = sort {$a<=>$b} keys %{$LINK{$b}};
+      if(scalar @cs >1){
+        for(my $i=0;$i<@cs;$i++){
+          for(my $j=$i+1;$j<$#cs;$j++){
+            $LINKSUM{$cs[$i]}{$cs[$j]}{C} ++;
+            $LINKSUM{$cs[$i]}{$cs[$j]}{B} .= "$b,";
+            $LINKSUM{$cs[$i]}{$cs[$j]}{L} += ($LINK{$b}{$i}{L}<$LINK{$b}{$j}{L})?$LINK{$b}{$i}{L}:$LINK{$b}{$j}{L};
+          }
+        }
+      }
+    }
+    #
+    open LINK, ">$ucf.link";
+    foreach my $i (sort {$a<=>$b} keys %LINKSUM){
+      foreach my $j (sort {$a<=>$b} keys %{$LINKSUM{$i}}){
+        print LINK "$i\t$j\t$LINKSUM{$i}{$j}{C}\t$LINKSUM{$i}{$j}{L}\t$LINKSUM{$i}{$j}{B}\n";
+      }
+    }
+  }
   &verbose("[log] Mode [UC] done ... \n");
 }
 
+sub readClipId{
+  my $id = shift;
+  $id =~ /(BI\d+)_(k\d+)_(\d+)/;
+  return($1,$2,$3);
+}
+
 sub cigarMatchLen{
-	my $cigar =shift;
-	my ($mLen,$fLen) = (0,0);
+	my ($cigar,$seq,$S) = @_;
+	my ($mLen,$pos,$q,$times) = (0,0,0,0);
+  if($cigar ne '*'){
+    while($cigar){
+      $cigar =~ s/^(\d*)([MIDNSH=PX])//;
+      my ($mode,$n) = ($2,$1);
+      $n ||=1;
+      if($snv){
+        if($mode eq "M"){
+          $mLen += $n;
+          for(my $p=0;$p<$n;$p++){
+            $$S{$pos+$p}{substr($seq,$q,1)} ++;
+            $$S{$pos+$p}{SUM} ++; $q++;
+          }
+          $pos += $n;
+        }elsif($mode eq "D"){
+          if($times==0){
+            for(my $p=-$n;$p<0;$p++){
+              $$S{$pos+$p}{substr($seq,$q,1)} ++;
+              $$S{$pos+$p}{SUM} ++; $q++;
+            }
+          }elsif($cigar eq ""){
+            for(my $p=0;$p<$n;$p++){
+              $$S{$pos+$p}{substr($seq,$q,1)} ++;
+              $$S{$pos+$p}{SUM} ++; $q++;
+            }
+          }else{
+            $$S{$pos}{D} ++;
+            $q+=$n;
+          }
+        }elsif($mode eq "I"){
+          if($q>0 && $cigar){
+            for(my $p=0;$p<$n;$p++){
+              $$S{$pos+$p}{I} ++;
+            }
+          }
+          $pos += $n;
+        }
+      }else{
+        if($mode =~/M/){
+          $mLen += $n;
+          $pos  += $n;
+          $q    += $n;
+        }elsif($mode =~/D/){
+          $q    += $n;
+        }elsif($mode =~/I/){
+          $pos  += $n;
+        }
+      }
+      $times ++;
+    }
+  }elsif($snv){
+    for(my $p=$pos;$p<length($seq);$p++){
+      $$S{$p}{substr($seq,$p,1)} ++;
+      $$S{$p}{O}=substr($seq,$p,1) unless $cigar eq "=";
+      $$S{$p}{SUM} ++;
+    }
+    $mLen = length($seq);
+  }
+	return($mLen);
+}
+
+sub cigarAttach{
+	my ($cigar,$seq,$S) = @_;
+	my ($mLen,$pos,$q,$times) = (0,0,0,0);
   if($cigar ne '*'){
     while($cigar){
       $cigar =~ s/^(\d*)([MIDNSHP=X])//;
       my ($mode,$n) = ($2,$1);
       $n ||=1;
-      if($mode =~/M/){$mLen += $n;}
+      if($mode =~/M/){
+        $mLen += $n;
+        if($snv){
+          for(my $p=0;$p<$n;$p++){
+            $$S{$pos+$p}{P} = substr($seq,$q,1);  $q++;
+          }
+          $pos += $n;
+        }
+        $times ++;
+      }elsif($mode =~/D/){
+        $q += $n;
+      }elsif($mode =~/I/){
+        $pos += $n;
+      }
+    }
+  }elsif($snv){
+    for(my $p=0;$p<length($seq);$p++){
+      $$S{$pos+$p}{P} = substr($seq,$q,1);  $q++;
     }
   }
-	return($mLen);
+  #return($S);
+}
+
+sub xDNA{
+  my %SH;
+  my $mod = shift;
+  my $str = shift;
+  for(my $p=0;$p<length($str);$p++){
+    my $pick = substr($str,$p,1);
+    my $comp = ($pick eq "A")?"T":(($pick eq "T")?"A":(($pick eq "G")?"C":(($pick eq "C")?"G":$pick)));
+    $SH{$p}{'raw'} = $pick;
+    $SH{$p}{'com'} = $comp;
+  }
+  my $res = "";
+  if($mod =~ /r/){
+    foreach my $p (sort {$b<=>$a} %SH){
+      $res .= ($mod =~/c/)?$SH{$p}{'com'}:$SH{$p}{'raw'};
+    }
+  }else{
+    foreach my $p (sort {$a<=>$b} %SH){
+      $res .= ($mod =~/c/)?$SH{$p}{'com'}:$SH{$p}{'raw'};
+    }
+  }
+  return($res);
 }

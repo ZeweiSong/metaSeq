@@ -125,7 +125,7 @@ sub run_basic {
     my @s = split;
     $INFO{'ASM'}{'beads'} = $s[0];
   };
-  $get = "$dir/summary.BI.megahit.clip.fasta";
+  $get = "$dir/summary.BI.megahit.all.clip.fasta";
   if(-e $get){
     $_ = `grep "^>" $get|wc -l`;
     my @s = split;

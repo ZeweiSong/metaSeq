@@ -101,11 +101,11 @@ rule TEST_asm_clip_heads:
 
 rule TEST_asm_clip2zymo:
 	input:
-		fa = "{sample}/summary.BI.megahit.clip.fasta"
+		fa = "{sample}/summary.BI.megahit.clip.all.fasta"
 	output: "{sample}/summary.BI.megahit.clip.zymo.bam"
 	threads: 16
 	shell:
-		"bwa mem -t {threads} -db ../../Source/REF/zymo/D6305.genomes.bwa {input} "
+		"bwa mem -t {threads} ../../Source/REF/zymo/D6305.genomes.bwa {input} "
 		"|samtools view -b - > {output}\n"
 
 rule TEST_asm_clip2zymo_check:
@@ -347,31 +347,78 @@ rule STAT_barrnap_fa:
 		"metabbq stat RSU -l {input.lsu} -s {input.ssu} -o {output}"
 
 ### stat
-rule STAT_clip_2_known_ref:
-	input: "{sample}/summary.BI.megahit.clip.fasta"
+rule STAT_callSNV_clip_2_mock_ref:
+	input: "{sample}/summary.BI.megahit.clip.all.fasta"
 	output:
-		m6 = "{sample}/summary.BI.megahit.clip2CloseRef.m6"
+		bam = "{sample}/CLIP/clips2REF.bam",
+		bcf = "{sample}/CLIP/clips2REF.bcf",
+		tsv = "{sample}/CLIP/clips2REF.bcf.tsv"
 	threads: 8
-	params: config['closeRef']['blastdb']
+	params: config['MockRef']['bwa_db']
 	shell:
-		"blastn -num_threads {threads} -perc_identity 90 -db {params} "
+		"awk 'FNR%2==1{{if($0~/flag=[123]/){{p=1}}else{{p=0}}}}(p==1){{print}}' {input}|bwa mem -k 141 -t {threads} {params} - | samtools sort -O bam -o {output.bam} - && "
+		"bcftools mpileup --threads {threads} -Ob -o {output.bcf} -f {params} {output.bam} && "
+		"bcftools view {output.bcf}|metabbq readBCF2tsv > {output.tsv}"
+
+rule STAT_clip_2_mock_ref:
+	input: "{sample}/summary.BI.megahit.clip.all.fasta"
+	output:
+		m6 = "{sample}/ANNO/clip2MockRef.m6"
+	threads: 8
+	params: config['MockRef']['blastdb']
+	shell:
+		"blastn -num_threads {threads} -perc_identity 95 -word_size 77 -db {params} "
 		"-query {input} -outfmt '6 std qlen' -out {output.m6}\n"
 
 rule STAT_clip_2_known_bb_stat:
-	input: "{sample}/summary.BI.megahit.clip2CloseRef.m6"
+	input: "{sample}/ANNO/clip2MockRef.m6"
 	output:
-		b= "{sample}/CLIP/clip2CloseRef.bead.anno",
-		c= "{sample}/CLIP/clip2CloseRef.clip.anno",
-		g= "{sample}/CLIP/clip2CloseRef.ref.cov"
-	params: config['closeRef']['bed']
+		b= "{sample}/ANNO/clip2MockRef.bead.anno",
+		c= "{sample}/ANNO/clip2MockRef.clip.anno",
+		g= "{sample}/ANNO/clip2MockRef.ref.cov"
+	params: config['MockRef']['bed']
 	shell:
 		"metabbq checkBeadRegion -i {input} -r {params} -o {output.b} -c {output.c} -g {output.g} \n"
+
+
+### stat LOTU
+rule STAT_lotu_2_mock_ref:
+	input: "{sample}/CLIP/LOTU.fa"
+	output:
+		m6 = "{sample}/ANNO/LOTU.to.MockRef.m6",
+		m0 = "{sample}/ANNO/LOTU.to.MockRef.m0"
+	threads: 4
+	params: config['MockRef']['blastdb']
+	shell:
+		"blastn -num_threads {threads} -perc_identity 95 -word_size 141 -db {params} "
+		"-query {input} -outfmt '6 std qlen slen' -out {output.m6} &\n"
+		"blastn -num_threads {threads} -perc_identity 95 -word_size 141 -db {params} "
+		"-query {input} -out {output.m0}\n"
+
+rule STAT_lotu_2_known_bb_stat:
+	input: "{sample}/ANNO/LOTU.to.MockRef.m6"
+	output:
+		b= "{sample}/ANNO/LOTU.to.MockRef.bead.anno",
+		c= "{sample}/ANNO/LOTU.to.MockRef.clip.anno",
+		g= "{sample}/ANNO/LOTU.to.MockRef.ref.cov"
+	params: config['MockRef']['bed']
+	shell:
+		"metabbq checkBeadRegion -i {input} -r {params} -o {output.b} -c {output.c} -g {output.g} \n"
+
+rule STAT_lotu_2_mock_quast:
+	input: "{sample}/CLIP/LOTU.fa"
+	output:
+		m6 = "{sample}/CLIP/LOTU.to.MockRef.quast"
+	threads: 8
+	params: config['MockRef']['blastdb']
+	shell:
+		"quast.py -t {threads} {input} -r {params} -o {output}"
 
 ###################### Temp ####################################################
 rule STAT_clip_2_known_fix_ref:
 	input: "{sample}/summary.BI.megahit.clip.fasta"
 	output:
-		m6 = "{sample}/summary.BI.megahit.clip2CloseRef.fix.m6"
+		m6 = "{sample}/summary.BI.megahit.clip2MockRef.fix.m6"
 	threads: 8
 	params: "$LFR/Source/REF/zymo/D6305.fix.rRNA.fa"
 	shell:
@@ -379,11 +426,11 @@ rule STAT_clip_2_known_fix_ref:
 		"-query {input} -outfmt '6 std qlen' -out {output.m6}\n"
 
 rule STAT_clip_2_known_fix_bb_stat:
-	input: "{sample}/summary.BI.megahit.clip2CloseRef.fix.m6"
+	input: "{sample}/summary.BI.megahit.clip2MockRef.fix.m6"
 	output:
-		b= "{sample}/CLIP/clip2CloseRef.fix.bead.anno",
-		c= "{sample}/CLIP/clip2CloseRef.fix.clip.anno",
-		g= "{sample}/CLIP/clip2CloseRef.fix.ref.cov"
+		b= "{sample}/CLIP/clip2MockRef.fix.bead.anno",
+		c= "{sample}/CLIP/clip2MockRef.fix.clip.anno",
+		g= "{sample}/CLIP/clip2MockRef.fix.ref.cov"
 	params: "$LFR/Source/REF/zymo/D6305.fix.rRNA.barrnap.bed"
 	shell:
 		"metabbq checkBeadRegion -i {input} -r {params} -o {output.b} -c {output.c} -g {output.g} \n"
@@ -454,34 +501,101 @@ rule CLIP_2_filter:
 		"{input} > {output}\n"
 
 if config["sampleType"] == "F":
-	rule CLIP_3_predict:
-		input: "{sample}/CLIP/preclust_1k.fa"
+	rule CLIP_3_predict_barranp:
+		input: outXac
 		output:
-			fa1="{sample}/CLIP/preclust_1k.ITS.positions.txt",
-			fa2="{sample}/CLIP/preclust_1k.barrnap.fa",
-			gff="{sample}/CLIP/preclust_1k.barrnap.gff",
-			log="{sample}/CLIP/preclust_1k.barrnap.log",
+			fa2="{sample}/CLIP/all.barrnap.fa",
+			gff="{sample}/CLIP/all.barrnap.gff",
+			log="{sample}/CLIP/all.barrnap.log",
 		params:
-			pfx = "{sample}/CLIP/preclust_1k.ITS",
-		threads: 2
+			pfx = "{sample}/CLIP/all.ITS",
+		threads: 8
 		shell:
-			"ITSx -t F --cpu {threads} -i {input} -o {params.pfx} &> {output.fa1} &\n"
 			"barrnap --threads {threads} --kingdom euk --outseq {output.fa2} < {input} > {output.gff} 2> {output.log}\n"
+	rule CLIP_4_sumgff:
+		input: "{sample}/CLIP/all.barrnap.gff"
+		output: "{sample}/CLIP/all.barrnap.sum.tsv"
+		threads: 1
+		shell:
+			"metabbq IO sumgff -d euk -i {input} -o {output}"
+	rule CLIP_3_predict_ITSx:
+		input: outXac
+		output:
+			log="{sample}/CLIP/all.ITS.log",
+			pos="{sample}/CLIP/all.ITS.positions.txt",
+		params:
+			pfx = "{sample}/CLIP/all.ITS",
+		threads: 8
+		shell:
+			"ITSx --cpu {threads} --save_regions all -i {input} -o {params.pfx} &> {output.log}\n"
+	rule CLIP_4_sumITSxPos:
+		input: "{sample}/CLIP/all.ITS.positions.txt"
+		output: "{sample}/CLIP/all.ITS.positions.sum.tsv"
+		threads: 1
+		shell:
+			"metabbq IO itsx -i {input} -o {output}"
+	rule PRED_0_getSSU:
+		input: "{sample}/CLIP/all.barrnap.fa"
+		output:"{sample}/PREDICT/barrnap.ssu.fa"
+		shell:
+			"metabbq IO printUniqSubunit -i {input} -t 18S_rRNA -o {output} -v"
+	rule PRED_0_getLSU:
+		input: "{sample}/CLIP/all.barrnap.fa"
+		output:"{sample}/PREDICT/barrnap.lsu.fa"
+		shell:
+			"metabbq IO printUniqSubunit -i {input} -t 28S_rRNA -o {output} -v"
+	rule PRED_0_getITSxSubunits:
+		input:
+			inf = outXcafa,
+			pos = "{sample}/CLIP/all.ITS.positions.txt"
+		output:
+			SSU = "{sample}/CLIP/all.ITS.SSU.fasta",
+			LSU = "{sample}/CLIP/all.ITS.LSU.fasta"
+		params: "{sample}/CLIP/all.ITS"
+		shell:
+			"metabbq IO printITSxSubunit -i {input.inf} -p {input.pos} -o {params} -v"
 
 else:
 	rule CLIP_3_predict:
-		input: "{sample}/CLIP/preclust_1k.fa"
+		input: outXac
 		output:
-			fa="{sample}/CLIP/preclust_1k.barrnap.fa",
-			gff="{sample}/CLIP/preclust_1k.barrnap.gff",
-			log="{sample}/CLIP/preclust_1k.barrnap.log"
-		threads: 2
+			fa="{sample}/CLIP/all.barrnap.fa",
+			gff="{sample}/CLIP/all.barrnap.gff",
+			log="{sample}/CLIP/all.barrnap.log"
+		threads: 8
 		shell:
 			"barrnap --threads {threads} --kingdom bac --outseq {output.fa} < {input} > {output.gff} 2> {output.log}\n"
-
+	rule CLIP_4_sumgff:
+		input: "{sample}/CLIP/all.barrnap.gff"
+		output: "{sample}/CLIP/all.barrnap.sum.tsv"
+		threads: 1
+		shell:
+			"metabbq IO sumgff -i {input} -o {output}"
+	rule PRED_0_getSSU:
+		input: "{sample}/CLIP/all.barrnap.fa"
+		output:"{sample}/PREDICT/barrnap.ssu.fa"
+		shell:
+			"metabbq IO printUniqSubunit -i {input} -t 16S_rRNA -o {output} -v"
+	rule PRED_1_ClustSSU:
+		input:"{sample}/PREDICT/barrnap.ssu.fa"
+		output:"{sample}/PREDICT/barrnap.ssu.clade.uc_0.995"
+		params:"{sample}/PREDICT/barrnap.ssu.clade.uc"
+		shell:
+			"metabbq IO makeclade -i {input} -o {params} -v"
+	rule PRED_0_getLSU:
+		input: "{sample}/CLIP/all.barrnap.fa"
+		output:"{sample}/PREDICT/barrnap.lsu.fa"
+		shell:
+			"metabbq IO printUniqSubunit -i {input} -t 23S_rRNA -o {output} -v"
+	rule PRED_1_ClustLSU:
+		input:"{sample}/PREDICT/barrnap.lsu.fa"
+		output:"{sample}/PREDICT/barrnap.lsu.clade.uc_0.995"
+		params:"{sample}/PREDICT/barrnap.lsu.clade.uc"
+		shell:
+			"metabbq IO makeclade -i {input} -o {params} -v"
 
 #test SOTU mapping to refs
-rule zymo_sotu_2_closeRef:
+rule zymo_sotu_2_MockRef:
     input:
         SSU = "{sample}/OTU/pred.SSU.clust.fa",
         LSU = "{sample}/OTU/pred.LSU.clust.fa"
@@ -511,15 +625,23 @@ else:
     SSU="16S"
 
 
-rule LOTU_closeDB_mapping:
-    input: "{sample}/CLIP/all.LOTU.fa"
-    output: "{sample}/CLIP/all.LOTU.map.closeRef.m6"
-    params: config["closeRef"]["bwa_db"]
+rule LOTU_closeDB_blastn:
+    input: "{sample}/CLIP/LOTU.fa"
+    output: "{sample}/ANNO/LOTU.map.MockRef.m6"
+    params: config["MockRef"]["bwa_db"]
     threads: 8
     shell:
         "blastn -num_threads {threads} -perc_identity 95 -db {params} "
         " -query {input} -outfmt '6 std qlen slen' -out {output}\n"
 
+rule LOTU_closeDB_bwa:
+    input: "{sample}/CLIP/LOTU.fa"
+    output: "{sample}/ANNO/LOTU.map.MockRef.bam"
+    params: config["MockRef"]["bwa_db"]
+    threads: 8
+    shell:
+        "bwa mem -t {threads} {params} {input} "
+        "|samtools view -b - > {output}\n"
 
 
 ## CLEAN: randomly downsize:
@@ -532,10 +654,113 @@ rule downsize_50_10:
         fq2="{sample}/clean/fastp.sort.2_00.fq.gz"
     params:
         pfx1 = "{sample}/clean/fastp.sort.1",
-        pfx2 = "{sample}/clean/fastp.sort.2"
+        pfx2 = "{sample}/clean/fastp.sort.2",
         p = config["clean_ds_pieces"],
         k  = config["clean_ds_keep_files"]
     threads: 4
     shell:
         "metabbq randomlyPick.pl -i {input.fq1} -o {params.pfx1} -n {params.p} -m {params.keeps} -s {params.p} -t 2 &\n"
         "metabbq randomlyPick.pl -i {input.fq2} -o {params.pfx2} -n {params.p} -m {params.keeps} -s {params.p} -t 2 -v"
+
+
+rule test_LOTU_i95:
+    input:"{sample}/CLIP/id95def4.clust.uc"
+    output:"{sample}/CLIP/id95def4.clust.H.BID"
+    shell:
+        """
+awk '(/^H/&&$3>999){{split($9,a,"_");split($10,b,"_");print a[1];print b[1]}}' {input}|sort|uniq > {output}
+        """
+
+
+###############################################################################
+# Avoid hybridize beads by clustering clips
+###############################################################################
+
+rule testKK2_2_listClustBID:
+    input:
+        fa = outXac,
+        uc = "{sample}/CLIP/id95def4.clust.uc",
+        anno="{sample}/ANNO/clip2MockRef.bead.anno"
+    output: "{sample}/CLIP/mock.id95def4.clust.fa"
+    threads: 1
+    shell:
+        "metabbq IO uch -a {input.anno} -i {input.fa} -u {input.uc} -o {output} -c 999"
+
+rule testKK2_3_ClipClust995:
+    input: "{sample}/CLIP/mock.id95def4.clust.fa"
+    output:
+        uc = "{sample}/CLIP/mock.id995def2.clust.uc",
+        ofa = "{sample}/CLIP/mock.id995def2.clust.fa",
+        cfa = "{sample}/KRAKEN/mock/library/added.fna"
+    threads: 8
+    shell:
+        "vsearch --threads {threads} --cluster_fast {input} --strand both --iddef 2 --id .995 "
+        " --fasta_width 0 --relabel LOTU_ --uc {output.uc}  --centroids {output.ofa} \n"
+        "cp -r {output.ofa} {output.cfa}"
+
+
+
+if config["sampleType"] == "F":
+    rule testKK2_4_makeTaxonomyTree:
+        input:
+            uc = "{sample}/CLIP/mock.id995def2.clust.uc",
+            anno="{sample}/ANNO/clip2MockRef.bead.anno"
+        output: "{sample}/KRAKEN/mock/data/added.txt"
+        params: "Eukaryota"
+        shell:
+            "metabbq IO maketaxon -d {params} -u {input.uc} -a {input.anno} -t $LFR/Source/REF/KRAKEN2/rDNA/data/mergeTaxon.txt -o {output}"
+else:
+    rule testKK2_4_makeTaxonomyTree:
+        input:
+            uc = "{sample}/CLIP/mock.id995def2.clust.uc",
+            anno="{sample}/ANNO/clip2MockRef.bead.anno"
+        output: "{sample}/KRAKEN/mock/data/added.txt"
+        params: "Bacteria"
+        shell:
+            "metabbq IO maketaxon -u {input.uc} -a {input.anno} -t $LFR/Source/REF/KRAKEN2/rDNA/data/mergeTaxon.txt -o {output}"
+
+
+rule testKK2_5_makedb:
+    input:
+        fa = "{sample}/KRAKEN/mock/library/added.fna",
+        ad = "{sample}/KRAKEN/mock/data/added.txt"
+    output: "{sample}/KRAKEN/mock/hash.k2d"
+    params: "{sample}/KRAKEN/mock"
+    threads: 4
+    shell:
+        """
+if [[ -e {params}/data/mergeTaxon.txt ]]; then rm {params}/data/mergeTaxon.txt ;fi
+cp -r $LFR/Source/REF/KRAKEN2/rDNA/data/mergeTaxon.txt {params}/data/mergeTaxon.txt
+metabbq buildKraken2db.sh {params} {threads}
+        """
+
+rule testKK2_6_mapping:
+    input:
+        fa1 = "{sample}/clean/fastp.sort.1.fq.gz",
+        fa2 = "{sample}/clean/fastp.sort.2.fq.gz",
+        db  = "{sample}/KRAKEN/mock/hash.k2d"
+    output:
+        raw = "{sample}/KRAKEN/reads2mock.out",
+        prf = "{sample}/KRAKEN/reads2mock.prof"
+    params: "{sample}/KRAKEN/mock"
+    threads: 4
+    shell:
+        "kraken2 --db {params} --threads {threads} --paired {input.fa1} {input.fa2} "
+        " | tee {output.raw} | metabbq IO kk2prf -d {params} -i - -o {output.prf}"
+
+# rule testKK2_6_profling:
+#     input:
+#         kk2 = "{sample}/testKK2/reads2db.out",
+#         db  = "{sample}/testKK2/db/hash.k2d"
+#     output: "{sample}/testKK2/reads2db.prof"
+#     params: "{sample}/testKK2/db"
+#     threads: 1
+#     shell:
+#         "metabbq IO kk2prf -d {params} -i {input.kk2} -o {output} -v"
+
+rule testKK2_7_sum2species:
+    input:"{sample}/KRAKEN/reads2mock.prof"
+    output: "{sample}/KRAKEN/reads2mock.sp.prf"
+    threads: 1
+    shell:
+        "metabbq IO sumprf -r species -i {input} -o {output}"

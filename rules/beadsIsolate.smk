@@ -108,7 +108,7 @@ rule BIA_1_write:
         "--r1 {input.s1}  --r2 {input.s2} &> {output}\n"
 
 rule BIA_1_prepCFG:
-    input: "{sample}/Assemble_BI/log"
+    input: "{sample}/Assemble_BI/ID.lst"
     output: "{sample}/primers.cfg"
     params:
         Ad = config["AdRCA"],
@@ -218,6 +218,65 @@ for i in `ls {params.outDir}|grep BI`;do
   fi
 done > {output.fa}
         """
+outXctsv = "{sample}/summary.BI." + str(config["method"]["assemble"]["mode"]) + ".clip.metadata.tsv"
+rule BIA_4_summary4:
+    input: "{sample}/log/batch.assemble.BI.done"
+    output:
+        tsv   = outXctsv
+    params:
+        divide = config['divideSH'],
+        dpfx = "{sample}/sp.BI.",
+        outDir = "{sample}/Assemble_BI",
+        mAsm   = config["p_asm_min"],
+        mode   = config["method"]["assemble"]["mode"]
+    shell:
+        """
+# 4. pick all RCA clip info
+for i in `awk '{{printf("BI%08d\\n",$1)}}' {params.outDir}/ID.lst`;do
+  if [ -s {params.outDir}/$i/{params.mode}/RCAclip.log ]; then
+    awk -v b=$i -F ' +|\\t|_|=' '/multi=/{{print b"\\t"$2"\\t"$3"\\t"$5"\\t"$7"\\t"$9"\\t"$10"\\t"$11"\\t"$12"\\t"$13}}' {params.outDir}/$i/{params.mode}/RCAclip.log
+  fi
+done > {output.tsv}
+        """
+outXcafa = "{sample}/summary.BI." + str(config["method"]["assemble"]["mode"]) + ".clip.all.fasta"
+rule BIA_4_summary5:
+    input: "{sample}/log/batch.assemble.BI.done"
+    output:
+        fa   = outXcafa
+    params:
+        divide = config['divideSH'],
+        dpfx = "{sample}/sp.BI.",
+        outDir = "{sample}/Assemble_BI",
+        mode   = config["method"]["assemble"]["mode"]
+    shell:
+        """
+# 5. pick RCA clip fasta
+for i in `awk '{{printf("BI%08d\\n",$1)}}' {params.outDir}/ID.lst`;do
+  if [ -s {params.outDir}/$i/megahit/RCAclip.fa ]; then
+    awk -v b=$i 'FNR%2==1{{sub(">",">"b"_",$0);id=$0}}FNR%2==0{{print id"\\n"$0}}' {params.outDir}/$i/{params.mode}/RCAclip.fa
+  fi
+done > {output.fa}
+        """
+
+# 9. clean intermediate files
+rule BIA_4_cleanfiles:
+    input: "{sample}/log/batch.assemble.BI.done"
+    output:
+        log   = "{sample}/log/delete.assemble.BI.done"
+    params:
+        dpfx = "{sample}/sp.BI.",
+        outDir = "{sample}/Assemble_BI",
+        mode   = config["method"]["assemble"]["mode"]
+    shell:
+        """
+# 5. pick RCA clip fasta
+for i in `awk '{{printf("BI%08d\\n",$1)}}' {params.outDir}/ID.lst`;do
+  if [ -s {params.outDir}/$i ]; then
+    rm -rf {params.outDir}/$i
+  fi
+done > {output.log}
+        """
+
 #Following were rules for Bead isolated scaffolding method:
 ## 1 discard abnormal contigs and rename sequence id:
 rule BIS_0_filter:

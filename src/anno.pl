@@ -40,7 +40,7 @@ if($anno =~ /silva.*.txt$/){
       $HASH{$a[0]}{T} = $ranks[$lv];
     }
   }
-}elsif($anno =~ /silva.*tax$/){
+}elsif($anno =~ /.*tax$/){
   while(<ANN>){
     chomp; my @a= split(/\t/,$_);
     $HASH{$a[0]}{A} = "$a[1]\t$a[2]\t$a[3]\t$a[5]";
@@ -50,7 +50,6 @@ if($anno =~ /silva.*.txt$/){
       my @ranks = split /;/, $a[5];
       $HASH{$a[0]}{T} = $ranks[$lv];
     }
-
   }
 }else{
   while(<ANN>){
@@ -66,6 +65,9 @@ if($align =~/.(blast6|m6)$/){
   while(<ALN>){
   	chomp;
   	my @a= split(/\t/,$_);
+    if($a[0] eq "Penicillium_expansum" && ($a[1] eq "AB028137.1.1770" or $HASH{$a[1]}{T} eq "Penicillium expansum")){
+      my $debug = 1;
+    }
     %TMPANN = () if $preQuery ne $a[0];
     next if exists $TMPANN{$HASH{$a[1]}{T}};
   	my $ann = $HASH{$a[1]}{A};

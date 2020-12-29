@@ -18,6 +18,7 @@ $msg
   * Otherwize sequences will be randomly output using barcode as unit.
 usage:
   $0 -i input -o out_prefix -n num -s seed
+    -a  [b|r] randomize according to bead or read.
     -i  input file (fastq/fasta)
     -o  output prefix
     -n  number of split files
@@ -30,8 +31,9 @@ USAGE
 }
 &usage && exit unless @ARGV;
 
-my ($inf,$out,$num,$outNum,$seed,$thread,$verbose,$help);
+my ($inf,$out,$by,$num,$outNum,$seed,$thread,$verbose,$help);
 GetOptions(
+  "a=s" => \$by,
   "i=s" => \$inf,
   "o=s" => \$out,
   "n=i" => \$num,
@@ -44,9 +46,10 @@ GetOptions(
 &usage && exit if $help;
 &usage("[fatal] Essential input is missing") && exit unless defined $inf && $num && $out;
 
+$by||="r";
 $thread||=1;
 $outNum||=$num;
-my $fmt = $1 if $inf =~ /.(f(|ast)[aq](|.gz))$/;
+my $fmt = $1 if $inf =~ /\.(\w+)$/;
 &verbose("[log] input format detected: $fmt\n");
 if($fmt =~ /.gz$/){
   open INF, "pigz -p $thread -dc $inf|" or die $!;
@@ -69,22 +72,33 @@ $seed = ($seed)?srand($seed):srand();
 &verbose("[log] Use seed: $seed\n");
 
 &verbose("\n[log] Start IO ...\n");
-my ($chunk,$idSnap,$seedi,$readCount);
+my ($chunk,$idSnap,$seedi,$readCount,%writtenCount,@bc);
 while(<INF>){
-  my @bc = &getIdBarcode($_);
-  $chunk = ($fmtR eq "fq")?$_.<INF>.<INF>.<INF>:$_.<INF>;
+  if($by eq "b"){
+    @bc = &getIdBarcode($_);
+    $chunk = ($fmtR eq "fq")?$_.<INF>.<INF>.<INF>:$_.<INF>;
 
-  if($bc[1] ne $idSnap || $bc[1]=~/0000/){
+    if($bc[1] ne $idSnap || $bc[1]=~/0000/){
+      $seedi = int(rand($num));
+      $idSnap = $bc[1];
+    }
+    next if $seedi >= $outNum;
+    $FH{$seedi} -> print($chunk);
+    $readCount ++;
+  }else{
+    @bc=
+    $chunk = ($fmtR eq "fq")?$_.<INF>.<INF>.<INF>:$_.<INF>;
     $seedi = int(rand($num));
-    $idSnap = $bc[1];
+    next if $seedi >= $outNum;
+    $FH{$seedi} -> print($chunk);
+    $writtenCount{$seedi} ++;
+    $readCount ++;
   }
-  next if $seedi >= $outNum;
-  $FH{$seedi} -> print($chunk);
-  $readCount ++;
   if($readCount % 1000000 == 0){
-    &verbose("[log] Working on $bc[1] ...\n");
+    &verbose("[log] Working on $bc[1] | Written ~ $writtenCount{0} lines ...\r");
   }
 }
+&verbose("\n");
 close INF;
 close OUT;
 # Main end
@@ -101,7 +115,7 @@ sub verbose{
 sub getIdBarcode {
   my $id = shift;
   my @bc;
-  if($id =~ /[@\/](\d+)_(\d+)_(\d+)\//){
+  if($id =~ /\/(\d+)_(\d+)_(\d+)/){
     my @bcode= ($1,$2,$3);
     @bc = ($bcode[0],"$bcode[0]_$bcode[1]_$bcode[2]");
   }else{
