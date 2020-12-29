@@ -346,18 +346,25 @@ if config["sampleType"] == "F":
             txt = "{sample}/CLIP/all.ITS.positions.txt",
             anno="{sample}/ANNO/CLIP.map.merge.bead.anno",
         output: "{sample}/CLIP/validSeqs.clust.fa"
+        params:
+            min = config["p_pba_len_min"],
+            max = config["p_pba_len_max"]
         threads: 1
         shell:
-            "metabbq IO validseq -a {input.anno} -i {input.fa} -g {input.gff} -t {input.txt} -d ALL -m 1000 -M 2500 -o {output} -v"
+            "metabbq IO validseq -a {input.anno} -i {input.fa} -g {input.gff} -t {input.txt} -d ALL -m {params.min} -M {params.max} -o {output} -v"
+
     rule KRAKEN_2_hmmseq:
         input:
             fa = outXac,
             gff = "{sample}/CLIP/all.barrnap.gff",
             txt = "{sample}/CLIP/all.ITS.positions.txt"
         output: "{sample}/CLIP/hmmSeqs.clust.fa"
+        params:
+            min = config["p_pba_len_min"],
+            max = config["p_pba_len_max"]
         threads: 1
         shell:
-            "metabbq IO validseq -i {input.fa} -g {input.gff} -t {input.txt} -d ALL -m 1500 -M 2500 -o {output} -v"
+            "metabbq IO validseq -i {input.fa} -g {input.gff} -t {input.txt} -d ALL -m {params.min} -M {params.max} -o {output} -v"
 else:
     rule KRAKEN_2_validseq:
         input:
@@ -365,17 +372,37 @@ else:
             gff = "{sample}/CLIP/all.barrnap.gff",
             anno="{sample}/ANNO/CLIP.map.merge.bead.anno",
         output: "{sample}/CLIP/validSeqs.clust.fa"
+        params:
+            min = config["p_pba_len_min"],
+            max = config["p_pba_len_max"]
         threads: 1
         shell:
-            "metabbq IO validseq -a {input.anno} -i {input.fa} -g {input.gff} -d SSU -m 500 -M 1500 -o {output} -v"
+            "metabbq IO validseq -a {input.anno} -i {input.fa} -g {input.gff} -d SSU -m {params.min} -M {params.max}  -o {output} -v"
+
+    # rule KRAKEN_2_validseq2:
+    #     input:
+    #         fa = "{sample}/CLIP/all.barrnap.fa",
+    #         gff = "{sample}/CLIP/all.barrnap.gff",
+    #         anno="{sample}/ANNO/CLIP.map.merge.bead.anno",
+    #     output: "{sample}/CLIP/validSeqs.clust.fa"
+    #     params:
+    #         min = config["p_pba_len_min"],
+    #         max = config["p_pba_len_max"]
+    #     threads: 1
+    #     shell:
+    #         "metabbq IO validseq2 -a {input.anno}  -i {input.fa}  -t barrnap -d SSU -m {params.min} -M {params.max}  -o {output} -v"
+
     rule KRAKEN_2_hmmseq:
         input:
             fa = outXac,
             gff = "{sample}/CLIP/all.barrnap.gff"
         output: "{sample}/CLIP/hmmSeqs.clust.fa"
+        params:
+            min = config["p_pba_len_min"],
+            max = config["p_pba_len_max"]
         threads: 1
         shell:
-            "metabbq IO validseq -i {input.fa} -g {input.gff} -d SSU -m 500 -M 4500 -o {output} -v"
+            "metabbq IO validseq -i {input.fa} -g {input.gff} -d SSU -m {params.min} -M {params.max} -o {output} -v"
 
 # rule KRAKEN_3_ClipClust995:
 #     input: "{sample}/CLIP/id95def4.clust.fa"
