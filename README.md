@@ -1,3 +1,5 @@
+[![Preprint at bioRxiv](https://img.shields.io/badge/preprint-bioRxiv-blue)](https://doi.org/10.1101/2021.03.29.437457)
+
 # MetaSeq (Early access stage)
 
 This is a sequencing data processing pipeline mainly implemented with *sing-tube Long Fragment Reads (stLFR)* technology.
