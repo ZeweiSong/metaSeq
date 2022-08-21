@@ -4,6 +4,8 @@
 
 This is a sequencing data processing pipeline mainly implemented with *sing-tube Long Fragment Reads (stLFR)* technology.
 
+**Benchmark repository**: :octocat: [benchmark4stcLFR](https://github.com/BioChaoGroup/benchmark4stcLFR) 
+
 ### Installation 
 > Note: the [biogit](https://biogit.cn) is an internal website and only accessable from intranet at present.    
 
